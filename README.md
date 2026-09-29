@@ -53,3 +53,6 @@ Reference closure:
 ## Important distinction
 
 The repository is an auditable mirror and engineering workspace. The original KAIZO Library remains the preservation source unless a future governance decision explicitly establishes a different SSOT.
+
+## Complete Library Review — 2026-09-29
+A fresh recursive review identified **69 source files** under the KAIZO Library: **21 text/code/structured** and **48 binary/document/archive**. The repository does **not** yet contain exact GitHub copies of all 69. See `docs/audits/complete-library-transfer-status.md` for the authoritative transfer-gap register. Binary acceptance requires exact bytes plus SHA-256 match.
