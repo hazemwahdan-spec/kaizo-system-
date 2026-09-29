@@ -1,0 +1,51 @@
+ى الهوست
+
+📄 KAIZO Core Engine™ v2.0 | Master Developer Handover & Deployment Specification
+Project Name: KAIZO Coaching Intelligence System (Enterprise Edition)
+
+Architecture Version: v2.0
+Slogan: Better Every Day
+
+Target Audience / Platform: Professional Sports Federations, Clubs, Youth Sectors, and Elite Coaches (Multi-sport Plugin Architecture: Judo, Wrestling, BJJ, Karate, Taekwondo).
+
+1. System Architecture Overview & Core Engines
+The system is structured around the KAIZO Core Engine, governing 7 decoupled, high-performance sub-engines:
+
+Knowledge Engine: Enforces the strict pipeline: Collect -> Verify -> Classify -> Link -> Approve -> Publish for all 9 data domains (Technique, Drill, Problem, Solution, Test, Article, Video, Research, Exercise).
+
+Rule Engine: Dynamic rule evaluation library separating logic from code.
+Decision Engine: Real-time tatami-side or administrative decision support.
+Recommendation Engine: Proactive training loads, recovery, and intervention suggestions.
+Planning Engine: Season, weekly, and daily structural training periodization.
+Analytics Engine: Deep performance metrics and evolutionary tracking.
+Learning Engine: Continuous system optimization based on past outcomes.
+
+2. Directory Structure
+Plaintext
+kaizo-enterprise/
+├── backend/
+│   ├── main.py
+│   ├── requirements.txt
+│   └── Procfile
+└── frontend/
+    ├── public/
+    │   ├── manifest.json
+    │   └── sw.js
+    ├── src/
+    │   ├── App.jsx
+    │   ├── index.js
+    │   └── index.css
+    └── package.json
+
+3. Backend Source Code (backend/main.py)
+The supplied artifact contains FastAPI/Pydantic backend examples, audit logging, normative test examples, a knowledge repository, rule evaluation, knowledge ingest, audit-log and health endpoints.
+
+4. Frontend Source Code (frontend/src/App.jsx)
+The supplied artifact contains a React/Tailwind enterprise dashboard example with rule-engine simulation and a seven-dimensional Digital Twin UI preview.
+
+5. Deployment Instructions
+Backend: pip install -r requirements.txt; uvicorn main:app --host 0.0.0.0 --port $PORT.
+Frontend: configure REACT_APP_API_URL and deploy with standard React build commands.
+PWA: verify manifest and service worker for offline/mobile behavior.
+
+This artifact is preserved as a historical developer handover. It is not, by itself, proof of production deployment or production readiness.
