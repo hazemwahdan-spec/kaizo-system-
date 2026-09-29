@@ -1,1 +1,3 @@
-fastapi==0.115.6\nuvicorn[standard]==0.34.0\npydantic==2.10.4\n
+fastapi[standard]==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
