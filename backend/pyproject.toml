@@ -1,3 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kaizo-system"
+version = "0.1.0"
+description = "KAIZO System"
+requires-python = ">=3.11"
+
 [tool.fastapi]
 entrypoint = "main:app"
-# FastAPI Cloud deployment trigger after Root Directory configuration.
