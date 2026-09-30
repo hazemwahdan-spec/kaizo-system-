@@ -1,0 +1,66 @@
+name: PACK-B Production Evidence
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  pack-b-production-red-team:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for PACK-B production endpoint
+        env:
+          BASE_URL: https://kaizo-core-engine-production.up.railway.app
+        run: |
+          for i in $(seq 1 18); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$BASE_URL/api/v1/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "Production health: 200"
+              cat /tmp/health.json
+              break
+            fi
+            echo "Waiting for production deployment (attempt $i, HTTP $code)"
+            sleep 10
+          done
+          test -s /tmp/health.json
+          grep -q '"status":"Online"' /tmp/health.json
+
+      - name: PACK-B independent production red team
+        env:
+          BASE_URL: https://kaizo-core-engine-production.up.railway.app
+        run: |
+          set -euo pipefail
+
+          ENTITY="pack-b-${GITHUB_RUN_ID}"
+
+          valid=$(curl -sS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             -d "{"case_id":"PACK-B-${GITHUB_RUN_ID}","entity_id":"$ENTITY","state":{"kpi":1,"phase":"post-intervention"},"source_event":"production_retest"}")
+          echo "$valid"
+          echo "$valid" | grep -q '"status":"SYNCHRONIZED"'
+          echo "$valid" | grep -q '"new_version":1'
+
+          twin=$(curl -sS "$BASE_URL/api/v1/digital-twin/$ENTITY")
+          echo "$twin"
+          echo "$twin" | grep -q '"status":"SYNCHRONIZED"'
+          echo "$twin" | grep -q '"version":1'
+
+          conflict=$(curl -sS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             -d "{"case_id":"PACK-B-${GITHUB_RUN_ID}-CONFLICT","entity_id":"$ENTITY","state":{"kpi":2},"source_event":"stale_retest","expected_version":0}")
+          echo "$conflict"
+          echo "$conflict" | grep -q '"status":"HOLD"'
+          echo "$conflict" | grep -q '"reason_code":"DIGITAL_TWIN_VERSION_CONFLICT"'
+
+          missing=$(curl -sS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             -d "{"case_id":"PACK-B-${GITHUB_RUN_ID}-MISSING","entity_id":"$ENTITY","state":{},"source_event":""}")
+          echo "$missing"
+          echo "$missing" | grep -q '"status":"HOLD"'
+          echo "$missing" | grep -q '"reason_code":"MISSING_DIGITAL_TWIN_INPUT"'
+
+          authority=$(curl -sS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             -d "{"case_id":"PACK-B-${GITHUB_RUN_ID}-AUTH","entity_id":"$ENTITY","state":{"kpi":3},"source_event":"unauthorized","coach_final_authority":false}")
+          echo "$authority"
+          echo "$authority" | grep -q '"status":"HOLD"'
+          echo "$authority" | grep -q '"reason_code":"COACH_FINAL_AUTHORITY_REQUIRED"'
+
+          audit=$(curl -sS "$BASE_URL/api/v1/audit/logs")
+          echo "$audit"
+          echo "$audit" | grep -q 'DIGITAL_TWIN_SYNCHRONIZED'
+          echo "$audit" | grep -q 'DIGITAL_TWIN_SYNC_HOLD'
+
+          echo "PACK-B PRODUCTION RED TEAM: PASS"
