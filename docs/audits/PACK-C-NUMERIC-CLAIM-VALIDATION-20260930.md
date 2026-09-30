@@ -24,6 +24,10 @@ Sources reviewed included:
 - Saudi normative values for hand grip/pinch strength for ages 6–18 years. Again, the evidence is age-based and does not establish the exact KAIZO profile/threshold mapping.
 - A large child cohort study of grip strength also provides population measurements but does not validate the exact KAIZO threshold set.
 
+Additional judo-specific literature was then searched. A 2024 study of 11–12-year-old judo competitors reported mean dominant-hand grip strength of 21.34 kgf (range 14.20–30.70) and non-dominant 19.81 kgf (range 14.40–28.40). This is relevant domain evidence, but it does not validate the exact 25/18/15 kg thresholds, and its sample is older than the under-11 target. citeturn1search42
+
+A study of adolescent judo athletes reported handgrip strength means around 21.6–28.1 kgf across age/maturity groups, again without establishing the exact KAIZO threshold set or the -42 kg under-11 profile. citeturn1search0
+
 Conclusion of this evidence stage:
 NO AUTHORITATIVE EXACT MATCH FOUND.
 
