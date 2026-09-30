@@ -14,10 +14,20 @@ PACK-C reviewed the numeric decision claim currently present in the Rule Engine:
 
 The values are preserved for provenance/audit only. They are no longer permitted to drive a production decision.
 
-## Evidence Review
-The historical developer-handover material contains the same threshold values, but that artifact is an implementation proposal/working asset and is not sufficient evidence to validate the numeric claim.
+## Evidence Review — Stage 2 Completed
+A targeted external evidence search was completed for the exact threshold set and profile.
 
-External normative literature located during review provides age-based handgrip reference values, but it does not establish the exact KAIZO thresholds for an under-11 male in the -42 kg judo category. Therefore those sources are contextual evidence, not validation of this claim.
+Sources reviewed included:
+- Paediatric dominant and non-dominant handgrip reference curves for males aged 6–19.9 years. The published values are age-based reference percentiles and do not establish the exact KAIZO thresholds 25/18/15 kg for the under-11 male -42 kg judo profile.
+- Normative data for handgrip strength in Iranian healthy children/adolescents aged 7–18 years. The data are age/hand based and do not establish the exact KAIZO profile or threshold set.
+- Grip/pinch reference values for children/adolescents from India. The study provides age/sex reference data but does not establish the exact KAIZO thresholds.
+- Saudi normative values for hand grip/pinch strength for ages 6–18 years. Again, the evidence is age-based and does not establish the exact KAIZO profile/threshold mapping.
+- A large child cohort study of grip strength also provides population measurements but does not validate the exact KAIZO threshold set.
+
+Conclusion of this evidence stage:
+NO AUTHORITATIVE EXACT MATCH FOUND.
+
+These sources may be retained as contextual evidence, but none is sufficient to promote the 25/18/15 kg thresholds to VALIDATED status. The absence of an exact evidence mapping is therefore preserved as an explicit validation gap rather than being resolved by approximation.
 
 ## Runtime Control
 Production behavior was changed so an unvalidated numeric claim returns:
@@ -47,7 +57,7 @@ decision_blocked=true
 ## Governance Decision
 The safety/governance objective of PACK-C is evidenced: no unvalidated numeric claim can silently become a production decision.
 
-However, the numeric claim itself has NOT been scientifically/technically validated. It therefore remains non-frozen.
+The numeric claim itself has NOT been scientifically/technically validated. It therefore remains non-frozen.
 
 ## Closure Gate
 PACK-C cannot be marked CLOSED/FROZEN as a validated numeric-claim project until the exact claim receives an authoritative evidence mapping and appropriate validation.
