@@ -1,0 +1,37 @@
+name: P16 Governed AI Assistance Runtime Evidence
+on:
+  push:
+    paths: ['ai_assistance/**','.github/workflows/p16-ai-runtime.yml']
+  workflow_dispatch:
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r ai_assistance/requirements.txt
+      - name: Start service
+        run: uvicorn ai_assistance.main:app --host 127.0.0.1 --port 8080 >/tmp/p16.log 2>&1 &
+      - name: Independent governance tests
+        run: |
+          python - <<'PY'
+          import json,time,urllib.request
+          base='http://127.0.0.1:8080'
+          for _ in range(30):
+            try: urllib.request.urlopen(base+'/health',timeout=1); break
+            except Exception: time.sleep(1)
+          def req(path,body=None):
+            data=None; h={}
+            if body is not None: data=json.dumps(body).encode(); h['Content-Type']='application/json'
+            x=urllib.request.Request(base+path,data=data,headers=h,method='POST' if body is not None else 'GET')
+            return json.load(urllib.request.urlopen(x))
+          h=req('/health'); assert h['governed'] and h['coach_final_authority'] and not h['autonomous_decision']
+          p=req('/api/v1/policy'); assert p['human_review_required'] and p['p13_rbac_required'] and p['p14_consent_required']; assert not p['athlete_ranking'] and not p['medical_diagnosis'] and not p['fabricated_evidence']
+          base_req={'request_id':'r1','actor_id':'coach1','actor_role':'coach','academy_id':'a1','task':'summarize supplied evidence','evidence_refs':['E1'],'child_data':False}
+          a=req('/api/v1/assist',base_req); assert a['allowed'] and not a['authoritative'] and a['coach_final_authority'] and a['evidence_refs']==['E1']
+          child={**base_req,'request_id':'r2','child_data':True}; c=req('/api/v1/assist',child); assert not c['allowed'] and c['reason']=='p14_consent_gate_required'
+          d=req('/api/v1/disposition',{'request_id':'r1','coach_id':'coach1','disposition':'accepted','note':'coach reviewed'}); assert d['recorded'] and d['coach_final_authority']
+          events=req('/api/v1/audit')['events']; assert any(x['event']=='ai_assistance_request' for x in events) and any(x['event']=='coach_ai_disposition' for x in events)
+          print('P16 RUNTIME PASS: governed envelope, evidence refs, non-authoritative output, P14 child-data gate, coach disposition, audit')
+          PY
