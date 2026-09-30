@@ -1,0 +1,1 @@
+# KAIZO TECHNICAL — P02\n\nTechnical Director Workspace layered above the frozen KAIZO Core. P02 does not introduce RBAC, longitudinal persistence, minor consent, or new Core decision logic. Review records shown in the UI are client-side until P13/P15 establish durable multi-user persistence.
