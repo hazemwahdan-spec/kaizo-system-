@@ -1,0 +1,20 @@
+name: GAP-02 Production Closure Evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "gap-02-production-evidence.sh"
+      - ".github/workflows/gap-02-production-evidence.yml"
+
+jobs:
+  production-closure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute GAP-02 production evidence
+        env:
+          BASE_URL: https://kaizo-core-engine-production.up.railway.app
+        run: |
+          chmod +x gap-02-production-evidence.sh
+          ./gap-02-production-evidence.sh
