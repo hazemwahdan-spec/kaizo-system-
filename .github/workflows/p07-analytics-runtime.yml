@@ -1,0 +1,37 @@
+name: P07 Analytics Runtime Evidence
+
+on:
+  push:
+    paths:
+      - "analytics/**"
+      - ".github/workflows/p07-analytics-runtime.yml"
+  workflow_dispatch:
+
+jobs:
+  runtime-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start static runtime
+        run: |
+          python3 -m http.server 8080 --directory analytics >/tmp/p07.log 2>&1 &
+          echo $! >/tmp/p07.pid
+          sleep 2
+      - name: HTTP smoke test
+        run: |
+          set -e
+          curl -fsS http://127.0.0.1:8080/ | grep -q "KAIZO ANALYTICS"
+          curl -fsS http://127.0.0.1:8080/app.js | grep -q "DEMO / NON-AUTHORITATIVE"
+          curl -fsS http://127.0.0.1:8080/app.js | grep -q "Coach Final Authority"
+      - name: Independent governance checks
+        run: |
+          set -e
+          test -s analytics/index.html
+          test -s analytics/app.js
+          test -s analytics/styles.css
+          test -s analytics/Dockerfile
+          grep -q "No normative thresholds" analytics/README.md
+          grep -q "P15" analytics/README.md
+      - name: Stop runtime
+        if: always()
+        run: kill $(cat /tmp/p07.pid) 2>/dev/null || true
