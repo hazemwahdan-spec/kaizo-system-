@@ -1,0 +1,37 @@
+name: P19 Production Deployment Evidence Runtime
+on:
+  push:
+    paths: ['production_gate/**','.github/workflows/p19-production-gate-runtime.yml']
+  workflow_dispatch:
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r production_gate/requirements.txt
+      - name: Start service
+        run: uvicorn production_gate.main:app --host 127.0.0.1 --port 8080 >/tmp/p19.log 2>&1 &
+      - name: Independent evidence-gate tests
+        run: |
+          python - <<'PY'
+          import json,time,urllib.request
+          base='http://127.0.0.1:8080'
+          for _ in range(30):
+            try: urllib.request.urlopen(base+'/health',timeout=1); break
+            except Exception: time.sleep(1)
+          def req(path,body=None):
+            data=None; headers={}
+            if body is not None:
+              data=json.dumps(body).encode(); headers['Content-Type']='application/json'
+            r=urllib.request.Request(base+path,data=data,headers=headers,method='POST' if body is not None else 'GET')
+            return json.load(urllib.request.urlopen(r))
+          h=req('/health'); assert h['coach_final_authority'] and not h['activation_claim']
+          r=req('/api/v1/readiness'); assert r['reference_gate'] and not r['production_activation_verified']; assert len(r['requires_live_evidence'])==5
+          p=req('/api/v1/policy'); assert p['evidence_before_claim'] and not p['fabricated_live_evidence'] and p['secret_values_never_returned']
+          e=req('/api/v1/evidence',{'environment':'reference','deployment_id':'demo','service_id':'demo','commit_sha':'1234567','health_verified':True,'readiness_verified':True,'dependency_verified':True,'rollback_verified':False}); assert e['live_evidence_complete'] and not e['production_activation_verified']
+          e2=req('/api/v1/evidence',{'environment':'reference','deployment_id':'demo2','service_id':'demo','commit_sha':'1234567','health_verified':True,'readiness_verified':True,'dependency_verified':True,'rollback_verified':True}); assert e2['production_activation_verified'] is True
+          a=req('/api/v1/audit'); assert len(a['events'])>=2
+          print('P19 RUNTIME PASS: evidence-before-claim, live evidence contract, activation gate, rollback gate, audit')
+          PY
