@@ -6,7 +6,7 @@ Slogan: Better Every Day
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 app = FastAPI(
@@ -45,6 +45,15 @@ NORMATIVE_STANDARDS = {
     }
 }
 
+# GAP-02: the existing normative profile is the authoritative required-input set.
+# Missing required input must HOLD; unsupported/conflicting profile must HOLD + diagnostic.
+REQUIRED_INPUTS = {
+    "under11|male|-42kg|grip_strength": [
+        "athlete_id", "age_group", "gender", "weight_category",
+        "metric_name", "actual_value"
+    ]
+}
+
 KNOWLEDGE_REPOSITORY: Dict[str, Any] = {
     "TEC-000001": {
         "id": "TEC-000001",
@@ -71,14 +80,47 @@ class RuleEvaluationRequest(BaseModel):
     gender: str
     weight_category: str
     metric_name: str
-    actual_value: float
+    actual_value: Optional[float] = None
 
 @app.post("/api/v1/rules/evaluate", status_code=status.HTTP_200_OK)
 def evaluate_rule(req: RuleEvaluationRequest) -> Dict[str, Any]:
-    try:
-        standard = NORMATIVE_STANDARDS[req.age_group][req.gender][req.weight_category][req.metric_name]
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Normative standard not found for specified parameters.")
+    profile_key = f"{req.age_group}|{req.gender}|{req.weight_category}|{req.metric_name}"
+    required_set = REQUIRED_INPUTS.get(profile_key)
+
+    # Required Input / Missing Input -> HOLD. No decision or recommendation is issued.
+    if req.actual_value is None:
+        return {
+            "system": "KAIZO Rule Engine",
+            "athlete_id": req.athlete_id,
+            "status": "HOLD",
+            "reason_code": "MISSING_REQUIRED_INPUT",
+            "missing_inputs": ["actual_value"],
+            "required_inputs": required_set or [
+                "athlete_id", "age_group", "gender", "weight_category",
+                "metric_name", "actual_value"
+            ],
+            "diagnostic_required": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    # Conflict / unsupported profile -> HOLD + additional diagnostic.
+    if required_set is None or profile_key not in REQUIRED_INPUTS:
+        return {
+            "system": "KAIZO Rule Engine",
+            "athlete_id": req.athlete_id,
+            "status": "HOLD",
+            "reason_code": "SOURCE_CONFLICT_VALIDATION_REQUIRED",
+            "conflict": {
+                "age_group": req.age_group,
+                "gender": req.gender,
+                "weight_category": req.weight_category,
+                "metric_name": req.metric_name
+            },
+            "diagnostic_required": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    standard = NORMATIVE_STANDARDS[req.age_group][req.gender][req.weight_category][req.metric_name]
 
     recommendation = None
     if req.actual_value >= standard["excellent"]:
@@ -93,6 +135,7 @@ def evaluate_rule(req: RuleEvaluationRequest) -> Dict[str, Any]:
     return {
         "system": "KAIZO Rule Engine",
         "athlete_id": req.athlete_id,
+        "status": "DECISION",
         "evaluation": eval_level,
         "recommendation": recommendation,
         "timestamp": datetime.utcnow().isoformat()
