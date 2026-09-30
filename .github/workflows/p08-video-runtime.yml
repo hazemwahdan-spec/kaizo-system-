@@ -20,9 +20,9 @@ jobs:
       - name: HTTP smoke test
         run: |
           set -e
-          curl -fsS http://127.0.0.1:8080/ | grep -q "KAIZO VIDEO / MATCH ANALYSIS"
-          curl -fsS http://127.0.0.1:8080/app.js | grep -q "DEMO / NON-AUTHORITATIVE"
-          curl -fsS http://127.0.0.1:8080/app.js | grep -q "Coach interpretation"
+          curl -fsS http://127.0.0.1:8080/ | grep -Fq "KAIZO VIDEO ANALYSIS"
+          curl -fsS http://127.0.0.1:8080/app.js | grep -Fq "DEMO / NON-AUTHORITATIVE"
+          curl -fsS http://127.0.0.1:8080/app.js | grep -Fq "Coach interpretation"
       - name: Governance checks
         run: |
           set -e
@@ -30,9 +30,9 @@ jobs:
           test -s video/app.js
           test -s video/styles.css
           test -s video/Dockerfile
-          grep -q "computer vision" video/README.md
-          grep -q "P13" video/README.md
-          grep -q "P14" video/README.md
+          grep -Fq "computer vision" video/README.md
+          grep -Fq "P13" video/README.md
+          grep -Fq "P14" video/README.md
       - name: Stop runtime
         if: always()
         run: kill $(cat /tmp/p08.pid) 2>/dev/null || true
