@@ -32,7 +32,7 @@ def readiness():
       "live_tls_verified":False,
       "production_activation":False
     }
-    return {"reference_gate_pass":all(gates[k] for k in ["governance_frozen","coach_final_authority","deny_by_default","fail_closed","secret_values_exposed"]), "gates":gates}
+    return {"reference_gate_pass":all(gates[k] for k in ["governance_frozen","coach_final_authority","deny_by_default","fail_closed"]) and not gates["secret_values_exposed"], "gates":gates}
 
 @app.post("/api/v1/security/check")
 def security_check(c:SecurityCheck):
