@@ -1,0 +1,30 @@
+const API="https://kaizo-core-engine-production.up.railway.app/api/v1";
+const app=document.getElementById("app");
+app.innerHTML=[
+'<header class="top"><div><div class="brand">KAIZO COACH</div><div style="color:#cbd5e1;font-size:13px">Coach Decision Workspace · Core preserved</div></div><div id="health" class="status">Checking Core…</div></header>',
+'<main class="wrap"><div class="grid">',
+'<section class="card span-12"><h2>Decision Case</h2><div class="row">',
+'<div class="field"><label>Case ID</label><input id="caseId"></div><div class="field"><label>Athlete ID</label><input id="athleteId" placeholder="ATH-001"></div>',
+'<div class="field"><label>Age Group</label><select id="age"><option>under11</option></select></div><div class="field"><label>Gender</label><select id="gender"><option>male</option></select></div>',
+'<div class="field"><label>Weight Category</label><select id="weight"><option>-42kg</option></select></div><div class="field"><label>Metric</label><select id="metric"><option>grip_strength</option></select></div>',
+'<div class="field"><label>Actual Value (kg)</label><input id="value" type="number" step="0.1" placeholder="18"></div></div>',
+'<div class="row" style="margin-top:12px"><button onclick="evaluateRule()">Evaluate with Core</button><button class="secondary" onclick="health()">Refresh Health</button></div>',
+'<div id="evalNote" class="notice" style="margin-top:12px">Coach remains the final authority. Unvalidated numeric claims are blocked by Core.</div><pre id="evalOut" class="output" style="margin-top:12px"></pre></section>',
+'<section class="card span-6"><h3>Adapt Decision</h3><div class="row"><div class="field"><label>Operation</label><select id="operation"><option>individual_adaptation</option><option>team_adaptation</option><option>subgroup_recalculation</option><option>individual_change</option></select></div><div class="field"><label>Dynamic Inputs</label><input id="dynamic" value="competition_pressure"></div></div><button style="margin-top:10px" onclick="adapt()">Run Adaptation</button><pre id="adaptOut" class="output" style="margin-top:12px"></pre></section>',
+'<section class="card span-6"><h3>Decision Loop</h3><div class="row"><div class="field"><label>Decision</label><input id="decision" value="Increase grip-entry decision quality"></div><div class="field"><label>Intervention</label><input id="intervention" value="Constraint-led gripping drill"></div><div class="field"><label>KPI</label><input id="kpi" value="clean entries / 5 reps"></div><div class="field"><label>Retest</label><input id="retest" value="same scenario, independent retest"></div></div><button style="margin-top:10px" onclick="loop()">Complete Loop</button><pre id="loopOut" class="output" style="margin-top:12px"></pre></section>',
+'<section class="card span-6"><h3>Digital Twin</h3><div class="row"><div class="field"><label>Entity ID</label><input id="entity" value="ATH-001"></div><div class="field"><label>State JSON</label><input id="twinState" value=\'{"readiness":"training","grip":"medium"}\'></div></div><button style="margin-top:10px" onclick="syncTwin()">Sync State</button><button class="secondary" style="margin:10px 0 0 6px" onclick="getTwin()">Read State</button><pre id="twinOut" class="output" style="margin-top:12px"></pre></section>',
+'<section class="card span-6"><h3>Audit Trail</h3><p class="muted">Read-only view of Core audit events.</p><button onclick="audit()">Refresh Audit</button><pre id="auditOut" class="output" style="margin-top:12px"></pre></section>',
+'</div></main>'
+].join("");
+caseId.value="COACH-"+Date.now();
+async function call(path,opts){const r=await fetch(API+path,opts||{});const j=await r.json();if(!r.ok)throw new Error(JSON.stringify(j));return j}
+function pretty(x){return JSON.stringify(x,null,2)}
+async function health(){try{const j=await call("/health");healthEl.textContent="CORE ONLINE";healthEl.style.background="#166534";return j}catch(e){healthEl.textContent="CORE UNREACHABLE";healthEl.style.background="#991b1b";return {error:String(e)}}}
+const healthEl=document.getElementById("health");
+async function evaluateRule(){const j=await call("/rules/evaluate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({athlete_id:athleteId.value||"UNSET",age_group:age.value,gender:gender.value,weight_category:weight.value,metric_name:metric.value,actual_value:value.value===""?null:Number(value.value)})});evalOut.textContent=pretty(j);evalNote.textContent=j.status==="HOLD"?"HOLD: Core blocked the path; review diagnostics.":"Decision returned by Core; Coach retains final authority."}
+async function adapt(){const j=await call("/decision/adapt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({case_id:caseId.value,operation:operation.value,common_core:{goal:"coach decision support"},dynamic_inputs:{context:dynamic.value},coach_final_authority:true})});adaptOut.textContent=pretty(j)}
+async function loop(){const j=await call("/decision/loop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({case_id:caseId.value,decision:{text:decision.value},intervention:{text:intervention.value},response_kpi:{metric:kpi.value},retest:{method:retest.value},coach_final_authority:true})});loopOut.textContent=pretty(j)}
+async function syncTwin(){let s;try{s=JSON.parse(twinState.value)}catch(e){twinOut.textContent="Invalid JSON";return}const j=await call("/digital-twin/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({case_id:caseId.value,entity_id:entity.value,state:s,source_event:"coach_workspace_update",coach_final_authority:true})});twinOut.textContent=pretty(j)}
+async function getTwin(){const j=await call("/digital-twin/"+encodeURIComponent(entity.value));twinOut.textContent=pretty(j)}
+async function audit(){const j=await call("/audit/logs");auditOut.textContent=pretty(j)}
+health();
