@@ -185,6 +185,44 @@ def health_check():
     return {"system": "KAIZO Core Engine v2.0", "status": "Online", "mode": "Enterprise AI-Ready"}
 
 
+class DecisionLoopRequest(BaseModel):
+    case_id: str
+    decision: Dict[str, Any]
+    intervention: Dict[str, Any]
+    response_kpi: Dict[str, Any]
+    retest: Dict[str, Any]
+    coach_final_authority: bool = True
+
+@app.post("/api/v1/decision/loop", status_code=status.HTTP_200_OK)
+def decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
+    if not req.coach_final_authority:
+        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
+        log_action(req.case_id, "DECISION_LOOP_HOLD", None, output, "Coach Final Authority is required.")
+        return output
+    missing = [name for name, value in {
+        "decision": req.decision,
+        "intervention": req.intervention,
+        "response_kpi": req.response_kpi,
+        "retest": req.retest,
+    }.items() if not value]
+    if missing:
+        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"MISSING_DECISION_LOOP_INPUT", "missing_inputs":missing, "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
+        log_action(req.case_id, "DECISION_LOOP_HOLD", None, output, "Required decision loop input is missing.")
+        return output
+    output = {
+        "case_id": req.case_id,
+        "status":"LOOP_COMPLETED",
+        "coach_final_authority":True,
+        "chain":["Decision","Intervention","Response/KPI","Retest","Audit"],
+        "decision":req.decision,
+        "intervention":req.intervention,
+        "response_kpi":req.response_kpi,
+        "retest":req.retest,
+        "timestamp":datetime.utcnow().isoformat()
+    }
+    log_action(req.case_id, "DECISION_LOOP_COMPLETED", None, output, "Decision to intervention to KPI response to retest completed under Coach Final Authority.")
+    return output
+
 class AdaptationRequest(BaseModel):
     case_id: str
     operation: str
