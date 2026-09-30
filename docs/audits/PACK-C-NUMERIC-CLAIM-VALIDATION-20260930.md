@@ -31,6 +31,13 @@ A study of adolescent judo athletes reported handgrip strength means around 21.6
 Conclusion of this evidence stage:
 NO AUTHORITATIVE EXACT MATCH FOUND.
 
+## Stage 3 — Threshold Plausibility Check
+Independent youth-sport data provide a plausibility check but not validation. A U11 male tennis meta-analysis reports dominant-hand grip strength of 21.20 kg (single-study estimate; n=4) and non-dominant 19.20 kg (single-study estimate; n=4), with substantial uncertainty due to the very small sample. citeturn0search0 A youth-soccer study reports U11 grip strength of 17.8 ± 2.6 kg in trial 1 and 17.7 ± 2.9 kg in trial 2. citeturn0search47 Another 10–12-year-old soccer cohort reports U11 mean grip strength 15.3 ± 1.85 kg. citeturn0search3
+
+These findings show that 15–25 kg is within the broad range reported in some U11 youth samples, but they do NOT establish that 15/18/25 kg are appropriate decision thresholds for male U11 judoka in the -42 kg category. Weight-category-specific and judo-specific normative evidence remains missing.
+
+Decision after Stage 3: CLAIM REMAINS UNVALIDATED / NON-FROZEN.
+
 These sources may be retained as contextual evidence, but none is sufficient to promote the 25/18/15 kg thresholds to VALIDATED status. The absence of an exact evidence mapping is therefore preserved as an explicit validation gap rather than being resolved by approximation.
 
 ## Runtime Control
