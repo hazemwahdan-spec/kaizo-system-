@@ -39,6 +39,6 @@ jobs:
       - name: Compile backend
         run: python -m compileall -q .
       - name: Run persistence integration test
-        run: python tests/test_persistence_integration.py
+        run: PYTHONPATH=. python tests/test_persistence_integration.py
       - name: Import application with PostgreSQL mode
         run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
