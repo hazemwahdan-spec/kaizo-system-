@@ -15,8 +15,8 @@ GAP-03 runtime proof for:
 Repository: hazemwahdan-spec/kaizo-system-
 Branch: main
 Production service: kaizo-core-engine
-Production deployment: 570dfaba-0e94-4779-994d-65c195ee19a1
-Production commit: 49be95e2cb2d060b8c8885348d12b1fa5b44cda8
+Production deployment: cf6b8c35-7282-42d0-9e01-5445c635112c
+Production commit: ba05b7a7675a60a97470ea92b608279ebc4561fe
 Deployment status: SUCCESS
 Healthcheck: /api/v1/health = 200
 
@@ -60,7 +60,7 @@ Production /api/v1/audit/logs returned total_logs=14 during the independent evid
 5. Audit logging was added without changing normative rules.
 6. Decision -> Intervention -> Response/KPI -> Retest runtime loop was added as a bounded runtime contract without inventing normative thresholds.
 7. Final production deployment 570dfaba-0e94-4779-994d-65c195ee19a1 reached SUCCESS on commit 49be95e2cb2d060b8c8885348d12b1fa5b44cda8.
-8. Independent retest/red-team run 36677713536 attempt 2 passed after that deployment.
+8. Independent retest/red-team run 36677807254 passed against the final deployed code.
 
 The earlier failed evidence runs are retained as execution history and are not counted as closure evidence because they were pre-deployment/stale-production or test-harness expectation failures.
 
