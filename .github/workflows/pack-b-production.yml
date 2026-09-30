@@ -40,7 +40,8 @@ PY
           ENTITY="pack-b-$RUN_ID"
           CASE="PACK-B-$RUN_ID"
 
-          valid=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             --data "{"case_id":"$CASE","entity_id":"$ENTITY","state":{"kpi":1,"phase":"post-intervention"},"source_event":"production_retest"}")
+          payload=$(jq -n --arg case "$CASE" --arg entity "$ENTITY" '{case_id:$case,entity_id:$entity,state:{kpi:1,phase:"post-intervention"},source_event:"production_retest"}')
+          valid=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H "Content-Type: application/json" --data "$payload")
           echo "$valid"
           python - "$valid" <<'PY'
 import json,sys
@@ -58,7 +59,8 @@ assert d["status"]=="SYNCHRONIZED"
 assert d["digital_twin_state"]["version"]==1
 PY
 
-          conflict=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             --data "{"case_id":"${CASE}-CONFLICT","entity_id":"$ENTITY","state":{"kpi":2},"source_event":"stale_retest","expected_version":0}")
+          payload=$(jq -n --arg case "${CASE}-CONFLICT" --arg entity "$ENTITY" '{case_id:$case,entity_id:$entity,state:{kpi:2},source_event:"stale_retest",expected_version:0}')
+          conflict=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H "Content-Type: application/json" --data "$payload")
           echo "$conflict"
           python - "$conflict" <<'PY'
 import json,sys
@@ -68,7 +70,8 @@ assert d["reason_code"]=="DIGITAL_TWIN_VERSION_CONFLICT"
 assert d["resolution_required"] is True
 PY
 
-          missing=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             --data "{"case_id":"${CASE}-MISSING","entity_id":"$ENTITY","state":{},"source_event":""}")
+          payload=$(jq -n --arg case "${CASE}-MISSING" --arg entity "$ENTITY" '{case_id:$case,entity_id:$entity,state:{},source_event:""}')
+          missing=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H "Content-Type: application/json" --data "$payload")
           echo "$missing"
           python - "$missing" <<'PY'
 import json,sys
@@ -78,7 +81,8 @@ assert d["reason_code"]=="MISSING_DIGITAL_TWIN_INPUT"
 assert d["diagnostic_required"] is True
 PY
 
-          authority=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             --data "{"case_id":"${CASE}-AUTH","entity_id":"$ENTITY","state":{"kpi":3},"source_event":"unauthorized","coach_final_authority":false}")
+          payload=$(jq -n --arg case "${CASE}-AUTH" --arg entity "$ENTITY" '{case_id:$case,entity_id:$entity,state:{kpi:3},source_event:"unauthorized",coach_final_authority:false}')
+          authority=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H "Content-Type: application/json" --data "$payload")
           echo "$authority"
           python - "$authority" <<'PY'
 import json,sys
