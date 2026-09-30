@@ -1,0 +1,12 @@
+name: GAP-03 adaptation runtime evidence
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+jobs:
+  production-adaptation-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute production adaptation contract
+        run: bash gap-03-adaptation-evidence.sh
