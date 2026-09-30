@@ -1,0 +1,39 @@
+name: P12 Research Runtime Evidence
+on:
+  push:
+    paths:
+      - 'research/**'
+      - '.github/workflows/p12-research-runtime.yml'
+      - 'docs/projects/P12-RESEARCH-PLATFORM-CHARTER-20260930.md'
+  workflow_dispatch:
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Independent artifact checks
+        run: |
+          test -f research/index.html
+          test -f research/styles.css
+          test -f research/app.js
+          test -f research/README.md
+          test -f research/Dockerfile
+          grep -Fq "Research Platform" research/index.html
+          grep -Fq "Research Question" research/index.html
+          grep -Fq "Evidence Register" research/index.html
+          grep -Fq "Observation" research/index.html
+          grep -Fq "Analysis / Interpretation" research/index.html
+          grep -Fq "Hypothesis" research/index.html
+          grep -Fq "Limitations" research/index.html
+          grep -Fq "authoritative_record:false" research/app.js
+      - name: Static HTTP smoke test
+        run: |
+          python3 -m http.server 8080 --directory research >/tmp/p12-http.log 2>&1 &
+          pid=$!
+          trap "kill $pid" EXIT
+          sleep 2
+          curl --fail http://127.0.0.1:8080/ >/tmp/p12-index.html
+          curl --fail http://127.0.0.1:8080/app.js >/tmp/p12-app.js
+          curl --fail http://127.0.0.1:8080/styles.css >/tmp/p12-styles.css
+          grep -Fq "Research Platform" /tmp/p12-index.html
+          grep -Fq "non-authoritative" /tmp/p12-index.html
