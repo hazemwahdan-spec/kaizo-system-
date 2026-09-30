@@ -1,0 +1,37 @@
+name: P17 Integration Production Hardening Runtime Evidence
+on:
+  push:
+    paths: ['integration_hardening/**','.github/workflows/p17-integration-hardening.yml']
+  workflow_dispatch:
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r integration_hardening/requirements.txt
+      - name: Start service
+        run: uvicorn integration_hardening.main:app --host 127.0.0.1 --port 8080 >/tmp/p17.log 2>&1 &
+      - name: Independent hardening tests
+        run: |
+          python - <<'PY'
+          import json,time,urllib.request
+          base='http://127.0.0.1:8080'
+          for _ in range(30):
+            try: urllib.request.urlopen(base+'/health',timeout=1); break
+            except Exception: time.sleep(1)
+          def req(path,body=None):
+            data=None; headers={}
+            if body is not None:
+              data=json.dumps(body).encode(); headers['Content-Type']='application/json'
+            r=urllib.request.Request(base+path,data=data,headers=headers,method='POST' if body is not None else 'GET')
+            return json.load(urllib.request.urlopen(r))
+          h=req('/health'); assert h['governance_frozen'] and h['coach_final_authority']
+          r=req('/api/v1/readiness'); assert r['ready_for_reference_integration']; assert not r['gates']['production_activation']; assert not r['gates']['external_credentials_present']
+          p=req('/api/v1/policy'); assert p['deny_by_default'] and p['fail_closed'] and p['coach_final_authority']; assert p['p13_required'] and p['p14_required_for_minors']
+          ok=req('/api/v1/check',{'service':'core','status':'verified','authoritative':False}); assert ok['accepted'] and not ok['authoritative']
+          bad=req('/api/v1/check',{'service':'external-provider','status':'failed'}); assert not bad['accepted'] and bad['safe_degradation']
+          audit=req('/api/v1/audit'); assert len(audit['events'])>=2
+          print('P17 RUNTIME PASS: readiness boundaries, fail-closed behavior, governance dependencies, safe degradation, audit')
+          PY
