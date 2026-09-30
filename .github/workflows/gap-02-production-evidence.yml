@@ -12,6 +12,8 @@ jobs:
   production-closure:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Execute GAP-02 production evidence
         env:
           BASE_URL: https://kaizo-core-engine-production.up.railway.app
