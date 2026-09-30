@@ -1,0 +1,12 @@
+name: GAP-02 Production Evidence
+on:
+  push:
+    branches:
+      - gap-02-production-evidence-20260930
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute GAP-02 production evidence
+        run: bash gap-02-production-evidence.sh
