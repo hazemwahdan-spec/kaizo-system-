@@ -1,0 +1,7 @@
+const KEY="kaizo-p12-research-demo";let evidence=JSON.parse(localStorage.getItem(KEY+"-evidence")||"[]");
+const $=id=>document.getElementById(id);
+function render(){ $("evidenceList").innerHTML=evidence.map((e,i)=>`<div class="item"><b>${e.id}</b> — ${e.status}<small>${e.provenance||"No provenance entered"}</small></div>`).join(""); $("summary").textContent=JSON.stringify({case_id:$("caseId").value,research_question:$("question").value,methodology:$("method").value,limitations:$("limitations").value,evidence,observation:$("observation").value,analysis:$("analysis").value,hypothesis:$("hypothesis").value,follow_up:$("note").value,authoritative_record:false,coach_final_authority:true},null,2);}
+$("addEvidence").onclick=()=>{const id=$("sourceId").value.trim();if(!id){$("status").textContent="Evidence ID required.";return}evidence.push({id,provenance:$("provenance").value.trim(),status:$("evidenceStatus").value});localStorage.setItem(KEY+"-evidence",JSON.stringify(evidence));$("sourceId").value="";$("provenance").value="";render();$("status").textContent="Evidence added locally."};
+$("save").onclick=()=>{render();localStorage.setItem(KEY+"-summary",$("summary").textContent);$("status").textContent="Research case saved locally (non-authoritative)."};
+$("clear").onclick=()=>{localStorage.removeItem(KEY+"-evidence");localStorage.removeItem(KEY+"-summary");evidence=[];document.querySelectorAll("input,textarea").forEach(x=>{if(x.id!=="caseId")x.value=""});render();$("status").textContent="Local demo cleared."};
+render();
