@@ -1,0 +1,43 @@
+name: P10 Competition Runtime Evidence
+
+on:
+  push:
+    paths:
+      - 'competition/**'
+      - '.github/workflows/p10-competition-runtime.yml'
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Start static runtime
+        run: |
+          python3 -m http.server 8080 --directory competition > /tmp/p10-server.log 2>&1 &
+          sleep 2
+      - name: HTTP smoke test
+        run: |
+          curl --fail --silent http://127.0.0.1:8080/ > /tmp/p10.html
+          curl --fail --silent http://127.0.0.1:8080/app.js > /tmp/p10.js
+          curl --fail --silent http://127.0.0.1:8080/styles.css > /tmp/p10.css
+          grep -F "Competition Data Integration" /tmp/p10.html
+          grep -F "COACH FINAL AUTHORITY" /tmp/p10.html
+          grep -F "Official result" /tmp/p10.html
+          grep -F "Coach observation" /tmp/p10.html
+          grep -F "NON-AUTHORITATIVE" /tmp/p10.html
+      - name: Independent artifact checks
+        run: |
+          test -s competition/index.html
+          test -s competition/styles.css
+          test -s competition/app.js
+          test -s competition/README.md
+          test -s competition/Dockerfile
+          grep -F "No autonomous selection" competition/index.html
+          grep -F "P05 persistence" competition/index.html
+          grep -F "P13 RBAC" competition/index.html
+          grep -F "P14 minor consent" competition/index.html
+          grep -F "P15 analytics" competition/index.html
+          grep -F "NON-AUTHORITATIVE" competition/app.js
