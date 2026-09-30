@@ -16,25 +16,84 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 30); do
             code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$BASE_URL/api/v1/health" || true)
-            if [ "$code" = "200" ] && grep -q '"status":"Online"' /tmp/health.json; then cat /tmp/health.json; exit 0; fi
+            if [ "$code" = "200" ] && python - <<'PY'
+import json
+d=json.load(open("/tmp/health.json"))
+assert d.get("status") == "Online"
+PY
+            then
+              cat /tmp/health.json
+              exit 0
+            fi
             sleep 10
           done
           exit 1
+
       - name: Independent PACK-B production red team
         env:
           BASE_URL: https://kaizo-core-engine-production.up.railway.app
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          ENTITY="pack-b-\${GITHUB_RUN_ID}"
-          CASE="PACK-B-\${GITHUB_RUN_ID}"
-          valid=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H 'Content-Type: application/json' --data "{\"case_id\":\"$CASE\",\"entity_id\":\"$ENTITY\",\"state\":{\"kpi\":1,\"phase\":\"post-intervention\"},\"source_event\":\"production_retest\"}")
-          echo "$valid"; echo "$valid" | grep -q '"status":"SYNCHRONIZED"'; echo "$valid" | grep -q '"new_version":1'
-          twin=$(curl -fsS "$BASE_URL/api/v1/digital-twin/$ENTITY"); echo "$twin"; echo "$twin" | grep -q '"status":"SYNCHRONIZED"'; echo "$twin" | grep -q '"version":1'
-          conflict=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H 'Content-Type: application/json' --data "{\"case_id\":\"${CASE}-CONFLICT\",\"entity_id\":\"$ENTITY\",\"state\":{\"kpi\":2},\"source_event\":\"stale_retest\",\"expected_version\":0}")
-          echo "$conflict"; echo "$conflict" | grep -q '"status":"HOLD"'; echo "$conflict" | grep -q '"reason_code":"DIGITAL_TWIN_VERSION_CONFLICT"'
-          missing=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H 'Content-Type: application/json' --data "{\"case_id\":\"${CASE}-MISSING\",\"entity_id\":\"$ENTITY\",\"state\":{},\"source_event\":\"\"}")
-          echo "$missing"; echo "$missing" | grep -q '"status":"HOLD"'; echo "$missing" | grep -q '"reason_code":"MISSING_DIGITAL_TWIN_INPUT"'
-          authority=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H 'Content-Type: application/json' --data "{\"case_id\":\"${CASE}-AUTH\",\"entity_id\":\"$ENTITY\",\"state\":{\"kpi\":3},\"source_event\":\"unauthorized\",\"coach_final_authority\":false}")
-          echo "$authority"; echo "$authority" | grep -q '"status":"HOLD"'; echo "$authority" | grep -q '"reason_code":"COACH_FINAL_AUTHORITY_REQUIRED"'
-          audit=$(curl -fsS "$BASE_URL/api/v1/audit/logs"); echo "$audit"; echo "$audit" | grep -q 'DIGITAL_TWIN_SYNCHRONIZED'; echo "$audit" | grep -q 'DIGITAL_TWIN_SYNC_HOLD'
+          ENTITY="pack-b-$RUN_ID"
+          CASE="PACK-B-$RUN_ID"
+
+          valid=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             --data "{"case_id":"$CASE","entity_id":"$ENTITY","state":{"kpi":1,"phase":"post-intervention"},"source_event":"production_retest"}")
+          echo "$valid"
+          python - "$valid" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1])
+assert d["status"]=="SYNCHRONIZED"
+assert d["sync"]["new_version"]==1
+PY
+
+          twin=$(curl -fsS "$BASE_URL/api/v1/digital-twin/$ENTITY")
+          echo "$twin"
+          python - "$twin" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1])
+assert d["status"]=="SYNCHRONIZED"
+assert d["digital_twin_state"]["version"]==1
+PY
+
+          conflict=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             --data "{"case_id":"${CASE}-CONFLICT","entity_id":"$ENTITY","state":{"kpi":2},"source_event":"stale_retest","expected_version":0}")
+          echo "$conflict"
+          python - "$conflict" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1])
+assert d["status"]=="HOLD"
+assert d["reason_code"]=="DIGITAL_TWIN_VERSION_CONFLICT"
+assert d["resolution_required"] is True
+PY
+
+          missing=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             --data "{"case_id":"${CASE}-MISSING","entity_id":"$ENTITY","state":{},"source_event":""}")
+          echo "$missing"
+          python - "$missing" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1])
+assert d["status"]=="HOLD"
+assert d["reason_code"]=="MISSING_DIGITAL_TWIN_INPUT"
+assert d["diagnostic_required"] is True
+PY
+
+          authority=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync"             -H 'Content-Type: application/json'             --data "{"case_id":"${CASE}-AUTH","entity_id":"$ENTITY","state":{"kpi":3},"source_event":"unauthorized","coach_final_authority":false}")
+          echo "$authority"
+          python - "$authority" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1])
+assert d["status"]=="HOLD"
+assert d["reason_code"]=="COACH_FINAL_AUTHORITY_REQUIRED"
+assert d["diagnostic_required"] is True
+PY
+
+          audit=$(curl -fsS "$BASE_URL/api/v1/audit/logs")
+          echo "$audit"
+          python - "$audit" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1])
+events=[x.get("event") for x in d.get("logs",[])]
+assert "DIGITAL_TWIN_SYNCHRONIZED" in events
+assert "DIGITAL_TWIN_SYNC_HOLD" in events
+PY
+
           echo "PACK-B PRODUCTION RED TEAM: PASS"
