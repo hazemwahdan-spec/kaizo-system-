@@ -1,0 +1,38 @@
+name: P06 Training Runtime Evidence
+
+on:
+  push:
+    paths:
+      - "training/**"
+      - ".github/workflows/p06-training-runtime.yml"
+  workflow_dispatch:
+
+jobs:
+  runtime-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start static runtime
+        run: |
+          python3 -m http.server 8080 --directory training >/tmp/p06.log 2>&1 &
+          echo $! >/tmp/p06.pid
+          sleep 2
+      - name: HTTP smoke test
+        run: |
+          set -e
+          curl -fsS http://127.0.0.1:8080/ | grep -q "KAIZO TRAINING"
+          curl -fsS http://127.0.0.1:8080/app.js | grep -q "Coach Final Authority"
+          curl -fsS http://127.0.0.1:8080/styles.css | grep -q "grid-template-columns"
+      - name: Independent artifact checks
+        run: |
+          set -e
+          test -s training/index.html
+          test -s training/app.js
+          test -s training/styles.css
+          test -s training/Dockerfile
+          grep -q "authoritative_record:false" training/app.js
+          grep -q "READY_FOR_CLOSE" training/app.js
+          grep -q "P05 authoritative longitudinal persistence" training/README.md
+      - name: Stop runtime
+        if: always()
+        run: kill $(cat /tmp/p06.pid) 2>/dev/null || true
