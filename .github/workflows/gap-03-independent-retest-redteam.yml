@@ -1,0 +1,11 @@
+name: GAP-03 independent retest and red team
+on:
+  push:
+    branches: [main]
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Independent retest and red team
+        run: bash gap-03-independent-retest-redteam.sh
