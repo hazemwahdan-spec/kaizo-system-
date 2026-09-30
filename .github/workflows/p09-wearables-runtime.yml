@@ -1,0 +1,40 @@
+name: P09 Wearables Integration Runtime Evidence
+
+on:
+  push:
+    paths:
+      - "wearables/**"
+      - ".github/workflows/p09-wearables-runtime.yml"
+  workflow_dispatch:
+
+jobs:
+  runtime-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start static runtime
+        run: |
+          python3 -m http.server 8080 --directory wearables >/tmp/p09.log 2>&1 &
+          echo $! >/tmp/p09.pid
+          sleep 2
+      - name: HTTP smoke test
+        run: |
+          set -e
+          curl -fsS http://127.0.0.1:8080/ | grep -Fq "KAIZO WEARABLES"
+          curl -fsS http://127.0.0.1:8080/app.js | grep -Fq "DEMO / NON-AUTHORITATIVE"
+          curl -fsS http://127.0.0.1:8080/app.js | grep -Fq "Coach interpretation"
+          curl -fsS http://127.0.0.1:8080/app.js | grep -Fq "medical finding"
+      - name: Governance checks
+        run: |
+          set -e
+          test -s wearables/index.html
+          test -s wearables/app.js
+          test -s wearables/styles.css
+          test -s wearables/Dockerfile
+          grep -Fq "scientific validity" wearables/README.md
+          grep -Fq "P13" wearables/README.md
+          grep -Fq "P14" wearables/README.md
+          grep -Fq "P15" wearables/README.md
+      - name: Stop runtime
+        if: always()
+        run: kill $(cat /tmp/p09.pid) 2>/dev/null || true
