@@ -79,7 +79,6 @@ No runtime evidence substitutes for source/expert validation.
 Rule:
 Reuse Before Rebuild -> Verify Before Reuse -> Evidence Before Claim.
 
-
 ## Stage 4 — Judo-/Weight-Class-Specific Evidence Gate
 A targeted search was performed for judo-specific handgrip norms and for evidence stratified by youth age, sex, and body-weight class.
 
@@ -104,3 +103,54 @@ Therefore the exact numeric claim cannot be validated from the located literatur
 - Governance control: VERIFIED
 
 No threshold substitution, averaging, interpolation, percentile conversion, or expert-style inference is permitted as a replacement for missing authoritative evidence.
+
+## Stage 5 — KAIZO Provenance Recovery
+A dedicated provenance-recovery pass was performed against the KAIZO Library and the historical KAIZO source set, using exact-value and semantic searches for:
+
+- 25.0 / 18.0 / 15.0
+- 25 / 18 / 15 with grip strength terminology
+- under11 / male / -42kg / grip_strength
+- قوة القبضة / Handgrip / grip-strength
+- the claim identity NC-UNDER11-MALE-42KG-GRIP
+
+### KAIZO source findings
+1. **Legacy Core Engine implementation**
+   The exact 25.0 / 18.0 / 15.0 values are present in the legacy `NORMATIVE_STANDARDS` implementation for:
+   `under11 | male | -42kg | grip_strength`.
+   This establishes implementation provenance, but not scientific/source provenance. The associated developer-handover material is an implementation proposal/working asset and does not contain an authoritative citation mapping these exact thresholds to a source.
+
+2. **KAIZO Library — "اختبار قبضة اليد.docx"**
+   This KAIZO source explains maximal isometric handgrip testing and cites relevant judo research. It states that classificatory tables exist for different age groups, sexes and weight categories, but the document's cited classifications concern judo-specific tests and adult/cadet/junior populations; the document does not establish the exact 25/18/15 kg thresholds for an under-11 male -42 kg profile. Its references include Agostinho et al. (2018), Branco et al. (2017), Franchini et al. (2011), Franchini et al. (2018), and Franchini et al. (2020). fileciteturn264file3L78-L94
+
+3. **KAIZO Library — Franchini/Miarka judo grip-strength literature**
+   The KAIZO Library contains the 2011 judo grip-strength study by Franchini et al. Its sample is adult male judo athletes with long training histories, and its focus is judogi grip-strength endurance rather than an under-11 -42 kg handgrip threshold set. Therefore it cannot serve as the exact provenance source for 25/18/15 kg. fileciteturn264file0
+
+4. **KAIZO normative-matrix artifact**
+   The KAIZO Library also contains a normative-score matrix with grip-related measures, including adult elite handgrip values and a Kumi-kata time measure. These are different constructs/populations and do not establish the target 25/18/15 kg thresholds for U11 male -42 kg grip strength.
+
+### Provenance Recovery Result
+The provenance search located the **originating implementation values**, but did **not** locate an authoritative upstream source from which the exact 25/18/15 kg thresholds can be demonstrated to have been derived.
+
+Therefore:
+
+- Implementation provenance: FOUND
+- Scientific/source provenance: NOT FOUND
+- Exact source-to-claim mapping: NOT FOUND
+- Claim status: UNVALIDATED
+- Evidence level: E0
+- Production decision use: BLOCKED
+- Threshold values: PRESERVED FOR PROVENANCE ONLY
+- Numeric claim: NON-FROZEN
+- Governance control: VERIFIED
+
+### Stage 5 Decision
+Stage 5 is COMPLETE.
+
+The claim must **not** be promoted, recalibrated, interpolated, or replaced using adjacent studies. The next validation path, if pursued, must obtain a source or expert-approved normative dataset that explicitly supports the exact population, metric, units, and threshold semantics.
+
+No Core Engine rebuild.
+No reopening of K14/K15/K16/K17.
+No replacement of the missing evidence with inferred values.
+
+Rule:
+Reuse Before Rebuild -> Verify Before Reuse -> Evidence Before Claim.
