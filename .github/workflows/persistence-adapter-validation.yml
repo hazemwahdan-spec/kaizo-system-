@@ -12,9 +12,23 @@ on:
 jobs:
   validate-persistence-adapter:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kaizo_test
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kaizo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     defaults:
       run:
         working-directory: backend
+    env:
+      KAIZO_PERSISTENCE_MODE: postgres
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kaizo_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,5 +38,7 @@ jobs:
         run: pip install -r requirements.txt
       - name: Compile backend
         run: python -m compileall -q .
-      - name: Import application in memory-safe default mode
-        run: python -c "import main; print('KAIZO import OK; persistence mode=', main.persistence.mode())"
+      - name: Run persistence integration test
+        run: pytest -q tests/test_persistence_integration.py
+      - name: Import application with PostgreSQL mode
+        run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
