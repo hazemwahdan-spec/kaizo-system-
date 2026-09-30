@@ -1,0 +1,38 @@
+name: P18 Production Security Observability Runtime Evidence
+on:
+  push:
+    paths: ['security_observability/**','.github/workflows/p18-security-observability-runtime.yml']
+  workflow_dispatch:
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r security_observability/requirements.txt
+      - name: Start service
+        run: uvicorn security_observability.main:app --host 127.0.0.1 --port 8080 >/tmp/p18.log 2>&1 &
+      - name: Independent security and observability tests
+        run: |
+          python - <<'PY'
+          import json,time,urllib.request
+          base='http://127.0.0.1:8080'
+          for _ in range(30):
+            try: urllib.request.urlopen(base+'/health',timeout=1); break
+            except Exception: time.sleep(1)
+          def req(path,body=None):
+            data=None; headers={}
+            if body is not None:
+              data=json.dumps(body).encode(); headers['Content-Type']='application/json'
+            r=urllib.request.Request(base+path,data=data,headers=headers,method='POST' if body is not None else 'GET')
+            return json.load(urllib.request.urlopen(r))
+          h=req('/health'); assert h['governance_frozen'] and h['coach_final_authority']
+          r=req('/api/v1/readiness'); assert r['reference_gate_pass']; assert not r['gates']['secret_values_exposed']; assert not r['gates']['production_activation']; assert not r['gates']['live_tls_verified']
+          p=req('/api/v1/policy'); assert p['deny_by_default'] and p['fail_closed'] and p['secret_values_never_returned']; assert p['p13_rbac_required'] and p['p14_consent_required_for_minors']
+          s=req('/api/v1/security/check',{'control':'secrets','status':'verified','detail':'no secret values in response'}); assert s['safe'] and not s['authoritative']
+          f=req('/api/v1/security/check',{'control':'tls','status':'not_configured'}); assert f['safe']
+          o=req('/api/v1/observability/event',{'type':'integration_failure','severity':'warning','correlation_id':'p18-test'}); assert o['accepted'] and o['event']['correlation_id']=='p18-test'
+          a=req('/api/v1/audit'); assert len(a['events'])>=3
+          print('P18 RUNTIME PASS: security boundary, secret non-disclosure, fail-closed policy, consent/RBAC gates, observability and audit')
+          PY
