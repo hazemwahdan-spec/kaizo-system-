@@ -1,0 +1,40 @@
+name: P11 Education Runtime Evidence
+
+on:
+  push:
+    paths:
+      - 'education/**'
+      - '.github/workflows/p11-education-runtime.yml'
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Start static runtime
+        run: |
+          python3 -m http.server 8080 --directory education > /tmp/p11-server.log 2>&1 &
+          sleep 2
+      - name: HTTP smoke test
+        run: |
+          curl --fail --silent http://127.0.0.1:8080/ > /tmp/p11.html
+          curl --fail --silent http://127.0.0.1:8080/app.js > /tmp/p11.js
+          curl --fail --silent http://127.0.0.1:8080/styles.css > /tmp/p11.css
+          grep -F "Education Platform" /tmp/p11.html
+          grep -F "COACH FINAL AUTHORITY" /tmp/p11.html
+          grep -F "Completion is a learning-state signal" /tmp/p11.html
+          grep -F "P13 RBAC" /tmp/p11.html
+      - name: Independent artifact checks
+        run: |
+          test -s education/index.html
+          test -s education/styles.css
+          test -s education/app.js
+          test -s education/README.md
+          test -s education/Dockerfile
+          grep -F "NON-AUTHORITATIVE" education/app.js
+          grep -F "P05 persistence" education/index.html
+          grep -F "P14 minor consent" education/index.html
+          grep -F "P15 analytics" education/index.html
