@@ -1,0 +1,29 @@
+name: P22 Surface Artifact Independent Retest
+on:
+  push:
+    paths:
+      - 'training/**'
+      - 'analytics/**'
+      - 'video/**'
+      - 'wearables/**'
+      - 'competition/**'
+      - 'education/**'
+      - 'research/**'
+      - '.github/workflows/p22-surface-artifact-retest.yml'
+  workflow_dispatch:
+jobs:
+  retest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify all P06-P12 surfaces
+        run: |
+          set -e
+          for d in training analytics video wearables competition education research; do
+            test -f "$d/index.html"
+            test -f "$d/styles.css"
+            test -f "$d/app.js"
+            test -f "$d/README.md"
+            test -f "$d/Dockerfile"
+          done
+          echo "P22 ARTIFACT RETEST PASS: P06-P12 source/runtime artifacts present"
