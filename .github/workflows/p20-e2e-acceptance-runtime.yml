@@ -1,0 +1,38 @@
+name: P20 E2E Acceptance Runtime Evidence
+on:
+  push:
+    paths: ['e2e_acceptance/**','.github/workflows/p20-e2e-acceptance-runtime.yml']
+  workflow_dispatch:
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r e2e_acceptance/requirements.txt
+      - name: Start service
+        run: uvicorn e2e_acceptance.main:app --host 127.0.0.1 --port 8080 >/tmp/p20.log 2>&1 &
+      - name: Independent acceptance tests
+        run: |
+          python - <<'PY'
+          import json,time,urllib.request
+          base='http://127.0.0.1:8080'
+          for _ in range(30):
+            try: urllib.request.urlopen(base+'/health',timeout=1); break
+            except Exception: time.sleep(1)
+          def req(path,body=None):
+            data=None; headers={}
+            if body is not None:
+              data=json.dumps(body).encode(); headers['Content-Type']='application/json'
+            r=urllib.request.Request(base+path,data=data,headers=headers,method='POST' if body is not None else 'GET')
+            return json.load(urllib.request.urlopen(r))
+          h=req('/health'); assert h['coach_final_authority'] and not h['acceptance_claim']
+          m=req('/api/v1/matrix'); assert m['count']==20 and len(m['required'])==20
+          p=req('/api/v1/policy'); assert p['evidence_before_claim'] and p['live_production_required_for_acceptance'] and not p['autonomous_decision']
+          empty=req('/api/v1/evaluate',{'evidence':{},'live_production':False}); assert not empty['reference_complete'] and not empty['production_acceptance_verified'] and len(empty['missing'])==20
+          evidence={k:True for k in m['required']}
+          ref=req('/api/v1/evaluate',{'evidence':evidence,'live_production':False}); assert ref['reference_complete'] and not ref['production_acceptance_verified']
+          live=req('/api/v1/evaluate',{'evidence':evidence,'live_production':True}); assert live['production_acceptance_verified'] is True
+          print('P20 RUNTIME PASS: 20-gate matrix, missing-evidence detection, reference acceptance, live-production activation boundary')
+          PY
