@@ -35,6 +35,21 @@ def log_action(user_id: str, action: str, old_val: Any, new_val: Any, reason: st
         "why": reason
     })
 
+# PACK-C: numeric claims remain non-frozen until claim-level evidence validation.
+# Existing threshold values are preserved for provenance/audit only and MUST NOT
+# drive a production decision while their validation_status is UNVALIDATED.
+NUMERIC_CLAIMS = {
+    "NC-UNDER11-MALE-42KG-GRIP": {
+        "profile_key": "under11|male|-42kg|grip_strength",
+        "values": {"excellent": 25.0, "average": 18.0, "weak": 15.0},
+        "unit": "kg",
+        "validation_status": "UNVALIDATED",
+        "evidence_level": "E0",
+        "source_ids": [],
+        "validation_note": "No authoritative source/evidence mapping was established for this exact age/sex/weight/metric threshold set."
+    }
+}
+
 NORMATIVE_STANDARDS = {
     "under11": {
         "male": {
@@ -119,6 +134,24 @@ def evaluate_rule(req: RuleEvaluationRequest) -> Dict[str, Any]:
             "diagnostic_required": True,
             "timestamp": datetime.utcnow().isoformat()
         }
+
+    claim_id = next((k for k, v in NUMERIC_CLAIMS.items() if v["profile_key"] == profile_key), None)
+    claim = NUMERIC_CLAIMS.get(claim_id) if claim_id else None
+    if claim is not None and claim["validation_status"] != "VALIDATED":
+        output = {
+            "system": "KAIZO Rule Engine",
+            "athlete_id": req.athlete_id,
+            "status": "HOLD",
+            "reason_code": "NUMERIC_CLAIM_VALIDATION_REQUIRED",
+            "claim_id": claim_id,
+            "validation_status": claim["validation_status"],
+            "evidence_level": claim["evidence_level"],
+            "diagnostic_required": True,
+            "decision_blocked": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        log_action(req.athlete_id, "NUMERIC_CLAIM_VALIDATION_HOLD", claim, output, "Numeric claim is not validated and cannot drive a production decision.")
+        return output
 
     standard = NORMATIVE_STANDARDS[req.age_group][req.gender][req.weight_category][req.metric_name]
 
