@@ -185,6 +185,83 @@ def health_check():
     return {"system": "KAIZO Core Engine v2.0", "status": "Online", "mode": "Enterprise AI-Ready"}
 
 
+DIGITAL_TWIN_STATE: Dict[str, Dict[str, Any]] = {}
+
+class DigitalTwinSyncRequest(BaseModel):
+    case_id: str
+    entity_id: str
+    state: Dict[str, Any]
+    source_event: str
+    coach_final_authority: bool = True
+    expected_version: Optional[int] = None
+
+@app.post("/api/v1/digital-twin/sync", status_code=status.HTTP_200_OK)
+def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
+    if not req.coach_final_authority:
+        output = {
+            "case_id": req.case_id, "entity_id": req.entity_id,
+            "status": "HOLD", "reason_code": "COACH_FINAL_AUTHORITY_REQUIRED",
+            "diagnostic_required": True, "timestamp": datetime.utcnow().isoformat()
+        }
+        log_action(req.case_id, "DIGITAL_TWIN_SYNC_HOLD", None, output, "Coach Final Authority is required.")
+        return output
+    if not req.case_id or not req.entity_id or not req.source_event or not req.state:
+        output = {
+            "case_id": req.case_id, "entity_id": req.entity_id,
+            "status": "HOLD", "reason_code": "MISSING_DIGITAL_TWIN_INPUT",
+            "diagnostic_required": True, "timestamp": datetime.utcnow().isoformat()
+        }
+        log_action(req.case_id or "unknown", "DIGITAL_TWIN_SYNC_HOLD", None, output, "Required Digital Twin synchronization input is missing.")
+        return output
+
+    current = DIGITAL_TWIN_STATE.get(req.entity_id)
+    current_version = current["version"] if current else 0
+    if req.expected_version is not None and req.expected_version != current_version:
+        output = {
+            "case_id": req.case_id, "entity_id": req.entity_id,
+            "status": "HOLD", "reason_code": "DIGITAL_TWIN_VERSION_CONFLICT",
+            "expected_version": req.expected_version, "current_version": current_version,
+            "diagnostic_required": True, "resolution_required": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        log_action(req.case_id, "DIGITAL_TWIN_SYNC_HOLD", current, output, "Digital Twin state version conflict requires diagnostic resolution.")
+        return output
+
+    new_version = current_version + 1
+    new_state = {
+        "entity_id": req.entity_id,
+        "version": new_version,
+        "state": req.state,
+        "source_event": req.source_event,
+        "case_id": req.case_id,
+        "updated_at": datetime.utcnow().isoformat()
+    }
+    DIGITAL_TWIN_STATE[req.entity_id] = new_state
+    output = {
+        "case_id": req.case_id, "entity_id": req.entity_id,
+        "status": "SYNCHRONIZED",
+        "sync": {"previous_version": current_version, "new_version": new_version},
+        "digital_twin_state": new_state,
+        "coach_final_authority": True,
+        "audit_required": True,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    log_action(req.case_id, "DIGITAL_TWIN_SYNCHRONIZED", current, new_state, "Runtime Digital Twin state synchronized under Coach Final Authority.")
+    return output
+
+@app.get("/api/v1/digital-twin/{entity_id}")
+def get_digital_twin(entity_id: str) -> Dict[str, Any]:
+    twin = DIGITAL_TWIN_STATE.get(entity_id)
+    if twin is None:
+        return {
+            "entity_id": entity_id,
+            "status": "HOLD",
+            "reason_code": "DIGITAL_TWIN_NOT_FOUND",
+            "diagnostic_required": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    return {"entity_id": entity_id, "status": "SYNCHRONIZED", "digital_twin_state": twin}
+
 class DecisionLoopRequest(BaseModel):
     case_id: str
     decision: Dict[str, Any]
