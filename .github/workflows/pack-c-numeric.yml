@@ -1,0 +1,12 @@
+name: PACK-C Numeric Claim Governance Evidence
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  pack-c-production-red-team:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute independent PACK-C production red team
+        run: bash pack-c-numeric-redteam.sh
