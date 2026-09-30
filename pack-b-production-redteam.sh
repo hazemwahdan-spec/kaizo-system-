@@ -35,5 +35,5 @@ authority=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H "Content-T
 python -c 'import json,sys; d=json.loads(sys.argv[1]); assert d["status"]=="HOLD"; assert d["reason_code"]=="COACH_FINAL_AUTHORITY_REQUIRED"; assert d["diagnostic_required"] is True' "$authority"
 
 audit=$(curl -fsS "$BASE_URL/api/v1/audit/logs")
-python -c 'import json,sys; d=json.loads(sys.argv[1]); events=[x.get("event") for x in d.get("logs",[])]; assert "DIGITAL_TWIN_SYNCHRONIZED" in events; assert "DIGITAL_TWIN_SYNC_HOLD" in events' "$audit"
+python -c 'import json,sys; d=json.loads(sys.argv[1]); events=[x.get("action") for x in d.get("logs",[])]; assert "DIGITAL_TWIN_SYNCHRONIZED" in events; assert "DIGITAL_TWIN_SYNC_HOLD" in events' "$audit"
 echo "PACK-B PRODUCTION RED TEAM: PASS"
