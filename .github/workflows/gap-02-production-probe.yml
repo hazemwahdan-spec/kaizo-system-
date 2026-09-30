@@ -1,0 +1,14 @@
+name: GAP-02 Production Probe
+
+on:
+  push:
+    branches:
+      - gap-02-runtime-probe-20260930
+
+jobs:
+  gap-02:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run GAP-02 production probe
+        run: bash gap-02-production-probe.sh
