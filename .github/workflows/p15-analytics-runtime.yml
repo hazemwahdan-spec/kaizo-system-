@@ -1,0 +1,37 @@
+name: P15 Scalable Analytics Runtime Evidence
+on:
+  push:
+    paths: ['analytics_infra/**','.github/workflows/p15-analytics-runtime.yml']
+  workflow_dispatch:
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r analytics_infra/requirements.txt
+      - name: Start service
+        run: uvicorn analytics_infra.main:app --host 127.0.0.1 --port 8080 >/tmp/p15.log 2>&1 &
+      - name: Independent runtime tests
+        run: |
+          python - <<'PY'
+          import json,time,urllib.request
+          base='http://127.0.0.1:8080'
+          for _ in range(30):
+            try: urllib.request.urlopen(base+'/health',timeout=1); break
+            except Exception: time.sleep(1)
+          def req(path,body=None):
+            data=None; h={}
+            if body is not None: data=json.dumps(body).encode(); h['Content-Type']='application/json'
+            r=urllib.request.Request(base+path,data=data,headers=h,method='POST' if body is not None else 'GET')
+            return json.load(urllib.request.urlopen(r))
+          h=req('/health'); assert h['descriptive_only'] and h['p13_rbac_required'] and h['p14_consent_required']
+          p=req('/api/v1/policy'); assert p['no_predictive_ranking'] and p['no_medical_inference'] and p['p05_separate']
+          e=lambda i,v,q='verified': req('/api/v1/events',{'event_id':i,'academy_id':'a1','athlete_id':'ath1','metric':'session_completion','value':v,'unit':'percent','observed_at':'2026-09-30T12:00:00Z','source':'coach_entry','quality':q})
+          assert e('e1',80)['stored']; assert e('e2',100)['stored']; assert e('e1',90)['stored'] is False
+          s=req('/api/v1/summary/ath1'); row=s['summaries'][0]; assert row['count']==2 and row['mean']==90 and row['descriptive']
+          assert s['scientific_validation_not_implied'] and s['predictive_ranking'] is False
+          a=req('/api/v1/audit')['events']; assert any(x['event']=='analytics_event_ingest' for x in a) and any(x['event']=='analytics_summary_read' for x in a)
+          print('P15 RUNTIME PASS: provenance event ingest, duplicate protection, descriptive aggregation, policy boundaries, audit')
+          PY
