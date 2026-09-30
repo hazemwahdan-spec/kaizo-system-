@@ -1,0 +1,48 @@
+name: P13 RBAC Runtime Evidence
+on:
+  push:
+    paths:
+      - 'rbac/**'
+      - '.github/workflows/p13-rbac-runtime.yml'
+      - 'docs/projects/P13-RBAC-CHARTER-20260930.md'
+  workflow_dispatch:
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -r rbac/requirements.txt
+      - name: Independent policy tests
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0,"rbac")
+          from main import authorize
+          def req(role,action,a,b):
+              return type("R",(),{"role":role,"action":action,"resource_academy_id":a,"actor_academy_id":b})()
+          assert authorize(req("coach","athlete:read","A1","A1"))[0]
+          assert authorize(req("technical_director","technical:manage","A1","A1"))[0]
+          assert authorize(req("academy_director","rbac:manage","A1","A1"))[0]
+          assert not authorize(req("coach","rbac:manage","A1","A1"))[0]
+          assert not authorize(req("athlete","athlete:read","A1","A1"))[0]
+          assert not authorize(req("coach","athlete:read","A2","A1"))[0]
+          assert not authorize(req("unknown","athlete:read","A1","A1"))[0]
+          print("P13 policy matrix, deny-by-default, and tenant isolation: PASS")
+          PY
+      - name: HTTP runtime tests
+        run: |
+          uvicorn main:app --app-dir rbac --host 127.0.0.1 --port 8090 >/tmp/p13.log 2>&1 &
+          pid=$!
+          trap "kill $pid" EXIT
+          sleep 2
+          curl --fail http://127.0.0.1:8090/health
+          curl --fail http://127.0.0.1:8090/api/v1/roles
+          curl --fail http://127.0.0.1:8090/api/v1/policy
+          curl --fail -X POST http://127.0.0.1:8090/api/v1/authorize -H 'Content-Type: application/json' -d '{"role":"coach","action":"athlete:read","resource_academy_id":"A1","actor_academy_id":"A1"}'
+          code=$(curl -s -o /tmp/deny.json -w '%{http_code}' -X POST http://127.0.0.1:8090/api/v1/authorize -H 'Content-Type: application/json' -d '{"role":"coach","action":"athlete:read","resource_academy_id":"A2","actor_academy_id":"A1"}')
+          test "$code" = "403"
+          echo "P13 HTTP authorization allow/deny checks: PASS"
