@@ -1,0 +1,46 @@
+name: Persistence Adapter Validation
+
+on:
+  push:
+    branches:
+      - main
+      - feat/kaizo-persistence-adapter
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-persistence-adapter:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kaizo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kaizo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      KAIZO_PERSISTENCE_MODE: postgres
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kaizo_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+      - name: Compile backend
+        run: python -m compileall -q .
+      - name: Run persistence integration test
+        run: PYTHONPATH=. python tests/test_persistence_integration.py
+      - name: Import application with PostgreSQL mode
+        run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"

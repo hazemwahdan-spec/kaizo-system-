@@ -9,6 +9,8 @@ from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
+import persistence
+
 app = FastAPI(
     title="KAIZO Core Engine API",
     version="2.0.0",
@@ -26,14 +28,24 @@ app.add_middleware(
 AUDIT_LOGS: List[Dict[str, Any]] = []
 
 def log_action(user_id: str, action: str, old_val: Any, new_val: Any, reason: str):
-    AUDIT_LOGS.append({
-        "timestamp": datetime.utcnow().isoformat(),
+    timestamp = datetime.utcnow().isoformat()
+    entry = {
+        "timestamp": timestamp,
         "who": user_id,
         "action": action,
         "old_value": old_val,
         "new_value": new_val,
         "why": reason
-    })
+    }
+    AUDIT_LOGS.append(entry)
+    persistence.append_audit(
+        timestamp=timestamp,
+        who=user_id,
+        action=action,
+        old_value=old_val,
+        new_value=new_val,
+        why=reason,
+    )
 
 # PACK-C: numeric claims remain non-frozen until claim-level evidence validation.
 # Existing threshold values are preserved for provenance/audit only and MUST NOT
@@ -88,6 +100,10 @@ KNOWLEDGE_REPOSITORY: Dict[str, Any] = {
         }
     }
 }
+
+if persistence.is_postgres_enabled():
+    persistence.initialize()
+    KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
 
 class RuleEvaluationRequest(BaseModel):
     athlete_id: str
@@ -194,6 +210,8 @@ def ingest_knowledge(req: KnowledgeIngestRequest):
         "content": req.content
     }
 
+    persistence.upsert_knowledge(req.item_id, KNOWLEDGE_REPOSITORY[req.item_id], datetime.utcnow().isoformat())
+
     log_action(
         user_id=req.user_id,
         action="INGEST_KNOWLEDGE",
@@ -211,7 +229,8 @@ def ingest_knowledge(req: KnowledgeIngestRequest):
 
 @app.get("/api/v1/audit/logs")
 def get_audit_logs():
-    return {"system": "KAIZO Audit-Ready System", "total_logs": len(AUDIT_LOGS), "logs": AUDIT_LOGS}
+    logs = persistence.list_audit_logs() if persistence.is_postgres_enabled() else AUDIT_LOGS
+    return {"system": "KAIZO Audit-Ready System", "total_logs": len(logs), "logs": logs}
 
 @app.get("/api/v1/health")
 def health_check():
@@ -247,7 +266,7 @@ def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
         log_action(req.case_id or "unknown", "DIGITAL_TWIN_SYNC_HOLD", None, output, "Required Digital Twin synchronization input is missing.")
         return output
 
-    current = DIGITAL_TWIN_STATE.get(req.entity_id)
+    current = persistence.get_digital_twin(req.entity_id) if persistence.is_postgres_enabled() else DIGITAL_TWIN_STATE.get(req.entity_id)
     current_version = current["version"] if current else 0
     if req.expected_version is not None and req.expected_version != current_version:
         output = {
@@ -270,6 +289,7 @@ def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
         "updated_at": datetime.utcnow().isoformat()
     }
     DIGITAL_TWIN_STATE[req.entity_id] = new_state
+    persistence.upsert_digital_twin(new_state)
     output = {
         "case_id": req.case_id, "entity_id": req.entity_id,
         "status": "SYNCHRONIZED",
@@ -284,7 +304,7 @@ def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
 
 @app.get("/api/v1/digital-twin/{entity_id}")
 def get_digital_twin(entity_id: str) -> Dict[str, Any]:
-    twin = DIGITAL_TWIN_STATE.get(entity_id)
+    twin = persistence.get_digital_twin(entity_id) if persistence.is_postgres_enabled() else DIGITAL_TWIN_STATE.get(entity_id)
     if twin is None:
         return {
             "entity_id": entity_id,
