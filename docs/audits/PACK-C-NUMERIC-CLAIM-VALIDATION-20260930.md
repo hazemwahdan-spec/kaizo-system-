@@ -78,3 +78,29 @@ No runtime evidence substitutes for source/expert validation.
 
 Rule:
 Reuse Before Rebuild -> Verify Before Reuse -> Evidence Before Claim.
+
+
+## Stage 4 — Judo-/Weight-Class-Specific Evidence Gate
+A targeted search was performed for judo-specific handgrip norms and for evidence stratified by youth age, sex, and body-weight class.
+
+Relevant evidence found:
+- A peer-reviewed study provides normative handgrip reference values for 137 youth judokas, but its participants were under-18 and under-21; it does not provide the exact U11 male -42 kg threshold set. citeturn0search0
+- A study of 11–12-year-old judo competitors reports dominant-hand mean 21.34 kgf (range 14.20–30.70) and non-dominant mean 19.81 kgf (range 14.40–28.40), including relative-to-body-mass values. This is the closest judo-specific age evidence located, but it still does not establish the 25/18/15 kg thresholds or the -42 kg category mapping. citeturn0search3
+- A large child normative dataset reports boys aged 10–11 with dominant-hand mean 13.4 kg and non-dominant mean 13.1 kg, while emphasizing age/sex rather than judo weight class. citeturn0search1
+- A 2025 child cohort reports boys aged 10–11 mean maximum grip strength 16.66 ± 4.17 kg, again without judo-specific weight-class stratification. citeturn0search2
+
+Evidence-gate result:
+NO SOURCE LOCATED establishes the exact combination:
+U11 + male + judo + -42 kg + grip-strength metric + thresholds 15/18/25 kg.
+
+Therefore the exact numeric claim cannot be validated from the located literature.
+
+### Stage 4 Decision
+- Claim status: UNVALIDATED
+- Evidence level: E0
+- Production decision use: BLOCKED
+- Threshold values: PRESERVED FOR PROVENANCE ONLY
+- Numeric claim: NON-FROZEN
+- Governance control: VERIFIED
+
+No threshold substitution, averaging, interpolation, percentile conversion, or expert-style inference is permitted as a replacement for missing authoritative evidence.
