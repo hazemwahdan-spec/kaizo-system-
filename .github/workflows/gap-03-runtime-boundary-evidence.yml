@@ -1,0 +1,16 @@
+name: GAP-03 Runtime Boundary Evidence
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["gap-03-runtime-boundary-evidence.sh",".github/workflows/gap-03-runtime-boundary-evidence.yml"]
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute production boundary evidence
+        env: { BASE_URL: https://kaizo-core-engine-production.up.railway.app }
+        run: |
+          chmod +x gap-03-runtime-boundary-evidence.sh
+          ./gap-03-runtime-boundary-evidence.sh
