@@ -1,0 +1,28 @@
+name: Persistence Adapter Validation
+
+on:
+  push:
+    branches:
+      - main
+      - feat/kaizo-persistence-adapter
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-persistence-adapter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+      - name: Compile backend
+        run: python -m compileall -q .
+      - name: Import application in memory-safe default mode
+        run: python -c "import main; print('KAIZO import OK; persistence mode=', main.persistence.mode())"
