@@ -1,0 +1,55 @@
+name: P14 Minor Consent Runtime Evidence
+on:
+  push:
+    paths:
+      - 'consent/**'
+      - '.github/workflows/p14-consent-runtime.yml'
+  workflow_dispatch:
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r consent/requirements.txt
+      - name: Start service
+        run: uvicorn consent.main:app --host 127.0.0.1 --port 8080 > /tmp/p14.log 2>&1 &
+      - name: Runtime and policy tests
+        run: |
+          python - <<'PY'
+          import json, subprocess, time, urllib.request
+          base='http://127.0.0.1:8080'
+          for _ in range(30):
+            try:
+              urllib.request.urlopen(base+'/health', timeout=1); break
+            except Exception: time.sleep(1)
+          def req(path, body=None):
+            data=None; headers={}
+            if body is not None:
+              data=json.dumps(body).encode(); headers['Content-Type']='application/json'
+            x=urllib.request.Request(base+path,data=data,headers=headers,method='POST' if body is not None else 'GET')
+            return json.load(urllib.request.urlopen(x))
+          assert req('/health')['deny_by_default'] is True
+          assert req('/api/v1/policy')['guardian_role_alone_is_insufficient'] is True
+          access={"child_id":"c1","guardian_id":"g1","academy_id":"a1","resource":"athlete_profile","action":"read"}
+          assert req('/api/v1/authorize-child-data',access)['allowed'] is False
+          def consent(state, exp=None, guardian='g1', academy='a1', resource='athlete_profile', action='read'):
+            c={**access,"guardian_id":guardian,"academy_id":academy,"resource":resource,"action":action,"state":state}
+            if exp: c['expires_at']=exp
+            return req('/api/v1/consents',{"consent":c,"actor_id":"system"})
+          consent('pending'); assert req('/api/v1/authorize-child-data',access)['allowed'] is False
+          consent('active'); assert req('/api/v1/authorize-child-data',access)['allowed'] is True
+          consent('revoked'); assert req('/api/v1/authorize-child-data',access)['allowed'] is False
+          consent('expired'); assert req('/api/v1/authorize-child-data',access)['allowed'] is False
+          consent('active',guardian='g2'); assert req('/api/v1/authorize-child-data',access)['allowed'] is False
+          consent('active',academy='a2'); assert req('/api/v1/authorize-child-data',access)['allowed'] is False
+          consent('active',resource='competition_record'); assert req('/api/v1/authorize-child-data',access)['allowed'] is False
+          future='2099-01-01T00:00:00Z'; consent('active',exp=future); assert req('/api/v1/authorize-child-data',access)['allowed'] is True
+          past='2020-01-01T00:00:00Z'; consent('active',exp=past); assert req('/api/v1/authorize-child-data',access)['allowed'] is False
+          events=req('/api/v1/audit')['events']
+          assert any(e['event']=='consent_change' for e in events)
+          assert any(e['event']=='child_data_authorization' for e in events)
+          print('P14 RUNTIME PASS: deny-by-default, scoped active consent, revocation/expiry, guardian/academy/scope mismatch, audit')
+          PY
