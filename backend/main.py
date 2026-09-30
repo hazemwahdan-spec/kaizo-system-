@@ -183,3 +183,34 @@ def get_audit_logs():
 @app.get("/api/v1/health")
 def health_check():
     return {"system": "KAIZO Core Engine v2.0", "status": "Online", "mode": "Enterprise AI-Ready"}
+
+
+class AdaptationRequest(BaseModel):
+    case_id: str
+    operation: str
+    common_core: Dict[str, Any]
+    dynamic_inputs: Dict[str, Any]
+    individual_change: Optional[Dict[str, Any]] = None
+    team_change: Optional[Dict[str, Any]] = None
+    composition_change: Optional[Dict[str, Any]] = None
+    coach_final_authority: bool = True
+
+@app.post("/api/v1/decision/adapt", status_code=status.HTTP_200_OK)
+def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
+    allowed = {"individual_adaptation","team_adaptation","subgroup_recalculation","individual_change"}
+    if req.operation not in allowed:
+        return {"status":"HOLD","reason_code":"UNSUPPORTED_ADAPTATION_OPERATION","diagnostic_required":True,"allowed_operations":sorted(allowed),"timestamp":datetime.utcnow().isoformat()}
+    if not req.coach_final_authority:
+        return {"status":"HOLD","reason_code":"COACH_FINAL_AUTHORITY_REQUIRED","diagnostic_required":True,"timestamp":datetime.utcnow().isoformat()}
+    if not req.common_core or not req.dynamic_inputs:
+        return {"status":"HOLD","reason_code":"MISSING_ADAPTATION_INPUT","diagnostic_required":True,"timestamp":datetime.utcnow().isoformat()}
+    output = {"case_id":req.case_id,"status":"ADAPTED","operation":req.operation,"common_core_preserved":True,"adaptation_basis":req.dynamic_inputs,"coach_final_authority":True,"timestamp":datetime.utcnow().isoformat()}
+    if req.operation == "individual_adaptation":
+        output.update({"scope":"individual","individual_change":req.individual_change or {}})
+    elif req.operation == "team_adaptation":
+        output.update({"scope":"team","team_change":req.team_change or {}})
+    elif req.operation == "subgroup_recalculation":
+        output.update({"scope":"subgroup","composition_change":req.composition_change or {},"recalculation":"SUBGROUP_RECALCULATED"})
+    else:
+        output.update({"scope":"individual","individual_change":req.individual_change or {},"isolated_output_change":True})
+    return output
