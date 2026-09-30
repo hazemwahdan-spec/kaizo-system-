@@ -1,9 +1,7 @@
-import os
-
 import persistence
 
 
-def test_postgres_persistence_roundtrip():
+def main():
     assert persistence.is_postgres_enabled()
     persistence.initialize()
 
@@ -44,3 +42,8 @@ def test_postgres_persistence_roundtrip():
         with conn.cursor() as cur:
             cur.execute("TRUNCATE kaizo_audit_logs, kaizo_digital_twin_state, kaizo_knowledge_repository")
         conn.commit()
+    print("POSTGRES PERSISTENCE ROUNDTRIP PASS")
+
+
+if __name__ == "__main__":
+    main()
