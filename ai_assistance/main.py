@@ -4,15 +4,15 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 app=FastAPI(title="KAIZO P16 Governed AI Assistance",version="1.0")
-AUDIT=[]
+audit_log=[]
+
+def audit_event(event,payload):
+    audit_log.append({"event":event,"timestamp":datetime.now(timezone.utc).isoformat(),**payload})
 
 class Disposition(str,Enum):
     pending="pending"
     accepted="accepted"
     rejected="rejected"
-
-audit_log=[]
-def audit(event,payload): audit_log.append({"event":event,"timestamp":datetime.now(timezone.utc).isoformat(),**payload})
 
 class AssistanceRequest(BaseModel):
     request_id:str=Field(min_length=1)
@@ -35,22 +35,22 @@ def health():
 
 @app.post("/api/v1/assist")
 def assist(r:AssistanceRequest):
-    # This reference layer does not call an external model. It returns a governed assistance envelope.
     if r.child_data:
         allowed=False; reason="p14_consent_gate_required"
     else:
         allowed=True; reason="governed_assistance_only"
     result={"request_id":r.request_id,"allowed":allowed,"reason":reason,"output_type":"assistance_envelope","suggestions":(["Summarize the supplied evidence and identify explicit gaps."] if allowed else []),"evidence_refs":r.evidence_refs,"uncertainty":"explicit","authoritative":False,"coach_final_authority":True,"autonomous_decision":False}
-    audit("ai_assistance_request",{"request_id":r.request_id,"actor_id":r.actor_id,"actor_role":r.actor_role,"academy_id":r.academy_id,"allowed":allowed,"reason":reason,"evidence_refs":r.evidence_refs})
+    audit_event("ai_assistance_request",{"request_id":r.request_id,"actor_id":r.actor_id,"actor_role":r.actor_role,"academy_id":r.academy_id,"allowed":allowed,"reason":reason,"evidence_refs":r.evidence_refs})
     return result
 
 @app.post("/api/v1/disposition")
 def disposition(r:DispositionRequest):
-    audit("coach_ai_disposition",r.model_dump())
+    audit_event("coach_ai_disposition",r.model_dump())
     return {"request_id":r.request_id,"disposition":r.disposition.value,"coach_final_authority":True,"recorded":True}
 
 @app.get("/api/v1/audit")
-def audit(): return {"events":audit_log}
+def get_audit():
+    return {"events":audit_log}
 
 @app.get("/api/v1/policy")
 def policy():
