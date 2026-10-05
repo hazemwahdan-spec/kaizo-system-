@@ -106,6 +106,68 @@ def update_athlete(athlete_id: str, req: AthleteUpdateRequest) -> Dict[str, Any]
 
 
 
+ASSESSMENT_RECORDS: Dict[str, Dict[str, Any]] = {}
+
+class AssessmentCreateRequest(BaseModel):
+    athlete_id: str
+    template_id: str
+    measurements: Dict[str, Any]
+    recorded_by: str
+
+
+@app.post("/api/v1/assessments", status_code=status.HTTP_201_CREATED)
+def create_assessment(req: AssessmentCreateRequest) -> Dict[str, Any]:
+    if not req.athlete_id.strip():
+        raise HTTPException(status_code=400, detail="athlete_id is required")
+    if not req.template_id.strip():
+        raise HTTPException(status_code=400, detail="template_id is required")
+    if not req.recorded_by.strip():
+        raise HTTPException(status_code=400, detail="recorded_by is required")
+    athlete = (
+        persistence.get_athlete(req.athlete_id)
+        if persistence.is_postgres_enabled()
+        else ATHLETE_RECORDS.get(req.athlete_id)
+    )
+    if athlete is None:
+        raise HTTPException(status_code=404, detail="athlete not found")
+    if not req.measurements:
+        raise HTTPException(status_code=400, detail="measurements are required")
+
+    import uuid
+    now = datetime.utcnow().isoformat()
+    assessment = {
+        "assessment_id": str(uuid.uuid4()),
+        "athlete_id": req.athlete_id,
+        "template_id": req.template_id,
+        "measurements": req.measurements,
+        "recorded_by": req.recorded_by,
+        "assessed_at": now,
+        "created_at": now,
+    }
+    ASSESSMENT_RECORDS[assessment["assessment_id"]] = assessment
+    persistence.upsert_assessment(assessment)
+    log_action(
+        req.recorded_by,
+        "ASSESSMENT_RECORDED",
+        None,
+        assessment,
+        "Assessment measurements persisted with explicit athlete ownership and timestamp.",
+    )
+    return assessment
+
+
+@app.get("/api/v1/assessments/{assessment_id}")
+def get_assessment(assessment_id: str) -> Dict[str, Any]:
+    assessment = (
+        persistence.get_assessment(assessment_id)
+        if persistence.is_postgres_enabled()
+        else ASSESSMENT_RECORDS.get(assessment_id)
+    )
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="assessment not found")
+    return assessment
+
+
 def log_action(user_id: str, action: str, old_val: Any, new_val: Any, reason: str):
     timestamp = datetime.utcnow().isoformat()
     entry = {
