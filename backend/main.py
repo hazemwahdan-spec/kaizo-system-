@@ -739,6 +739,85 @@ def get_digital_twin(entity_id: str) -> Dict[str, Any]:
         }
     return {"entity_id": entity_id, "status": "SYNCHRONIZED", "digital_twin_state": twin}
 
+class StateSnapshotCreateRequest(BaseModel):
+    athlete_id: str
+    assessment_id: str
+    snapshot_type: str
+    kpi_capture_ids: List[str]
+    captured_by: str
+
+
+STATE_SNAPSHOTS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/state-snapshots", status_code=status.HTTP_201_CREATED)
+def create_state_snapshot(req: StateSnapshotCreateRequest) -> Dict[str, Any]:
+    if req.snapshot_type not in {"baseline", "current_state"}:
+        raise HTTPException(status_code=400, detail="snapshot_type must be baseline or current_state")
+    if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.captured_by.strip():
+        raise HTTPException(status_code=400, detail="athlete_id, assessment_id and captured_by are required")
+    if not req.kpi_capture_ids:
+        raise HTTPException(status_code=400, detail="at least one KPI capture is required")
+
+    athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
+    if athlete is None:
+        raise HTTPException(status_code=404, detail="athlete not found")
+    assessment = persistence.get_assessment(req.assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(req.assessment_id)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="assessment not found")
+    if assessment["athlete_id"] != req.athlete_id:
+        raise HTTPException(status_code=400, detail="assessment does not belong to athlete")
+
+    kpis = []
+    for capture_id in req.kpi_capture_ids:
+        capture = persistence.get_kpi_capture(capture_id) if persistence.is_postgres_enabled() else KPI_CAPTURES.get(capture_id)
+        if capture is None:
+            raise HTTPException(status_code=404, detail=f"KPI capture not found: {capture_id}")
+        if capture["athlete_id"] != req.athlete_id:
+            raise HTTPException(status_code=400, detail=f"KPI capture does not belong to athlete: {capture_id}")
+        kpis.append(capture)
+
+    import uuid
+    now = datetime.utcnow().isoformat()
+    snapshot = {
+        "snapshot_id": str(uuid.uuid4()),
+        "athlete_id": req.athlete_id,
+        "assessment_id": req.assessment_id,
+        "snapshot_type": req.snapshot_type,
+        "measurements": assessment["measurements"],
+        "kpis": kpis,
+        "captured_by": req.captured_by,
+        "captured_at": now,
+        "created_at": now,
+    }
+    STATE_SNAPSHOTS[snapshot["snapshot_id"]] = snapshot
+    persistence.upsert_state_snapshot(snapshot)
+    log_action(
+        req.captured_by,
+        "ATHLETE_STATE_SNAPSHOT_CREATED",
+        None,
+        snapshot,
+        "Baseline/current-state snapshot materialized from an assessment and KPI captures.",
+    )
+    return snapshot
+
+
+@app.get("/api/v1/state-snapshots/{snapshot_id}")
+def get_state_snapshot(snapshot_id: str) -> Dict[str, Any]:
+    snapshot = persistence.get_state_snapshot(snapshot_id) if persistence.is_postgres_enabled() else STATE_SNAPSHOTS.get(snapshot_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="state snapshot not found")
+    return snapshot
+
+
+@app.get("/api/v1/state-snapshots")
+def list_state_snapshots(athlete_id: Optional[str] = None) -> Dict[str, Any]:
+    snapshots = persistence.list_state_snapshots(athlete_id) if persistence.is_postgres_enabled() else list(STATE_SNAPSHOTS.values())
+    if athlete_id:
+        snapshots = [item for item in snapshots if item["athlete_id"] == athlete_id]
+    return {"total_snapshots": len(snapshots), "snapshots": snapshots}
+
+
 class DecisionLoopRequest(BaseModel):
     case_id: str
     decision: Dict[str, Any]

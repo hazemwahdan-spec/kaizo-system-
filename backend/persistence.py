@@ -106,6 +106,18 @@ CREATE TABLE IF NOT EXISTS kaizo_knowledge_repository (
     payload JSONB NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS kaizo_state_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    snapshot_type TEXT NOT NULL,
+    measurements JSONB NOT NULL,
+    kpis JSONB NOT NULL,
+    captured_by TEXT NOT NULL,
+    captured_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -474,6 +486,44 @@ def list_evidence(subject_id: Optional[str] = None) -> list[Dict[str, Any]]:
         } for r in rows
     ]
 
+
+
+
+def upsert_state_snapshot(snapshot: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO kaizo_state_snapshots
+                (snapshot_id, athlete_id, assessment_id, snapshot_type, measurements, kpis, captured_by, captured_at, created_at)
+                VALUES (%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s)
+                ON CONFLICT (snapshot_id) DO UPDATE SET snapshot_type=EXCLUDED.snapshot_type,
+                measurements=EXCLUDED.measurements, kpis=EXCLUDED.kpis, captured_by=EXCLUDED.captured_by,
+                captured_at=EXCLUDED.captured_at""",
+                (snapshot["snapshot_id"], snapshot["athlete_id"], snapshot["assessment_id"], snapshot["snapshot_type"],
+                 json.dumps(snapshot["measurements"]), json.dumps(snapshot["kpis"]), snapshot["captured_by"],
+                 snapshot["captured_at"], snapshot["created_at"]))
+        conn.commit()
+
+def get_state_snapshot(snapshot_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled(): return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT snapshot_id, athlete_id, assessment_id, snapshot_type, measurements, kpis, captured_by, captured_at, created_at FROM kaizo_state_snapshots WHERE snapshot_id=%s", (snapshot_id,))
+            row=cur.fetchone()
+    if row is None: return None
+    return {"snapshot_id":row[0],"athlete_id":row[1],"assessment_id":row[2],"snapshot_type":row[3],"measurements":row[4],"kpis":row[5],"captured_by":row[6],"captured_at":row[7],"created_at":row[8]}
+
+def list_state_snapshots(athlete_id: Optional[str] = None) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled(): return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            if athlete_id:
+                cur.execute("SELECT snapshot_id, athlete_id, assessment_id, snapshot_type, measurements, kpis, captured_by, captured_at, created_at FROM kaizo_state_snapshots WHERE athlete_id=%s ORDER BY captured_at", (athlete_id,))
+            else:
+                cur.execute("SELECT snapshot_id, athlete_id, assessment_id, snapshot_type, measurements, kpis, captured_by, captured_at, created_at FROM kaizo_state_snapshots ORDER BY captured_at")
+            rows=cur.fetchall()
+    return [{"snapshot_id":r[0],"athlete_id":r[1],"assessment_id":r[2],"snapshot_type":r[3],"measurements":r[4],"kpis":r[5],"captured_by":r[6],"captured_at":r[7],"created_at":r[8]} for r in rows]
 
 def upsert_kpi_definition(definition: Dict[str, Any]) -> None:
     if not is_postgres_enabled():
