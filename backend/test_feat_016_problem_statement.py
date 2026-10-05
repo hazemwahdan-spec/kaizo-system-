@@ -120,3 +120,43 @@ class FEAT017ProblemLibrarySelectionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         logs = self.client.get("/api/v1/audit/logs")
         self.assertTrue(any(item["action"] == "PROBLEM_LIBRARY_SELECTED" and item["new_value"]["library_item_id"] == "PRB-017-001" for item in logs.json()["logs"]))
+
+
+
+class FEAT018CauseContextFramingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        persistence.initialize()
+        cls.client = TestClient(main.app)
+
+    def setUp(self):
+        a = self.client.post("/api/v1/athletes", json={"display_name":"FEAT-018","metadata":{}})
+        self.assertEqual(a.status_code, 201)
+        self.athlete_id = a.json()["athlete_id"]
+        a = self.client.post("/api/v1/assessments", json={"athlete_id":self.athlete_id,"template_id":"TPL-018","measurements":{"grip":"late"},"recorded_by":"coach-018"})
+        self.assertEqual(a.status_code, 201)
+        self.assessment_id = a.json()["assessment_id"]
+        p = self.client.post("/api/v1/problem-statements", json={"athlete_id":self.athlete_id,"assessment_id":self.assessment_id,"statement":"Late grip","problem_type":"timing","created_by":"coach-018"})
+        self.assertEqual(p.status_code, 201)
+        self.problem_id = p.json()["problem_id"]
+
+    def test_framing_persists_and_reads_back(self):
+        r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/cause-context",json={"problem_id":self.problem_id,"cause":"Late grip acquisition","context":{"phase":"kumi-kata"},"contributing_factors":["distance","timing"],"framed_by":"coach-018"})
+        self.assertEqual(r.status_code,201)
+        read=self.client.get(f"/api/v1/problem-statements/{self.problem_id}/cause-context")
+        self.assertEqual(read.status_code,200)
+        self.assertIn(r.json(),read.json()["framings"])
+
+    def test_missing_problem_and_invalid_payload_are_blocked(self):
+        r=self.client.post("/api/v1/problem-statements/missing/cause-context",json={"problem_id":"missing","cause":"x","framed_by":"coach-018"})
+        self.assertEqual(r.status_code,404)
+        r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/cause-context",json={"problem_id":self.problem_id,"cause":" ","framed_by":"coach-018"})
+        self.assertEqual(r.status_code,400)
+
+    def test_mismatch_and_audit(self):
+        r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/cause-context",json={"problem_id":"other","cause":"x","framed_by":"coach-018"})
+        self.assertEqual(r.status_code,400)
+        r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/cause-context",json={"problem_id":self.problem_id,"cause":"Late grip","framed_by":"coach-018"})
+        self.assertEqual(r.status_code,201)
+        logs=self.client.get("/api/v1/audit/logs").json()["logs"]
+        self.assertTrue(any(x["action"]=="PROBLEM_CAUSE_CONTEXT_FRAMED" and x["new_value"]["problem_id"]==self.problem_id for x in logs))
