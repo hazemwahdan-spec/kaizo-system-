@@ -623,7 +623,7 @@ def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewR
     action = req.action.strip().upper()
     if action not in {"CONFIRM", "OVERRIDE"}:
         raise HTTPException(status_code=400, detail="action must be CONFIRM or OVERRIDE")
-    if action == "OVERRIDE" and not req.override_reason.strip() if req.override_reason else True:
+    if action == "OVERRIDE" and not (req.override_reason or "").strip():
         raise HTTPException(status_code=400, detail="override_reason is required for OVERRIDE")
 
     candidate = (
@@ -636,30 +636,26 @@ def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewR
 
     import uuid
     now = datetime.utcnow().isoformat()
-    review_id = str(uuid.uuid4())
-    status_value = "COACH_CONFIRMED" if action == "CONFIRM" else "COACH_OVERRIDDEN"
     review = {
-        "review_id": review_id,
+        "review_id": str(uuid.uuid4()),
         "candidate_id": candidate_id,
         "diagnosis_id": candidate["diagnosis_id"],
         "problem_id": candidate["problem_id"],
         "athlete_id": candidate["athlete_id"],
         "assessment_id": candidate["assessment_id"],
         "action": action,
-        "status": status_value,
+        "status": "COACH_CONFIRMED" if action == "CONFIRM" else "COACH_OVERRIDDEN",
         "coach_id": req.coach_id.strip(),
         "override_reason": req.override_reason.strip() if req.override_reason else None,
         "reviewed_at": now,
         "coach_final_authority": True,
         "execution_authorized": False,
     }
-    COACH_DECISION_REVIEWS[review_id] = review
+    COACH_DECISION_REVIEWS[review["review_id"]] = review
     persistence.upsert_coach_decision_review(review)
-
-    audit_action = "DECISION_CANDIDATE_CONFIRMED" if action == "CONFIRM" else "DECISION_CANDIDATE_OVERRIDDEN"
     log_action(
         req.coach_id,
-        audit_action,
+        "DECISION_CANDIDATE_CONFIRMED" if action == "CONFIRM" else "DECISION_CANDIDATE_OVERRIDDEN",
         candidate,
         review,
         "Coach explicitly exercised Final Authority; no autonomous execution was authorized.",
@@ -679,10 +675,7 @@ def list_coach_decision_reviews(candidate_id: str) -> Dict[str, Any]:
     reviews = (
         persistence.list_coach_decision_reviews(candidate_id)
         if persistence.is_postgres_enabled()
-        else [
-            item for item in COACH_DECISION_REVIEWS.values()
-            if item["candidate_id"] == candidate_id
-        ]
+        else [item for item in COACH_DECISION_REVIEWS.values() if item["candidate_id"] == candidate_id]
     )
     return {
         "candidate_id": candidate_id,
@@ -1398,6 +1391,96 @@ def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
     new_state = {
         "entity_id": req.entity_id,
         "version": new_version,
+        "state": req.state,
+        "source_event": req.source_event,
+        "case_id": req.case_id,
+        "updated_at": datetime.utcnow().isoformat()
+    }
+    DIGITAL_TWIN_STATE[req.entity_id] = new_state
+    persistence.upsert_digital_twin(new_state)
+    output = {
+        "case_id": req.case_id, "entity_id": req.entity_id,
+        "status": "SYNCHRONIZED",
+        "sync": {"previous_version": current_version, "new_version": new_version},
+        "digital_twin_state": new_state,
+        "coach_final_authority": True,
+        "audit_required": True,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    log_action(req.case_id, "DIGITAL_TWIN_SYNCHRONIZED", current, new_state, "Runtime Digital Twin state synchronized under Coach Final Authority.")
+    return output
+
+@app.get("/api/v1/digital-twin/{entity_id}")
+def get_digital_twin(entity_id: str) -> Dict[str, Any]:
+    twin = persistence.get_digital_twin(entity_id) if persistence.is_postgres_enabled() else DIGITAL_TWIN_STATE.get(entity_id)
+    if twin is None:
+        return {
+            "entity_id": entity_id,
+            "status": "HOLD",
+            "reason_code": "DIGITAL_TWIN_NOT_FOUND",
+            "diagnostic_required": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    return {"entity_id": entity_id, "status": "SYNCHRONIZED", "digital_twin_state": twin}
+
+class StateSnapshotCreateRequest(BaseModel):
+    athlete_id: str
+    assessment_id: str
+    snapshot_type: str
+    kpi_capture_ids: List[str]
+    captured_by: str
+
+
+STATE_SNAPSHOTS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/state-snapshots", status_code=status.HTTP_201_CREATED)
+def create_state_snapshot(req: StateSnapshotCreateRequest) -> Dict[str, Any]:
+    if req.snapshot_type not in {"baseline", "current_state"}:
+        raise HTTPException(status_code=400, detail="snapshot_type must be baseline or current_state")
+    if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.captured_by.strip():
+        raise HTTPException(status_code=400, detail="athlete_id, assessment_id and captured_by are required")
+    if not req.kpi_capture_ids:
+        raise HTTPException(status_code=400, detail="at least one KPI capture is required")
+
+    athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
+    if athlete is None:
+        raise HTTPException(status_code=404, detail="athlete not found")
+    assessment = persistence.get_assessment(req.assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(req.assessment_id)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="assessment not found")
+    if assessment["athlete_id"] != req.athlete_id:
+        raise HTTPException(status_code=400, detail="assessment does not belong to athlete")
+
+    kpis = []
+    for capture_id in req.kpi_capture_ids:
+        capture = persistence.get_kpi_capture(capture_id) if persistence.is_postgres_enabled() else KPI_CAPTURES.get(capture_id)
+        if capture is None:
+            raise HTTPException(status_code=404, detail=f"KPI capture not found: {capture_id}")
+        if capture["athlete_id"] != req.athlete_id:
+            raise HTTPException(status_code=400, detail=f"KPI capture does not belong to athlete: {capture_id}")
+        kpis.append(capture)
+
+    import uuid
+    now = datetime.utcnow().isoformat()
+    snapshot = {
+        "snapshot_id": str(uuid.uuid4()),
+        "athlete_id": req.athlete_id,
+        "assessment_id": req.assessment_id,
+        "snapshot_type": req.snapshot_type,
+        "measurements": assessment["measurements"],
+        "kpis": kpis,
+        "captured_by": req.captured_by,
+        "captured_at": now,
+        "created_at": now,
+    }
+    STATE_SNAPSHOTS[snapshot["snapshot_id"]] = snapshot
+    persistence.upsert_state_snapshot(snapshot)
+    log_action(
+        req.captured_by,
+        "ATHLETE_STATE_SNAPSHOT_CREATED",
+        None,
+        snapshot,
         "Baseline/current-state snapshot materialized from an assessment and KPI captures.",
     )
     return snapshot
