@@ -53,3 +53,6 @@ jobs:
 
       - name: Run FEAT-051 evidence spine acceptance tests
         run: PYTHONPATH=. python test_feat_051_evidence.py
+
+      - name: Run FEAT-041 digital twin state acceptance tests
+        run: PYTHONPATH=. python test_feat_041_digital_twin.py
