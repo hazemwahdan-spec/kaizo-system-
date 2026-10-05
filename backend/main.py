@@ -761,6 +761,52 @@ def list_decision_records(candidate_id: str) -> Dict[str, Any]:
     }
 
 
+class TrainingPlanRequest(BaseModel):
+    athlete_id: str
+    decision_id: str
+    title: str
+    objective: str
+    created_by: str
+    constraints: Optional[Dict[str, Any]] = None
+
+
+TRAINING_PLANS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/training-plans", status_code=status.HTTP_201_CREATED)
+def create_training_plan(req: TrainingPlanRequest) -> Dict[str, Any]:
+    if not all(x.strip() for x in [req.athlete_id, req.decision_id, req.title, req.objective, req.created_by]):
+        raise HTTPException(status_code=400, detail="athlete_id, decision_id, title, objective and created_by are required")
+    decision = persistence.get_decision_record(req.decision_id) if persistence.is_postgres_enabled() else DECISION_RECORDS.get(req.decision_id)
+    if decision is None:
+        raise HTTPException(status_code=404, detail="decision record not found")
+    if decision["athlete_id"] != req.athlete_id:
+        raise HTTPException(status_code=400, detail="athlete_id mismatch")
+    if not decision.get("coach_final_authority", True):
+        raise HTTPException(status_code=409, detail="coach final authority required")
+    import uuid
+    now = datetime.utcnow().isoformat()
+    plan = {
+        "plan_id": str(uuid.uuid4()), "athlete_id": req.athlete_id, "decision_id": req.decision_id,
+        "title": req.title.strip(), "objective": req.objective.strip(),
+        "constraints": req.constraints or {}, "status": "DRAFT", "created_by": req.created_by.strip(),
+        "created_at": now, "coach_final_authority": True, "execution_authorized": False
+    }
+    TRAINING_PLANS[plan["plan_id"]] = plan
+    persistence.upsert_training_plan(plan)
+    log_action(req.created_by, "TRAINING_PLAN_CREATED", decision, plan,
+               "Training plan created from an explicit coach decision; execution remains separately controlled.")
+    return plan
+
+
+@app.get("/api/v1/training-plans/{plan_id}")
+def get_training_plan(plan_id: str) -> Dict[str, Any]:
+    plan = persistence.get_training_plan(plan_id) if persistence.is_postgres_enabled() else TRAINING_PLANS.get(plan_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="training plan not found")
+    return plan
+
+
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
     cause: str
