@@ -27,6 +27,85 @@ app.add_middleware(
 
 AUDIT_LOGS: List[Dict[str, Any]] = []
 
+ATHLETE_RECORDS: Dict[str, Dict[str, Any]] = {}
+
+class AthleteCreateRequest(BaseModel):
+    display_name: str
+    metadata: Dict[str, Any] = {}
+
+
+class AthleteUpdateRequest(BaseModel):
+    display_name: Optional[str] = None
+    status: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/v1/athletes", status_code=status.HTTP_201_CREATED)
+def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
+    display_name = req.display_name.strip()
+    if not display_name:
+        raise HTTPException(status_code=400, detail="display_name is required")
+    now = datetime.utcnow().isoformat()
+    import uuid
+    athlete = {
+        "athlete_id": str(uuid.uuid4()),
+        "display_name": display_name,
+        "status": "ACTIVE",
+        "metadata": req.metadata,
+        "created_at": now,
+        "updated_at": now,
+    }
+    ATHLETE_RECORDS[athlete["athlete_id"]] = athlete
+    persistence.upsert_athlete(athlete)
+    log_action(
+        "system",
+        "ATHLETE_CREATED",
+        None,
+        athlete,
+        "Athlete record created with stable identity and lifecycle state.",
+    )
+    return athlete
+
+
+@app.get("/api/v1/athletes/{athlete_id}")
+def get_athlete(athlete_id: str) -> Dict[str, Any]:
+    athlete = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
+    if athlete is None:
+        raise HTTPException(status_code=404, detail="athlete not found")
+    return athlete
+
+
+@app.patch("/api/v1/athletes/{athlete_id}")
+def update_athlete(athlete_id: str, req: AthleteUpdateRequest) -> Dict[str, Any]:
+    current = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="athlete not found")
+    if req.display_name is not None:
+        name = req.display_name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="display_name cannot be empty")
+        current["display_name"] = name
+    if req.status is not None:
+        allowed = {"ACTIVE", "INACTIVE", "ARCHIVED"}
+        if req.status not in allowed:
+            raise HTTPException(status_code=400, detail="invalid lifecycle status")
+        current["status"] = req.status
+    if req.metadata is not None:
+        current["metadata"] = req.metadata
+    current["updated_at"] = datetime.utcnow().isoformat()
+    ATHLETE_RECORDS[athlete_id] = current
+    persistence.upsert_athlete(current)
+    log_action(
+        "system",
+        "ATHLETE_UPDATED",
+        None,
+        current,
+        "Athlete lifecycle/profile updated without changing stable identity.",
+    )
+    return current
+
+
+
 def log_action(user_id: str, action: str, old_val: Any, new_val: Any, reason: str):
     timestamp = datetime.utcnow().isoformat()
     entry = {
