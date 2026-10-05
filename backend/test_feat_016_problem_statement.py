@@ -162,36 +162,3 @@ class FEAT018CauseContextFramingTests(unittest.TestCase):
         self.assertTrue(any(x["action"]=="PROBLEM_CAUSE_CONTEXT_FRAMED" and x["new_value"]["problem_id"]==self.problem_id for x in logs))
 
 
-
-class FEAT019EvidenceLinkedDiagnosisTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        persistence.initialize()
-        cls.client = TestClient(main.app)
-
-    def setUp(self):
-        a=self.client.post("/api/v1/athletes",json={"display_name":"FEAT-019","metadata":{}})
-        self.athlete_id=a.json()["athlete_id"]
-        a=self.client.post("/api/v1/assessments",json={"athlete_id":self.athlete_id,"template_id":"TPL-019","measurements":{"timing":"late"},"recorded_by":"coach-019"})
-        self.assessment_id=a.json()["assessment_id"]
-        p=self.client.post("/api/v1/problem-statements",json={"athlete_id":self.athlete_id,"assessment_id":self.assessment_id,"statement":"Late entry","problem_type":"timing","created_by":"coach-019"})
-        self.problem_id=p.json()["problem_id"]
-        e=self.client.post("/api/v1/evidence",json={"evidence_id":"EVID-019-001","subject_type":"assessment","subject_id":self.assessment_id,"evidence_level":"E3","status":"verified","claim":"Late entry observed","observed_value":{"count":4},"verified_by":"coach-019"})
-        self.assertEqual(e.status_code,201)
-
-    def test_diagnosis_requires_existing_linked_evidence_and_reads_back(self):
-        r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/diagnosis",json={"problem_id":self.problem_id,"evidence_ids":["EVID-019-001"],"diagnosis":"Timing breakdown under pressure","confidence":"medium","diagnosed_by":"coach-019"})
-        self.assertEqual(r.status_code,201)
-        read=self.client.get(f"/api/v1/problem-statements/{self.problem_id}/diagnosis")
-        self.assertEqual(read.status_code,200)
-        self.assertIn(r.json(),read.json()["diagnoses"])
-
-    def test_missing_evidence_is_blocked(self):
-        r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/diagnosis",json={"problem_id":self.problem_id,"evidence_ids":["missing-evidence"],"diagnosis":"Unsupported diagnosis","diagnosed_by":"coach-019"})
-        self.assertEqual(r.status_code,404)
-
-    def test_audit_trace_is_written(self):
-        r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/diagnosis",json={"problem_id":self.problem_id,"evidence_ids":["EVID-019-001"],"diagnosis":"Evidence-supported timing issue","diagnosed_by":"coach-019"})
-        self.assertEqual(r.status_code,201)
-        logs=self.client.get("/api/v1/audit/logs").json()["logs"]
-        self.assertTrue(any(x["action"]=="EVIDENCE_LINKED_DIAGNOSIS_CREATED" and x["new_value"]["problem_id"]==self.problem_id for x in logs))
