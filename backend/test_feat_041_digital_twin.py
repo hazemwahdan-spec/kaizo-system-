@@ -38,7 +38,7 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
     def test_sync_increments_version(self):
         base = {
             "case_id": "CASE-FEAT041",
-            "entity_id": "ATHLETE-041-PRIMARY",
+            "entity_id": "ATHLETE-041-VERSION",
             "source_event": "ASSESSMENT_RECORDED",
             "coach_final_authority": True,
         }
@@ -55,7 +55,7 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
     def test_version_conflict_holds_and_does_not_mutate_state(self):
         base = {
             "case_id": "CASE-FEAT041",
-            "entity_id": "ATHLETE-041-PRIMARY",
+            "entity_id": "ATHLETE-041-CONFLICT",
             "source_event": "ASSESSMENT_RECORDED",
             "coach_final_authority": True,
         }
@@ -79,7 +79,7 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
             "/api/v1/digital-twin/sync",
             json={
                 "case_id": "CASE-FEAT041",
-                "entity_id": "ATHLETE-041-PRIMARY",
+                "entity_id": "ATHLETE-041-AUTH",
                 "state": {"score": 5},
                 "source_event": "MANUAL_UPDATE",
                 "coach_final_authority": False,
@@ -94,7 +94,7 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
             "/api/v1/digital-twin/sync",
             json={
                 "case_id": "CASE-FEAT041",
-                "entity_id": "ATHLETE-041-PRIMARY",
+                "entity_id": "ATHLETE-041-AUDIT",
                 "state": {"score": 8},
                 "source_event": "ASSESSMENT_RECORDED",
                 "coach_final_authority": True,
@@ -108,7 +108,7 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
             if x["action"] == "DIGITAL_TWIN_SYNCHRONIZED"
         ]
         self.assertTrue(matches)
-        self.assertEqual(matches[-1]["new_value"]["entity_id"], "ATHLETE-041-PRIMARY")
+        self.assertEqual(matches[-1]["new_value"]["entity_id"], "ATHLETE-041-AUDIT")
 
 
 if __name__ == "__main__":
