@@ -1,6 +1,6 @@
 # KAIZO PRODUCTIZATION — STATE CHECKPOINT
 Date: 2026-10-05
-Status: R2 IN PROGRESS — FEAT-015 DONE / VERIFIED
+Status: R2 IN PROGRESS — FEAT-016 DONE / VERIFIED
 
 ## Frozen checkpoints
 - Phase 4 Domain Design: `f89a757b36a518af5768986bb4f0cf30e973276c`
@@ -20,6 +20,13 @@ Status: R2 IN PROGRESS — FEAT-015 DONE / VERIFIED
 - FEAT-013 — DONE / VERIFIED — CI #71 — PACK-B #275 — merge `490c62da664df5836ced7fb64776cb74aa874bcf`
 - FEAT-014 — DONE / VERIFIED — CI #79 — PACK-B #283 — merge `4b7fbd08a4756389b538559ee7e25cd3a220e741`
 - FEAT-015 — DONE / VERIFIED — CI #83 — PACK-B #287 — merge `d6764707df3ecbaafb2e9fde3fac193659e230cd`
+- FEAT-016 — DONE / VERIFIED — CI #87 — PACK-B #291 — merge `b5682831dc77dc8a208c59aa5b7d25c6648a2d55`
+
+## FEAT-016 closure
+- PR #14 merged into `main`.
+- Verification record: `docs/product/verification/FEAT-016-VERIFICATION.md`.
+- No Frozen Core semantic change.
+- Evidence Before Claim satisfied.
 
 ## FEAT-015 closure
 - PR #13 merged into `main`.
@@ -35,7 +42,7 @@ Status: R2 IN PROGRESS — FEAT-015 DONE / VERIFIED
 
 ## Resume rule
 The next feature must be selected from the frozen Master Feature Backlog; do not infer or rewrite feature IDs from implementation history.
-Exact next resume point: **R2 / inspect frozen backlog for FEAT-016**.
+Exact next resume point: **R2 / inspect frozen backlog for FEAT-017**.
 
 ## Governance
 - ONE PLATFORM / MULTIPLE EXPERIENCES remains frozen.
