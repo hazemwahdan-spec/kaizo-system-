@@ -223,6 +223,63 @@ def list_assessment_evidence(assessment_id: str) -> Dict[str, Any]:
 
 
 
+class ProblemStatementCreateRequest(BaseModel):
+    athlete_id: str
+    assessment_id: str
+    statement: str
+    problem_type: str
+    impact: Optional[str] = None
+    context: Dict[str, Any] = {}
+    structured_fields: Dict[str, Any] = {}
+    created_by: str
+
+
+PROBLEM_STATEMENTS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/problem-statements", status_code=status.HTTP_201_CREATED)
+def create_problem_statement(req: ProblemStatementCreateRequest) -> Dict[str, Any]:
+    if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.statement.strip():
+        raise HTTPException(status_code=400, detail="athlete_id, assessment_id and statement are required")
+    if not req.problem_type.strip() or not req.created_by.strip():
+        raise HTTPException(status_code=400, detail="problem_type and created_by are required")
+    athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
+    if athlete is None:
+        raise HTTPException(status_code=404, detail="athlete not found")
+    assessment = persistence.get_assessment(req.assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(req.assessment_id)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="assessment not found")
+    if assessment["athlete_id"] != req.athlete_id:
+        raise HTTPException(status_code=400, detail="assessment does not belong to athlete")
+    import uuid
+    now=datetime.utcnow().isoformat()
+    problem={"problem_id":str(uuid.uuid4()),"athlete_id":req.athlete_id,"assessment_id":req.assessment_id,
+             "statement":req.statement.strip(),"problem_type":req.problem_type.strip(),"impact":req.impact.strip() if req.impact else None,
+             "context":req.context,"structured_fields":req.structured_fields,"status":"OPEN",
+             "created_by":req.created_by.strip(),"created_at":now,"updated_at":now}
+    PROBLEM_STATEMENTS[problem["problem_id"]]=problem
+    persistence.upsert_problem_statement(problem)
+    log_action(req.created_by,"PROBLEM_STATEMENT_CREATED",None,problem,
+               "Structured problem statement created from an existing athlete assessment with explicit context and ownership.")
+    return problem
+
+
+@app.get("/api/v1/problem-statements/{problem_id}")
+def get_problem_statement(problem_id: str) -> Dict[str, Any]:
+    problem=persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
+    if problem is None:
+        raise HTTPException(status_code=404, detail="problem statement not found")
+    return problem
+
+
+@app.get("/api/v1/problem-statements")
+def list_problem_statements(athlete_id: Optional[str]=None) -> Dict[str, Any]:
+    problems=persistence.list_problem_statements(athlete_id) if persistence.is_postgres_enabled() else list(PROBLEM_STATEMENTS.values())
+    if athlete_id:
+        problems=[item for item in problems if item["athlete_id"]==athlete_id]
+    return {"total_problem_statements":len(problems),"problem_statements":problems}
+
+
 class KPIDefinitionCreateRequest(BaseModel):
     kpi_id: str
     name: str
