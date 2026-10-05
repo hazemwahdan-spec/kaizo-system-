@@ -119,4 +119,4 @@ class FEAT017ProblemLibrarySelectionTests(unittest.TestCase):
         response = self.client.post("/api/v1/problem-library/selections", json={"athlete_id": self.athlete_id, "assessment_id": self.assessment_id, "library_item_id": "PRB-017-001", "selected_by": "coach-017"})
         self.assertEqual(response.status_code, 201)
         logs = self.client.get("/api/v1/audit/logs")
-        self.assertTrue(any(item["action"] == "PROBLEM_LIBRARY_SELECTED" and item["new_value"]["library_item_id"] == "PRB-017-001" for item in logs.json()))
+        self.assertTrue(any(item["action"] == "PROBLEM_LIBRARY_SELECTED" and item["new_value"]["library_item_id"] == "PRB-017-001" for item in logs.json()["logs"]))
