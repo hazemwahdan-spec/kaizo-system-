@@ -163,6 +163,8 @@ class FEAT018CauseContextFramingTests(unittest.TestCase):
 
 
 
+
+
 class FEAT019EvidenceLinkedDiagnosisTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -179,7 +181,7 @@ class FEAT019EvidenceLinkedDiagnosisTests(unittest.TestCase):
         e=self.client.post("/api/v1/evidence",json={"evidence_id":"EVID-019-001","subject_type":"assessment","subject_id":self.assessment_id,"evidence_level":"E3","status":"verified","claim":"Late entry observed","observed_value":{"count":4},"verified_by":"coach-019"})
         self.assertEqual(e.status_code,201)
 
-    def test_diagnosis_requires_existing_linked_evidence_and_reads_back(self):
+    def test_diagnosis_requires_linked_evidence_and_reads_back(self):
         r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/diagnosis",json={"problem_id":self.problem_id,"evidence_ids":["EVID-019-001"],"diagnosis":"Timing breakdown under pressure","confidence":"medium","diagnosed_by":"coach-019"})
         self.assertEqual(r.status_code,201)
         read=self.client.get(f"/api/v1/problem-statements/{self.problem_id}/diagnosis")
