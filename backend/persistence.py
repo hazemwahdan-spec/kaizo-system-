@@ -137,6 +137,18 @@ CREATE TABLE IF NOT EXISTS kaizo_problem_library_selections (
     selected_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
+    framing_id TEXT PRIMARY KEY,
+    problem_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    cause TEXT NOT NULL,
+    context JSONB NOT NULL,
+    contributing_factors JSONB NOT NULL,
+    framed_by TEXT NOT NULL,
+    framed_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_problem_statements (
     problem_id TEXT PRIMARY KEY,
     athlete_id TEXT NOT NULL,
@@ -604,6 +616,47 @@ def get_problem_library_selection(selection_id: str) -> Optional[Dict[str, Any]]
         "selected_by": row[4],
         "selected_at": row[5],
     }
+
+
+def upsert_cause_context_framing(framing: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_cause_context_framings
+                (framing_id, problem_id, athlete_id, assessment_id, cause, context, contributing_factors, framed_by, framed_at)
+                VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s)
+                ON CONFLICT (framing_id) DO UPDATE SET
+                    cause=EXCLUDED.cause, context=EXCLUDED.context,
+                    contributing_factors=EXCLUDED.contributing_factors,
+                    framed_by=EXCLUDED.framed_by, framed_at=EXCLUDED.framed_at""",
+                (framing["framing_id"], framing["problem_id"], framing["athlete_id"], framing["assessment_id"],
+                 framing["cause"], json.dumps(framing["context"]), json.dumps(framing["contributing_factors"]),
+                 framing["framed_by"], framing["framed_at"]),
+            )
+        conn.commit()
+
+
+def list_cause_context_framings(problem_id: str) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT framing_id, problem_id, athlete_id, assessment_id, cause, context,
+                          contributing_factors, framed_by, framed_at
+                   FROM kaizo_cause_context_framings
+                   WHERE problem_id=%s ORDER BY framed_at""",
+                (problem_id,),
+            )
+            rows = cur.fetchall()
+    return [
+        {"framing_id": r[0], "problem_id": r[1], "athlete_id": r[2], "assessment_id": r[3],
+         "cause": r[4], "context": r[5], "contributing_factors": r[6],
+         "framed_by": r[7], "framed_at": r[8]}
+        for r in rows
+    ]
 
 
 def upsert_problem_statement(problem: Dict[str, Any]) -> None:
