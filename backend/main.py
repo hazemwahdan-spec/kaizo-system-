@@ -685,6 +685,82 @@ def list_coach_decision_reviews(candidate_id: str) -> Dict[str, Any]:
     }
 
 
+class DecisionRecordRequest(BaseModel):
+    candidate_id: str
+    coach_id: str
+    outcome_intent: str
+    decision_summary: Optional[str] = None
+
+
+DECISION_RECORDS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/decision-candidates/{candidate_id}/decision-record", status_code=status.HTTP_201_CREATED)
+def create_decision_record(candidate_id: str, req: DecisionRecordRequest) -> Dict[str, Any]:
+    if candidate_id != req.candidate_id:
+        raise HTTPException(status_code=400, detail="candidate_id mismatch")
+    if not req.coach_id.strip() or not req.outcome_intent.strip():
+        raise HTTPException(status_code=400, detail="coach_id and outcome_intent are required")
+
+    candidate = persistence.get_decision_candidate(candidate_id) if persistence.is_postgres_enabled() else DECISION_CANDIDATES.get(candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="decision candidate not found")
+
+    reviews = persistence.list_coach_decision_reviews(candidate_id) if persistence.is_postgres_enabled() else [
+        item for item in COACH_DECISION_REVIEWS.values() if item["candidate_id"] == candidate_id
+    ]
+    if not reviews:
+        raise HTTPException(status_code=409, detail="coach confirmation or override is required before recording the decision")
+
+    latest_review = reviews[-1]
+    import uuid
+    now = datetime.utcnow().isoformat()
+    record = {
+        "decision_id": str(uuid.uuid4()),
+        "candidate_id": candidate_id,
+        "diagnosis_id": candidate["diagnosis_id"],
+        "problem_id": candidate["problem_id"],
+        "athlete_id": candidate["athlete_id"],
+        "assessment_id": candidate["assessment_id"],
+        "candidate_type": candidate["candidate_type"],
+        "coach_action": latest_review["action"],
+        "coach_id": req.coach_id.strip(),
+        "decision_summary": req.decision_summary.strip() if req.decision_summary else candidate["title"],
+        "outcome_intent": req.outcome_intent.strip(),
+        "status": "RECORDED",
+        "coach_final_authority": True,
+        "execution_authorized": False,
+        "recorded_at": now,
+    }
+    DECISION_RECORDS[record["decision_id"]] = record
+    persistence.upsert_decision_record(record)
+    log_action(
+        req.coach_id,
+        "DECISION_RECORD_RECORDED",
+        None,
+        record,
+        "Decision record and outcome intent recorded after explicit Coach Final Authority; no autonomous execution authorized.",
+    )
+    return record
+
+
+@app.get("/api/v1/decision-candidates/{candidate_id}/decision-record")
+def list_decision_records(candidate_id: str) -> Dict[str, Any]:
+    candidate = persistence.get_decision_candidate(candidate_id) if persistence.is_postgres_enabled() else DECISION_CANDIDATES.get(candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="decision candidate not found")
+    records = persistence.list_decision_records(candidate_id) if persistence.is_postgres_enabled() else [
+        item for item in DECISION_RECORDS.values() if item["candidate_id"] == candidate_id
+    ]
+    return {
+        "candidate_id": candidate_id,
+        "total": len(records),
+        "records": records,
+        "coach_final_authority": True,
+        "execution_authorized": False,
+    }
+
+
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
     cause: str
