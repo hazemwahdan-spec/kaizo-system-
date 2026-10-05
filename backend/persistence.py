@@ -36,6 +36,14 @@ CREATE TABLE IF NOT EXISTS kaizo_assessments (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_assessment_evidence_attachments (
+    assessment_id TEXT NOT NULL,
+    evidence_id TEXT NOT NULL,
+    attached_by TEXT NOT NULL,
+    attached_at TEXT NOT NULL,
+    PRIMARY KEY (assessment_id, evidence_id)
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_kpi_definitions (
     kpi_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -520,3 +528,53 @@ def get_kpi_capture(capture_id: str) -> Optional[Dict[str, Any]]:
     if row is None:
         return None
     return {"capture_id":row[0],"athlete_id":row[1],"kpi_id":row[2],"value":row[3],"captured_by":row[4],"assessment_id":row[5],"captured_at":row[6],"created_at":row[7]}
+
+
+def attach_assessment_evidence(attachment: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO kaizo_assessment_evidence_attachments
+                    (assessment_id, evidence_id, attached_by, attached_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (assessment_id, evidence_id) DO UPDATE SET
+                    attached_by = EXCLUDED.attached_by,
+                    attached_at = EXCLUDED.attached_at
+                """,
+                (
+                    attachment["assessment_id"],
+                    attachment["evidence_id"],
+                    attachment["attached_by"],
+                    attachment["attached_at"],
+                ),
+            )
+        conn.commit()
+
+
+def list_assessment_evidence(assessment_id: str) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT assessment_id, evidence_id, attached_by, attached_at
+                FROM kaizo_assessment_evidence_attachments
+                WHERE assessment_id = %s
+                ORDER BY attached_at
+                """,
+                (assessment_id,),
+            )
+            rows = cur.fetchall()
+    return [
+        {
+            "assessment_id": row[0],
+            "evidence_id": row[1],
+            "attached_by": row[2],
+            "attached_at": row[3],
+        }
+        for row in rows
+    ]
