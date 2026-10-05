@@ -26,6 +26,16 @@ CREATE TABLE IF NOT EXISTS kaizo_athletes (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_assessments (
+    assessment_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    template_id TEXT NOT NULL,
+    measurements JSONB NOT NULL,
+    recorded_by TEXT NOT NULL,
+    assessed_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_audit_logs (
     id BIGSERIAL PRIMARY KEY,
     timestamp TEXT NOT NULL,
@@ -279,3 +289,59 @@ def load_knowledge() -> Dict[str, Any]:
             )
             rows = cur.fetchall()
     return {row[0]: row[1] for row in rows}
+
+
+def upsert_assessment(assessment: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO kaizo_assessments
+                    (assessment_id, athlete_id, template_id, measurements, recorded_by, assessed_at, created_at)
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s)
+                ON CONFLICT (assessment_id) DO UPDATE SET
+                    measurements = EXCLUDED.measurements,
+                    recorded_by = EXCLUDED.recorded_by,
+                    assessed_at = EXCLUDED.assessed_at
+                """,
+                (
+                    assessment["assessment_id"],
+                    assessment["athlete_id"],
+                    assessment["template_id"],
+                    json.dumps(assessment.get("measurements", {})),
+                    assessment["recorded_by"],
+                    assessment["assessed_at"],
+                    assessment["created_at"],
+                ),
+            )
+        conn.commit()
+
+
+def get_assessment(assessment_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT assessment_id, athlete_id, template_id, measurements,
+                       recorded_by, assessed_at, created_at
+                FROM kaizo_assessments
+                WHERE assessment_id = %s
+                """,
+                (assessment_id,),
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "assessment_id": row[0],
+        "athlete_id": row[1],
+        "template_id": row[2],
+        "measurements": row[3],
+        "recorded_by": row[4],
+        "assessed_at": row[5],
+        "created_at": row[6],
+    }
