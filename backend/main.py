@@ -168,6 +168,96 @@ def get_assessment(assessment_id: str) -> Dict[str, Any]:
     return assessment
 
 
+
+
+class KPIDefinitionCreateRequest(BaseModel):
+    kpi_id: str
+    name: str
+    metric_name: str
+    unit: str
+    target: Optional[float] = None
+    direction: str = "higher_is_better"
+    defined_by: str
+
+class KPICaptureRequest(BaseModel):
+    athlete_id: str
+    kpi_id: str
+    value: float
+    captured_by: str
+    assessment_id: Optional[str] = None
+
+KPI_DEFINITIONS: Dict[str, Dict[str, Any]] = {}
+KPI_CAPTURES: Dict[str, Dict[str, Any]] = {}
+
+@app.post("/api/v1/kpis", status_code=status.HTTP_201_CREATED)
+def create_kpi(req: KPIDefinitionCreateRequest) -> Dict[str, Any]:
+    allowed_directions = {"higher_is_better", "lower_is_better", "target_range"}
+    if not req.kpi_id.strip() or not req.name.strip() or not req.metric_name.strip() or not req.unit.strip():
+        raise HTTPException(status_code=400, detail="kpi_id, name, metric_name and unit are required")
+    if not req.defined_by.strip():
+        raise HTTPException(status_code=400, detail="defined_by is required")
+    if req.direction not in allowed_directions:
+        raise HTTPException(status_code=400, detail="invalid KPI direction")
+    now = datetime.utcnow().isoformat()
+    definition = {
+        "kpi_id": req.kpi_id,
+        "name": req.name.strip(),
+        "metric_name": req.metric_name.strip(),
+        "unit": req.unit.strip(),
+        "target": req.target,
+        "direction": req.direction,
+        "defined_by": req.defined_by,
+        "status": "ACTIVE",
+        "created_at": now,
+        "updated_at": now,
+    }
+    KPI_DEFINITIONS[req.kpi_id] = definition
+    persistence.upsert_kpi_definition(definition)
+    log_action(req.defined_by, "KPI_DEFINED", None, definition, "KPI definition captured with explicit metric semantics and owner.")
+    return definition
+
+@app.get("/api/v1/kpis/{kpi_id}")
+def get_kpi(kpi_id: str) -> Dict[str, Any]:
+    definition = persistence.get_kpi_definition(kpi_id) if persistence.is_postgres_enabled() else KPI_DEFINITIONS.get(kpi_id)
+    if definition is None:
+        raise HTTPException(status_code=404, detail="KPI not found")
+    return definition
+
+@app.post("/api/v1/kpis/captures", status_code=status.HTTP_201_CREATED)
+def capture_kpi(req: KPICaptureRequest) -> Dict[str, Any]:
+    if not req.athlete_id.strip() or not req.kpi_id.strip() or not req.captured_by.strip():
+        raise HTTPException(status_code=400, detail="athlete_id, kpi_id and captured_by are required")
+    athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
+    if athlete is None:
+        raise HTTPException(status_code=404, detail="athlete not found")
+    kpi = persistence.get_kpi_definition(req.kpi_id) if persistence.is_postgres_enabled() else KPI_DEFINITIONS.get(req.kpi_id)
+    if kpi is None:
+        raise HTTPException(status_code=404, detail="KPI not found")
+    import uuid
+    now = datetime.utcnow().isoformat()
+    capture = {
+        "capture_id": str(uuid.uuid4()),
+        "athlete_id": req.athlete_id,
+        "kpi_id": req.kpi_id,
+        "value": req.value,
+        "captured_by": req.captured_by,
+        "assessment_id": req.assessment_id,
+        "captured_at": now,
+        "created_at": now,
+    }
+    KPI_CAPTURES[capture["capture_id"]] = capture
+    persistence.upsert_kpi_capture(capture)
+    log_action(req.captured_by, "KPI_CAPTURED", None, capture, "KPI value captured for an existing athlete and defined KPI.")
+    return capture
+
+@app.get("/api/v1/kpis/captures/{capture_id}")
+def get_kpi_capture(capture_id: str) -> Dict[str, Any]:
+    capture = persistence.get_kpi_capture(capture_id) if persistence.is_postgres_enabled() else KPI_CAPTURES.get(capture_id)
+    if capture is None:
+        raise HTTPException(status_code=404, detail="KPI capture not found")
+    return capture
+
+
 def log_action(user_id: str, action: str, old_val: Any, new_val: Any, reason: str):
     timestamp = datetime.utcnow().isoformat()
     entry = {
