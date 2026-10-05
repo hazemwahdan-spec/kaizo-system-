@@ -168,6 +168,19 @@ CREATE TABLE IF NOT EXISTS kaizo_decision_candidates (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_decision_rationales (
+    rationale_id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL,
+    diagnosis_id TEXT NOT NULL,
+    problem_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    evidence_ids JSONB NOT NULL,
+    recorded_by TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
