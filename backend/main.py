@@ -512,6 +512,96 @@ def list_decision_rationales(candidate_id: str) -> Dict[str, Any]:
     }
 
 
+
+class DecisionAlternativeComparisonRequest(BaseModel):
+    diagnosis_id: str
+    candidate_ids: List[str]
+    compared_by: str
+
+
+DECISION_COMPARISONS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", status_code=status.HTTP_201_CREATED)
+def compare_decision_alternatives(
+    diagnosis_id: str, req: DecisionAlternativeComparisonRequest
+) -> Dict[str, Any]:
+    if diagnosis_id != req.diagnosis_id:
+        raise HTTPException(status_code=400, detail="diagnosis_id mismatch")
+    if not req.compared_by.strip():
+        raise HTTPException(status_code=400, detail="compared_by is required")
+    if len(req.candidate_ids) < 2:
+        raise HTTPException(status_code=400, detail="at least two candidate_ids are required")
+    if len(set(req.candidate_ids)) != len(req.candidate_ids):
+        raise HTTPException(status_code=400, detail="candidate_ids must be distinct")
+
+    diagnoses = (
+        persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
+        if persistence.is_postgres_enabled()
+        else [item for item in EVIDENCE_LINKED_DIAGNOSES.values() if item["diagnosis_id"] == diagnosis_id]
+    )
+    if not diagnoses:
+        raise HTTPException(status_code=404, detail="diagnosis not found")
+
+    alternatives = []
+    for candidate_id in req.candidate_ids:
+        candidate = (
+            persistence.get_decision_candidate(candidate_id)
+            if persistence.is_postgres_enabled()
+            else DECISION_CANDIDATES.get(candidate_id)
+        )
+        if candidate is None:
+            raise HTTPException(status_code=404, detail=f"decision candidate not found: {candidate_id}")
+        if candidate["diagnosis_id"] != diagnosis_id:
+            raise HTTPException(status_code=400, detail="all candidates must belong to the diagnosis")
+        alternatives.append({
+            "candidate_id": candidate["candidate_id"],
+            "candidate_type": candidate["candidate_type"],
+            "title": candidate["title"],
+            "rationale": candidate["rationale"],
+            "status": candidate["status"],
+        })
+
+    import uuid
+    comparison = {
+        "comparison_id": str(uuid.uuid4()),
+        "diagnosis_id": diagnosis_id,
+        "candidate_ids": req.candidate_ids,
+        "alternatives": alternatives,
+        "comparison_status": "READY_FOR_COACH_REVIEW",
+        "compared_by": req.compared_by.strip(),
+        "compared_at": datetime.utcnow().isoformat(),
+        "coach_review_required": True,
+    }
+    DECISION_COMPARISONS[comparison["comparison_id"]] = comparison
+    persistence.upsert_decision_comparison(comparison)
+    log_action(
+        req.compared_by,
+        "DECISION_ALTERNATIVES_COMPARED",
+        None,
+        comparison,
+        "Alternative decision candidates compared for coach review; no final decision was issued.",
+    )
+    return comparison
+
+
+@app.get("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons")
+def list_decision_comparisons(diagnosis_id: str) -> Dict[str, Any]:
+    diagnoses = (
+        persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
+        if persistence.is_postgres_enabled()
+        else [item for item in EVIDENCE_LINKED_DIAGNOSES.values() if item["diagnosis_id"] == diagnosis_id]
+    )
+    if not diagnoses:
+        raise HTTPException(status_code=404, detail="diagnosis not found")
+    comparisons = (
+        persistence.list_decision_comparisons(diagnosis_id)
+        if persistence.is_postgres_enabled()
+        else [item for item in DECISION_COMPARISONS.values() if item["diagnosis_id"] == diagnosis_id]
+    )
+    return {"diagnosis_id": diagnosis_id, "total": len(comparisons), "comparisons": comparisons}
+
+
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
     cause: str
