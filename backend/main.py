@@ -423,6 +423,95 @@ def list_decision_candidates(diagnosis_id: str) -> Dict[str, Any]:
     return {"diagnosis_id": diagnosis_id, "candidates": candidates}
 
 
+class DecisionRationaleEvidenceRequest(BaseModel):
+    candidate_id: str
+    rationale: str
+    evidence_ids: List[str]
+    recorded_by: str
+
+
+DECISION_RATIONALES: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/decision-candidates/{candidate_id}/rationale", status_code=status.HTTP_201_CREATED)
+def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceRequest) -> Dict[str, Any]:
+    if candidate_id != req.candidate_id:
+        raise HTTPException(status_code=400, detail="candidate_id mismatch")
+    if not req.rationale.strip() or not req.recorded_by.strip():
+        raise HTTPException(status_code=400, detail="rationale and recorded_by are required")
+    if not req.evidence_ids:
+        raise HTTPException(status_code=400, detail="at least one evidence_id is required")
+
+    candidate = (
+        persistence.get_decision_candidate(candidate_id)
+        if persistence.is_postgres_enabled()
+        else DECISION_CANDIDATES.get(candidate_id)
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="decision candidate not found")
+
+    evidence_records = []
+    for evidence_id in req.evidence_ids:
+        evidence = (
+            persistence.get_evidence(evidence_id)
+            if persistence.is_postgres_enabled()
+            else EVIDENCE_RECORDS.get(evidence_id)
+        )
+        if evidence is None:
+            raise HTTPException(status_code=404, detail=f"evidence not found: {evidence_id}")
+        evidence_records.append(evidence)
+
+    import uuid
+    now = datetime.utcnow().isoformat()
+    rationale = {
+        "rationale_id": str(uuid.uuid4()),
+        "candidate_id": candidate_id,
+        "diagnosis_id": candidate["diagnosis_id"],
+        "problem_id": candidate["problem_id"],
+        "athlete_id": candidate["athlete_id"],
+        "assessment_id": candidate["assessment_id"],
+        "rationale": req.rationale.strip(),
+        "evidence_ids": req.evidence_ids,
+        "recorded_by": req.recorded_by.strip(),
+        "recorded_at": now,
+        "coach_review_required": True,
+    }
+    DECISION_RATIONALES[rationale["rationale_id"]] = rationale
+    persistence.upsert_decision_rationale(rationale)
+    log_action(
+        req.recorded_by,
+        "DECISION_RATIONALE_RECORDED",
+        None,
+        rationale,
+        "Decision rationale recorded with explicit evidence links; candidate remains subject to coach review.",
+    )
+    return rationale
+
+
+@app.get("/api/v1/decision-candidates/{candidate_id}/rationale")
+def list_decision_rationales(candidate_id: str) -> Dict[str, Any]:
+    candidate = (
+        persistence.get_decision_candidate(candidate_id)
+        if persistence.is_postgres_enabled()
+        else DECISION_CANDIDATES.get(candidate_id)
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="decision candidate not found")
+    rationales = (
+        persistence.list_decision_rationales(candidate_id)
+        if persistence.is_postgres_enabled()
+        else [
+            item for item in DECISION_RATIONALES.values()
+            if item["candidate_id"] == candidate_id
+        ]
+    )
+    return {
+        "candidate_id": candidate_id,
+        "rationales": rationales,
+        "coach_review_required": True,
+    }
+
+
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
     cause: str
