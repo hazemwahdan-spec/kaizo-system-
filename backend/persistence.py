@@ -181,6 +181,16 @@ CREATE TABLE IF NOT EXISTS kaizo_decision_rationales (
     recorded_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_decision_comparisons (
+    comparison_id TEXT PRIMARY KEY,
+    diagnosis_id TEXT NOT NULL,
+    candidate_ids JSONB NOT NULL,
+    alternatives JSONB NOT NULL,
+    comparison_status TEXT NOT NULL,
+    compared_by TEXT NOT NULL,
+    compared_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
@@ -822,6 +832,53 @@ def list_decision_rationales(candidate_id: str) -> list[Dict[str, Any]]:
         "problem_id": r[3], "athlete_id": r[4], "assessment_id": r[5],
         "rationale": r[6], "evidence_ids": r[7], "recorded_by": r[8],
         "recorded_at": r[9], "coach_review_required": True,
+    } for r in rows]
+
+
+def upsert_decision_comparison(comparison: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_decision_comparisons
+                (comparison_id, diagnosis_id, candidate_ids, alternatives, comparison_status, compared_by, compared_at)
+                VALUES (%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s)
+                ON CONFLICT (comparison_id) DO UPDATE SET
+                    candidate_ids=EXCLUDED.candidate_ids,
+                    alternatives=EXCLUDED.alternatives,
+                    comparison_status=EXCLUDED.comparison_status,
+                    compared_by=EXCLUDED.compared_by,
+                    compared_at=EXCLUDED.compared_at""",
+                (
+                    comparison["comparison_id"], comparison["diagnosis_id"],
+                    json.dumps(comparison["candidate_ids"]),
+                    json.dumps(comparison["alternatives"]),
+                    comparison["comparison_status"],
+                    comparison["compared_by"], comparison["compared_at"],
+                ),
+            )
+        conn.commit()
+
+
+def list_decision_comparisons(diagnosis_id: str) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT comparison_id, diagnosis_id, candidate_ids, alternatives,
+                          comparison_status, compared_by, compared_at
+                   FROM kaizo_decision_comparisons
+                   WHERE diagnosis_id=%s ORDER BY compared_at, comparison_id""",
+                (diagnosis_id,),
+            )
+            rows = cur.fetchall()
+    return [{
+        "comparison_id": r[0], "diagnosis_id": r[1], "candidate_ids": r[2],
+        "alternatives": r[3], "comparison_status": r[4],
+        "compared_by": r[5], "compared_at": r[6],
+        "coach_review_required": True,
     } for r in rows]
 
 
