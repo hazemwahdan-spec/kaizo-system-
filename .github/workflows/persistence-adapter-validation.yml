@@ -48,6 +48,8 @@ jobs:
         run: PYTHONPATH=. python test_feat_001_athletes.py
       - name: Run FEAT-011 measurement persistence acceptance tests
         run: PYTHONPATH=. python test_feat_011_measurements.py
+      - name: Run FEAT-012 athlete assessment acceptance tests
+        run: PYTHONPATH=. python test_feat_012_record_assessment.py
       - name: Run FEAT-046 audit spine acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_011_measurements.FEAT046AuditSpineTests
 
