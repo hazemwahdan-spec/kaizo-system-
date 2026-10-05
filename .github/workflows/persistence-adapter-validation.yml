@@ -1,4 +1,5 @@
 name: Persistence Adapter Validation
+# FEAT-024 verification cycle
 
 on:
   push:
