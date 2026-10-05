@@ -46,3 +46,5 @@ jobs:
         run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
       - name: Run FEAT-001 athlete acceptance tests
         run: PYTHONPATH=. python test_feat_001_athletes.py
+      - name: Run FEAT-011 measurement persistence acceptance tests
+        run: PYTHONPATH=. python test_feat_011_measurements.py
