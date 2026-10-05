@@ -602,6 +602,89 @@ def list_decision_comparisons(diagnosis_id: str) -> Dict[str, Any]:
     return {"diagnosis_id": diagnosis_id, "total": len(comparisons), "comparisons": comparisons}
 
 
+
+class CoachDecisionReviewRequest(BaseModel):
+    candidate_id: str
+    action: str
+    coach_id: str
+    override_reason: Optional[str] = None
+
+
+COACH_DECISION_REVIEWS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/decision-candidates/{candidate_id}/coach-review", status_code=status.HTTP_201_CREATED)
+def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewRequest) -> Dict[str, Any]:
+    if candidate_id != req.candidate_id:
+        raise HTTPException(status_code=400, detail="candidate_id mismatch")
+    if not req.coach_id.strip():
+        raise HTTPException(status_code=400, detail="coach_id is required")
+
+    action = req.action.strip().upper()
+    if action not in {"CONFIRM", "OVERRIDE"}:
+        raise HTTPException(status_code=400, detail="action must be CONFIRM or OVERRIDE")
+    if action == "OVERRIDE" and not (req.override_reason or "").strip():
+        raise HTTPException(status_code=400, detail="override_reason is required for OVERRIDE")
+
+    candidate = (
+        persistence.get_decision_candidate(candidate_id)
+        if persistence.is_postgres_enabled()
+        else DECISION_CANDIDATES.get(candidate_id)
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="decision candidate not found")
+
+    import uuid
+    now = datetime.utcnow().isoformat()
+    review = {
+        "review_id": str(uuid.uuid4()),
+        "candidate_id": candidate_id,
+        "diagnosis_id": candidate["diagnosis_id"],
+        "problem_id": candidate["problem_id"],
+        "athlete_id": candidate["athlete_id"],
+        "assessment_id": candidate["assessment_id"],
+        "action": action,
+        "status": "COACH_CONFIRMED" if action == "CONFIRM" else "COACH_OVERRIDDEN",
+        "coach_id": req.coach_id.strip(),
+        "override_reason": req.override_reason.strip() if req.override_reason else None,
+        "reviewed_at": now,
+        "coach_final_authority": True,
+        "execution_authorized": False,
+    }
+    COACH_DECISION_REVIEWS[review["review_id"]] = review
+    persistence.upsert_coach_decision_review(review)
+    log_action(
+        req.coach_id,
+        "DECISION_CANDIDATE_CONFIRMED" if action == "CONFIRM" else "DECISION_CANDIDATE_OVERRIDDEN",
+        candidate,
+        review,
+        "Coach explicitly exercised Final Authority; no autonomous execution was authorized.",
+    )
+    return review
+
+
+@app.get("/api/v1/decision-candidates/{candidate_id}/coach-review")
+def list_coach_decision_reviews(candidate_id: str) -> Dict[str, Any]:
+    candidate = (
+        persistence.get_decision_candidate(candidate_id)
+        if persistence.is_postgres_enabled()
+        else DECISION_CANDIDATES.get(candidate_id)
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="decision candidate not found")
+    reviews = (
+        persistence.list_coach_decision_reviews(candidate_id)
+        if persistence.is_postgres_enabled()
+        else [item for item in COACH_DECISION_REVIEWS.values() if item["candidate_id"] == candidate_id]
+    )
+    return {
+        "candidate_id": candidate_id,
+        "reviews": reviews,
+        "coach_final_authority": True,
+        "execution_authorized": False,
+    }
+
+
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
     cause: str

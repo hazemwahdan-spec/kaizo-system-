@@ -191,6 +191,20 @@ CREATE TABLE IF NOT EXISTS kaizo_decision_comparisons (
     compared_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_coach_decision_reviews (
+    review_id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL,
+    diagnosis_id TEXT NOT NULL,
+    problem_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL,
+    coach_id TEXT NOT NULL,
+    override_reason TEXT,
+    reviewed_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
@@ -879,6 +893,53 @@ def list_decision_comparisons(diagnosis_id: str) -> list[Dict[str, Any]]:
         "alternatives": r[3], "comparison_status": r[4],
         "compared_by": r[5], "compared_at": r[6],
         "coach_review_required": True,
+    } for r in rows]
+
+
+
+def upsert_coach_decision_review(review: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_coach_decision_reviews
+                (review_id, candidate_id, diagnosis_id, problem_id, athlete_id, assessment_id,
+                 action, status, coach_id, override_reason, reviewed_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (review_id) DO UPDATE SET
+                    action=EXCLUDED.action, status=EXCLUDED.status,
+                    coach_id=EXCLUDED.coach_id, override_reason=EXCLUDED.override_reason,
+                    reviewed_at=EXCLUDED.reviewed_at""",
+                (
+                    review["review_id"], review["candidate_id"], review["diagnosis_id"],
+                    review["problem_id"], review["athlete_id"], review["assessment_id"],
+                    review["action"], review["status"], review["coach_id"],
+                    review.get("override_reason"), review["reviewed_at"],
+                ),
+            )
+        conn.commit()
+
+
+def list_coach_decision_reviews(candidate_id: str) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT review_id, candidate_id, diagnosis_id, problem_id, athlete_id,
+                          assessment_id, action, status, coach_id, override_reason, reviewed_at
+                   FROM kaizo_coach_decision_reviews
+                   WHERE candidate_id=%s ORDER BY reviewed_at, review_id""",
+                (candidate_id,),
+            )
+            rows = cur.fetchall()
+    return [{
+        "review_id": r[0], "candidate_id": r[1], "diagnosis_id": r[2],
+        "problem_id": r[3], "athlete_id": r[4], "assessment_id": r[5],
+        "action": r[6], "status": r[7], "coach_id": r[8],
+        "override_reason": r[9], "reviewed_at": r[10],
+        "coach_final_authority": True, "execution_authorized": False,
     } for r in rows]
 
 
