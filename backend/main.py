@@ -337,6 +337,92 @@ def list_evidence_linked_diagnoses(problem_id: str) -> Dict[str, Any]:
     return {"problem_id": problem_id, "diagnoses": diagnoses}
 
 
+class DecisionCandidateGenerationRequest(BaseModel):
+    diagnosis_id: str
+    requested_by: str
+
+
+DECISION_CANDIDATES: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-candidates", status_code=status.HTTP_201_CREATED)
+def generate_decision_candidates(
+    diagnosis_id: str, req: DecisionCandidateGenerationRequest
+) -> Dict[str, Any]:
+    if diagnosis_id != req.diagnosis_id:
+        raise HTTPException(status_code=400, detail="diagnosis_id mismatch")
+    if not req.requested_by.strip():
+        raise HTTPException(status_code=400, detail="requested_by is required")
+
+    diagnoses = (
+        persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
+        if persistence.is_postgres_enabled()
+        else [item for item in EVIDENCE_LINKED_DIAGNOSES.values() if item["diagnosis_id"] == diagnosis_id]
+    )
+    if not diagnoses:
+        raise HTTPException(status_code=404, detail="diagnosis not found")
+    diagnosis = diagnoses[0]
+
+    import uuid
+    now = datetime.utcnow().isoformat()
+    candidate_specs = [
+        ("DIRECT_INTERVENTION", "Directly address the diagnosed issue", "Targets the diagnosed issue while preserving coach review before execution."),
+        ("CONSTRAINT_ADJUSTMENT", "Adjust the training constraint", "Changes the task constraint related to the diagnosis for coach consideration."),
+        ("RETEST_FOCUSED", "Use a focused retest before commitment", "Generates a verification-oriented candidate to test the diagnosis before a stronger intervention."),
+    ]
+
+    candidates = []
+    for candidate_type, title, rationale in candidate_specs:
+        candidate = {
+            "candidate_id": str(uuid.uuid4()),
+            "diagnosis_id": diagnosis_id,
+            "problem_id": diagnosis["problem_id"],
+            "athlete_id": diagnosis["athlete_id"],
+            "assessment_id": diagnosis["assessment_id"],
+            "candidate_type": candidate_type,
+            "title": title,
+            "rationale": rationale,
+            "source_diagnosis": diagnosis["diagnosis"],
+            "status": "PENDING_COACH_REVIEW",
+            "generated_by": req.requested_by.strip(),
+            "created_at": now,
+        }
+        DECISION_CANDIDATES[candidate["candidate_id"]] = candidate
+        persistence.upsert_decision_candidate(candidate)
+        log_action(
+            req.requested_by,
+            "DECISION_CANDIDATES_GENERATED",
+            None,
+            candidate,
+            "Decision candidate generated from an evidence-linked diagnosis; coach review remains required.",
+        )
+        candidates.append(candidate)
+
+    return {
+        "diagnosis_id": diagnosis_id,
+        "status": "CANDIDATES_GENERATED",
+        "candidates": candidates,
+        "coach_review_required": True,
+    }
+
+
+@app.get("/api/v1/diagnoses/{diagnosis_id}/decision-candidates")
+def list_decision_candidates(diagnosis_id: str) -> Dict[str, Any]:
+    diagnoses = (
+        persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
+        if persistence.is_postgres_enabled()
+        else [item for item in EVIDENCE_LINKED_DIAGNOSES.values() if item["diagnosis_id"] == diagnosis_id]
+    )
+    if not diagnoses:
+        raise HTTPException(status_code=404, detail="diagnosis not found")
+    candidates = (
+        persistence.list_decision_candidates(diagnosis_id)
+        if persistence.is_postgres_enabled()
+        else [item for item in DECISION_CANDIDATES.values() if item["diagnosis_id"] == diagnosis_id]
+    )
+    return {"diagnosis_id": diagnosis_id, "candidates": candidates}
+
+
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
     cause: str
