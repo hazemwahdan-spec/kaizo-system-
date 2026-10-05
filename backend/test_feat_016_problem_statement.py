@@ -1,6 +1,7 @@
 import unittest
 from fastapi.testclient import TestClient
 import main
+import persistence
 
 class FEAT016StructuredProblemStatementTests(unittest.TestCase):
     def setUp(self):
