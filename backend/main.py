@@ -280,6 +280,72 @@ def list_problem_statements(athlete_id: Optional[str]=None) -> Dict[str, Any]:
     return {"total_problem_statements":len(problems),"problem_statements":problems}
 
 
+class EvidenceLinkedDiagnosisRequest(BaseModel):
+    problem_id: str
+    evidence_ids: List[str]
+    diagnosis: str
+    diagnosed_by: str
+    confidence: Optional[str] = None
+
+
+EVIDENCE_LINKED_DIAGNOSES: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/problem-statements/{problem_id}/diagnosis", status_code=status.HTTP_201_CREATED)
+def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnosisRequest) -> Dict[str, Any]:
+    if problem_id != req.problem_id:
+        raise HTTPException(status_code=400, detail="problem_id mismatch")
+    if not req.diagnosis.strip() or not req.diagnosed_by.strip():
+        raise HTTPException(status_code=400, detail="diagnosis and diagnosed_by are required")
+    if not req.evidence_ids:
+        raise HTTPException(status_code=400, detail="at least one evidence_id is required")
+
+    problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
+    if problem is None:
+        raise HTTPException(status_code=404, detail="problem statement not found")
+
+    evidence_records = []
+    for evidence_id in req.evidence_ids:
+        evidence = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
+        if evidence is None:
+            raise HTTPException(status_code=404, detail=f"evidence not found: {evidence_id}")
+        evidence_records.append(evidence)
+
+    import uuid
+    diagnosis = {
+        "diagnosis_id": str(uuid.uuid4()),
+        "problem_id": problem_id,
+        "athlete_id": problem["athlete_id"],
+        "assessment_id": problem["assessment_id"],
+        "evidence_ids": req.evidence_ids,
+        "diagnosis": req.diagnosis.strip(),
+        "diagnosed_by": req.diagnosed_by.strip(),
+        "confidence": req.confidence,
+        "diagnosed_at": datetime.utcnow().isoformat(),
+    }
+    EVIDENCE_LINKED_DIAGNOSES[diagnosis["diagnosis_id"]] = diagnosis
+    persistence.upsert_evidence_linked_diagnosis(diagnosis)
+    log_action(
+        req.diagnosed_by,
+        "EVIDENCE_LINKED_DIAGNOSIS_CREATED",
+        None,
+        diagnosis,
+        "Diagnosis recorded only with explicit links to existing evidence records.",
+    )
+    return diagnosis
+
+
+@app.get("/api/v1/problem-statements/{problem_id}/diagnosis")
+def list_evidence_linked_diagnoses(problem_id: str) -> Dict[str, Any]:
+    problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
+    if problem is None:
+        raise HTTPException(status_code=404, detail="problem statement not found")
+    diagnoses = persistence.list_evidence_linked_diagnoses(problem_id) if persistence.is_postgres_enabled() else [
+        item for item in EVIDENCE_LINKED_DIAGNOSES.values() if item["problem_id"] == problem_id
+    ]
+    return {"problem_id": problem_id, "diagnoses": diagnoses}
+
+
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
     cause: str
