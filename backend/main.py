@@ -602,6 +602,96 @@ def list_decision_comparisons(diagnosis_id: str) -> Dict[str, Any]:
     return {"diagnosis_id": diagnosis_id, "total": len(comparisons), "comparisons": comparisons}
 
 
+
+class CoachDecisionReviewRequest(BaseModel):
+    candidate_id: str
+    action: str
+    coach_id: str
+    override_reason: Optional[str] = None
+
+
+COACH_DECISION_REVIEWS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/decision-candidates/{candidate_id}/coach-review", status_code=status.HTTP_201_CREATED)
+def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewRequest) -> Dict[str, Any]:
+    if candidate_id != req.candidate_id:
+        raise HTTPException(status_code=400, detail="candidate_id mismatch")
+    if not req.coach_id.strip():
+        raise HTTPException(status_code=400, detail="coach_id is required")
+
+    action = req.action.strip().upper()
+    if action not in {"CONFIRM", "OVERRIDE"}:
+        raise HTTPException(status_code=400, detail="action must be CONFIRM or OVERRIDE")
+    if action == "OVERRIDE" and not req.override_reason.strip() if req.override_reason else True:
+        raise HTTPException(status_code=400, detail="override_reason is required for OVERRIDE")
+
+    candidate = (
+        persistence.get_decision_candidate(candidate_id)
+        if persistence.is_postgres_enabled()
+        else DECISION_CANDIDATES.get(candidate_id)
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="decision candidate not found")
+
+    import uuid
+    now = datetime.utcnow().isoformat()
+    review_id = str(uuid.uuid4())
+    status_value = "COACH_CONFIRMED" if action == "CONFIRM" else "COACH_OVERRIDDEN"
+    review = {
+        "review_id": review_id,
+        "candidate_id": candidate_id,
+        "diagnosis_id": candidate["diagnosis_id"],
+        "problem_id": candidate["problem_id"],
+        "athlete_id": candidate["athlete_id"],
+        "assessment_id": candidate["assessment_id"],
+        "action": action,
+        "status": status_value,
+        "coach_id": req.coach_id.strip(),
+        "override_reason": req.override_reason.strip() if req.override_reason else None,
+        "reviewed_at": now,
+        "coach_final_authority": True,
+        "execution_authorized": False,
+    }
+    COACH_DECISION_REVIEWS[review_id] = review
+    persistence.upsert_coach_decision_review(review)
+
+    audit_action = "DECISION_CANDIDATE_CONFIRMED" if action == "CONFIRM" else "DECISION_CANDIDATE_OVERRIDDEN"
+    log_action(
+        req.coach_id,
+        audit_action,
+        candidate,
+        review,
+        "Coach explicitly exercised Final Authority; no autonomous execution was authorized.",
+    )
+    return review
+
+
+@app.get("/api/v1/decision-candidates/{candidate_id}/coach-review")
+def list_coach_decision_reviews(candidate_id: str) -> Dict[str, Any]:
+    candidate = (
+        persistence.get_decision_candidate(candidate_id)
+        if persistence.is_postgres_enabled()
+        else DECISION_CANDIDATES.get(candidate_id)
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="decision candidate not found")
+    reviews = (
+        persistence.list_coach_decision_reviews(candidate_id)
+        if persistence.is_postgres_enabled()
+        else [
+            item for item in COACH_DECISION_REVIEWS.values()
+            if item["candidate_id"] == candidate_id
+        ]
+    )
+    return {
+        "candidate_id": candidate_id,
+        "reviews": reviews,
+        "coach_final_authority": True,
+        "execution_authorized": False,
+    }
+
+
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
     cause: str
@@ -1398,98 +1488,3 @@ def create_state_snapshot(req: StateSnapshotCreateRequest) -> Dict[str, Any]:
         "ATHLETE_STATE_SNAPSHOT_CREATED",
         None,
         snapshot,
-        "Baseline/current-state snapshot materialized from an assessment and KPI captures.",
-    )
-    return snapshot
-
-
-@app.get("/api/v1/state-snapshots/{snapshot_id}")
-def get_state_snapshot(snapshot_id: str) -> Dict[str, Any]:
-    snapshot = persistence.get_state_snapshot(snapshot_id) if persistence.is_postgres_enabled() else STATE_SNAPSHOTS.get(snapshot_id)
-    if snapshot is None:
-        raise HTTPException(status_code=404, detail="state snapshot not found")
-    return snapshot
-
-
-@app.get("/api/v1/state-snapshots")
-def list_state_snapshots(athlete_id: Optional[str] = None) -> Dict[str, Any]:
-    snapshots = persistence.list_state_snapshots(athlete_id) if persistence.is_postgres_enabled() else list(STATE_SNAPSHOTS.values())
-    if athlete_id:
-        snapshots = [item for item in snapshots if item["athlete_id"] == athlete_id]
-    return {"total_snapshots": len(snapshots), "snapshots": snapshots}
-
-
-class DecisionLoopRequest(BaseModel):
-    case_id: str
-    decision: Dict[str, Any]
-    intervention: Dict[str, Any]
-    response_kpi: Dict[str, Any]
-    retest: Dict[str, Any]
-    coach_final_authority: bool = True
-
-@app.post("/api/v1/decision/loop", status_code=status.HTTP_200_OK)
-def decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
-    if not req.coach_final_authority:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
-        log_action(req.case_id, "DECISION_LOOP_HOLD", None, output, "Coach Final Authority is required.")
-        return output
-    missing = [name for name, value in {
-        "decision": req.decision,
-        "intervention": req.intervention,
-        "response_kpi": req.response_kpi,
-        "retest": req.retest,
-    }.items() if not value]
-    if missing:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"MISSING_DECISION_LOOP_INPUT", "missing_inputs":missing, "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
-        log_action(req.case_id, "DECISION_LOOP_HOLD", None, output, "Required decision loop input is missing.")
-        return output
-    output = {
-        "case_id": req.case_id,
-        "status":"LOOP_COMPLETED",
-        "coach_final_authority":True,
-        "chain":["Decision","Intervention","Response/KPI","Retest","Audit"],
-        "decision":req.decision,
-        "intervention":req.intervention,
-        "response_kpi":req.response_kpi,
-        "retest":req.retest,
-        "timestamp":datetime.utcnow().isoformat()
-    }
-    log_action(req.case_id, "DECISION_LOOP_COMPLETED", None, output, "Decision to intervention to KPI response to retest completed under Coach Final Authority.")
-    return output
-
-class AdaptationRequest(BaseModel):
-    case_id: str
-    operation: str
-    common_core: Dict[str, Any]
-    dynamic_inputs: Dict[str, Any]
-    individual_change: Optional[Dict[str, Any]] = None
-    team_change: Optional[Dict[str, Any]] = None
-    composition_change: Optional[Dict[str, Any]] = None
-    coach_final_authority: bool = True
-
-@app.post("/api/v1/decision/adapt", status_code=status.HTTP_200_OK)
-def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
-    allowed = {"individual_adaptation","team_adaptation","subgroup_recalculation","individual_change"}
-    if req.operation not in allowed:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"UNSUPPORTED_ADAPTATION_OPERATION", "diagnostic_required":True, "allowed_operations":sorted(allowed), "timestamp":datetime.utcnow().isoformat()}
-        log_action(req.case_id, "DECISION_ADAPTATION_HOLD", None, output, "Unsupported adaptation operation.")
-        return output
-    if not req.coach_final_authority:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
-        log_action(req.case_id, "DECISION_ADAPTATION_HOLD", None, output, "Coach Final Authority is required.")
-        return output
-    if not req.common_core or not req.dynamic_inputs:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"MISSING_ADAPTATION_INPUT", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
-        log_action(req.case_id, "DECISION_ADAPTATION_HOLD", None, output, "Required adaptation inputs are missing.")
-        return output
-    output = {"case_id":req.case_id,"status":"ADAPTED","operation":req.operation,"common_core_preserved":True,"adaptation_basis":req.dynamic_inputs,"coach_final_authority":True,"timestamp":datetime.utcnow().isoformat()}
-    if req.operation == "individual_adaptation":
-        output.update({"scope":"individual","individual_change":req.individual_change or {}})
-    elif req.operation == "team_adaptation":
-        output.update({"scope":"team","team_change":req.team_change or {}})
-    elif req.operation == "subgroup_recalculation":
-        output.update({"scope":"subgroup","composition_change":req.composition_change or {},"recalculation":"SUBGROUP_RECALCULATED"})
-    else:
-        output.update({"scope":"individual","individual_change":req.individual_change or {},"isolated_output_change":True})
-    log_action(req.case_id, "DECISION_ADAPTATION", None, output, "Runtime adaptation executed under Coach Final Authority with Common Core preservation.")
-    return output
