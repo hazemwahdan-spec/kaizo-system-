@@ -153,6 +153,21 @@ CREATE TABLE IF NOT EXISTS kaizo_evidence_linked_diagnoses (
 
 ALTER TABLE kaizo_evidence_linked_diagnoses
     ADD COLUMN IF NOT EXISTS resolution_state TEXT NOT NULL DEFAULT 'UNRESOLVED';
+CREATE TABLE IF NOT EXISTS kaizo_decision_candidates (
+    candidate_id TEXT PRIMARY KEY,
+    diagnosis_id TEXT NOT NULL,
+    problem_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    candidate_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    source_diagnosis TEXT NOT NULL,
+    status TEXT NOT NULL,
+    generated_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
@@ -662,6 +677,65 @@ def list_evidence_linked_diagnoses(problem_id: str) -> list[Dict[str, Any]]:
                            FROM kaizo_evidence_linked_diagnoses WHERE problem_id=%s
                            ORDER BY diagnosed_at""", (problem_id,))
             rows=cur.fetchall()
+    return [{"diagnosis_id":r[0],"problem_id":r[1],"athlete_id":r[2],"assessment_id":r[3],
+             "evidence_ids":r[4],"diagnosis":r[5],"diagnosed_by":r[6],"confidence":r[7],
+             "resolution_state":r[8],"diagnosed_at":r[9]} for r in rows]
+
+
+def upsert_decision_candidate(candidate: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_decision_candidates
+                (candidate_id, diagnosis_id, problem_id, athlete_id, assessment_id,
+                 candidate_type, title, rationale, source_diagnosis, status, generated_by, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (candidate_id) DO UPDATE SET
+                    title=EXCLUDED.title, rationale=EXCLUDED.rationale,
+                    status=EXCLUDED.status, generated_by=EXCLUDED.generated_by""",
+                (candidate["candidate_id"], candidate["diagnosis_id"], candidate["problem_id"],
+                 candidate["athlete_id"], candidate["assessment_id"], candidate["candidate_type"],
+                 candidate["title"], candidate["rationale"], candidate["source_diagnosis"],
+                 candidate["status"], candidate["generated_by"], candidate["created_at"]),
+            )
+        conn.commit()
+
+
+def list_decision_candidates(diagnosis_id: str) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT candidate_id, diagnosis_id, problem_id, athlete_id, assessment_id,
+                          candidate_type, title, rationale, source_diagnosis, status,
+                          generated_by, created_at
+                   FROM kaizo_decision_candidates
+                   WHERE diagnosis_id=%s ORDER BY created_at, candidate_id""",
+                (diagnosis_id,),
+            )
+            rows = cur.fetchall()
+    return [{
+        "candidate_id": r[0], "diagnosis_id": r[1], "problem_id": r[2],
+        "athlete_id": r[3], "assessment_id": r[4], "candidate_type": r[5],
+        "title": r[6], "rationale": r[7], "source_diagnosis": r[8],
+        "status": r[9], "generated_by": r[10], "created_at": r[11]
+    } for r in rows]
+
+
+def list_evidence_linked_diagnoses_for_id(diagnosis_id: str) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT diagnosis_id, problem_id, athlete_id, assessment_id,
+                                  evidence_ids, diagnosis, diagnosed_by, confidence,
+                                  resolution_state, diagnosed_at
+                           FROM kaizo_evidence_linked_diagnoses WHERE diagnosis_id=%s""",
+                        (diagnosis_id,))
+            rows = cur.fetchall()
     return [{"diagnosis_id":r[0],"problem_id":r[1],"athlete_id":r[2],"assessment_id":r[3],
              "evidence_ids":r[4],"diagnosis":r[5],"diagnosed_by":r[6],"confidence":r[7],
              "resolution_state":r[8],"diagnosed_at":r[9]} for r in rows]
