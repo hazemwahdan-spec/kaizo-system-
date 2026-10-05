@@ -37,6 +37,7 @@ def test_alternative_decision_comparison():
         "created_by": "coach-feat023",
     })
     evidence = post("/api/v1/evidence", {
+        "evidence_id": f"FEAT023-EVID-{suffix}",
         "subject_type": "problem",
         "subject_id": problem["problem_id"],
         "evidence_level": "E2",
