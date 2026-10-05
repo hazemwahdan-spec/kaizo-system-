@@ -29,6 +29,16 @@ Status: R2 IN PROGRESS — FEAT-023 DONE / VERIFIED
 - FEAT-022 — DONE / VERIFIED — CI #118 — PACK-B #322 — merge `48e5b7b85473f2e19a73c52460b26ca000dcd2de`
 - FEAT-023 — DONE / VERIFIED — CI #123 — PACK-B #327 — merge `f887e1a7ccc8e4678c98ff2a7cd551257adfd984`
 
+## FEAT-024
+
+- Feature: Coach confirm/override
+- PR #22 merged
+- Merge SHA: 280c9436c84dda1cf486d6ad6bd1d832467fe103
+- Persistence Adapter Validation #131: SUCCESS
+- PACK-B #335: SUCCESS
+- Acceptance: DONE / VERIFIED
+- Next resume point: R2 / FEAT-025 — Decision record and outcome intent
+
 ## FEAT-023 closure
 - PR #21 merged into `main`.
 - Verification record: `docs/product/verification/FEAT-023-VERIFICATION.md`.
@@ -102,7 +112,7 @@ Status: R2 IN PROGRESS — FEAT-023 DONE / VERIFIED
 
 ## Resume rule
 The next feature must be selected from the frozen Master Feature Backlog; do not infer or rewrite feature IDs from implementation history.
-Exact next resume point: **R2 / FEAT-024 — Coach confirm/override**.
+Exact next resume point: **R2 / FEAT-025 — Decision record and outcome intent**.
 
 ## Governance
 - ONE PLATFORM / MULTIPLE EXPERIENCES remains frozen.
