@@ -280,6 +280,64 @@ def list_problem_statements(athlete_id: Optional[str]=None) -> Dict[str, Any]:
     return {"total_problem_statements":len(problems),"problem_statements":problems}
 
 
+class CauseContextFramingRequest(BaseModel):
+    problem_id: str
+    cause: str
+    context: Dict[str, Any] = {}
+    contributing_factors: List[str] = []
+    framed_by: str
+
+
+CAUSE_CONTEXT_FRAMINGS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/problem-statements/{problem_id}/cause-context", status_code=status.HTTP_201_CREATED)
+def frame_problem_cause_context(problem_id: str, req: CauseContextFramingRequest) -> Dict[str, Any]:
+    if problem_id != req.problem_id:
+        raise HTTPException(status_code=400, detail="problem_id mismatch")
+    if not req.cause.strip() or not req.framed_by.strip():
+        raise HTTPException(status_code=400, detail="cause and framed_by are required")
+
+    problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
+    if problem is None:
+        raise HTTPException(status_code=404, detail="problem statement not found")
+
+    import uuid
+    now = datetime.utcnow().isoformat()
+    framing = {
+        "framing_id": str(uuid.uuid4()),
+        "problem_id": problem_id,
+        "athlete_id": problem["athlete_id"],
+        "assessment_id": problem["assessment_id"],
+        "cause": req.cause.strip(),
+        "context": req.context,
+        "contributing_factors": [item.strip() for item in req.contributing_factors if item.strip()],
+        "framed_by": req.framed_by.strip(),
+        "framed_at": now,
+    }
+    CAUSE_CONTEXT_FRAMINGS[framing["framing_id"]] = framing
+    persistence.upsert_cause_context_framing(framing)
+    log_action(
+        req.framed_by,
+        "PROBLEM_CAUSE_CONTEXT_FRAMED",
+        None,
+        framing,
+        "Cause and context framing recorded against an existing structured problem statement.",
+    )
+    return framing
+
+
+@app.get("/api/v1/problem-statements/{problem_id}/cause-context")
+def get_problem_cause_context(problem_id: str) -> Dict[str, Any]:
+    problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
+    if problem is None:
+        raise HTTPException(status_code=404, detail="problem statement not found")
+    framings = persistence.list_cause_context_framings(problem_id) if persistence.is_postgres_enabled() else [
+        value for value in CAUSE_CONTEXT_FRAMINGS.values() if value["problem_id"] == problem_id
+    ]
+    return {"problem_id": problem_id, "framings": framings}
+
+
 class ProblemLibrarySelectionRequest(BaseModel):
     athlete_id: str
     assessment_id: str
