@@ -368,6 +368,82 @@ def get_problem_library_selection(selection_id: str) -> Dict[str, Any]:
     return selection
 
 
+class ProblemLibrarySelectionRequest(BaseModel):
+    athlete_id: str
+    assessment_id: str
+    library_item_id: str
+    selected_by: str
+
+
+PROBLEM_LIBRARY_SELECTIONS: Dict[str, Dict[str, Any]] = {}
+
+
+def _problem_library_items(query: Optional[str] = None) -> List[Dict[str, Any]]:
+    normalized = query.strip().lower() if query else ""
+    items = []
+    for item_id, item in KNOWLEDGE_REPOSITORY.items():
+        domain = str(item.get("domain", "")).lower()
+        entity_type = str(item.get("entity_type", item.get("type", ""))).lower()
+        if domain != "problem" and entity_type != "problem" and not item_id.upper().startswith("PRB-"):
+            continue
+        if normalized and normalized not in str(item_id).lower() and normalized not in str(item.get("title", "")).lower():
+            continue
+        items.append(item)
+    return sorted(items, key=lambda item: str(item.get("id", "")))
+
+
+@app.get("/api/v1/problem-library")
+def list_problem_library(query: Optional[str] = None, limit: int = 50) -> Dict[str, Any]:
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+    items = _problem_library_items(query)[:limit]
+    return {"total": len(items), "items": items}
+
+
+@app.post("/api/v1/problem-library/selections", status_code=status.HTTP_201_CREATED)
+def select_problem_from_library(req: ProblemLibrarySelectionRequest) -> Dict[str, Any]:
+    if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.library_item_id.strip():
+        raise HTTPException(status_code=400, detail="athlete_id, assessment_id and library_item_id are required")
+    if not req.selected_by.strip():
+        raise HTTPException(status_code=400, detail="selected_by is required")
+    athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
+    if athlete is None:
+        raise HTTPException(status_code=404, detail="athlete not found")
+    assessment = persistence.get_assessment(req.assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(req.assessment_id)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="assessment not found")
+    if assessment["athlete_id"] != req.athlete_id:
+        raise HTTPException(status_code=400, detail="assessment does not belong to athlete")
+    library_item = KNOWLEDGE_REPOSITORY.get(req.library_item_id)
+    if library_item is None:
+        raise HTTPException(status_code=404, detail="problem library item not found")
+    if req.library_item_id not in {item.get("id") for item in _problem_library_items()}:
+        raise HTTPException(status_code=400, detail="library item is not a problem entry")
+    import uuid
+    now = datetime.utcnow().isoformat()
+    selection = {
+        "selection_id": str(uuid.uuid4()),
+        "athlete_id": req.athlete_id,
+        "assessment_id": req.assessment_id,
+        "library_item_id": req.library_item_id,
+        "selected_by": req.selected_by.strip(),
+        "selected_at": now,
+    }
+    PROBLEM_LIBRARY_SELECTIONS[selection["selection_id"]] = selection
+    persistence.upsert_problem_library_selection(selection)
+    log_action(req.selected_by, "PROBLEM_LIBRARY_SELECTED", None, selection,
+               "Problem selected from the governed problem library for an assessment with explicit athlete ownership.")
+    return selection
+
+
+@app.get("/api/v1/problem-library/selections/{selection_id}")
+def get_problem_library_selection(selection_id: str) -> Dict[str, Any]:
+    selection = persistence.get_problem_library_selection(selection_id) if persistence.is_postgres_enabled() else PROBLEM_LIBRARY_SELECTIONS.get(selection_id)
+    if selection is None:
+        raise HTTPException(status_code=404, detail="problem library selection not found")
+    return selection
+
+
 class KPIDefinitionCreateRequest(BaseModel):
     kpi_id: str
     name: str
