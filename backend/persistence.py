@@ -1020,6 +1020,23 @@ def upsert_decision_record(record: Dict[str, Any]) -> None:
         conn.commit()
 
 
+def get_decision_record(decision_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT decision_id,candidate_id,diagnosis_id,problem_id,athlete_id,assessment_id,
+                                  candidate_type,coach_action,coach_id,decision_summary,outcome_intent,status,recorded_at
+                           FROM kaizo_decision_records WHERE decision_id=%s""",(decision_id,))
+            r=cur.fetchone()
+    if not r:
+        return None
+    return {"decision_id":r[0],"candidate_id":r[1],"diagnosis_id":r[2],"problem_id":r[3],"athlete_id":r[4],
+            "assessment_id":r[5],"candidate_type":r[6],"coach_action":r[7],"coach_id":r[8],
+            "decision_summary":r[9],"outcome_intent":r[10],"status":r[11],"recorded_at":r[12],
+            "coach_final_authority":True,"execution_authorized":False}
+
+
 def list_decision_records(candidate_id: str) -> list[Dict[str, Any]]:
     if not is_postgres_enabled():
         return []
