@@ -368,6 +368,73 @@ def ingest_knowledge(req: KnowledgeIngestRequest):
         "pipeline": pipeline_steps
     }
 
+class EvidenceCreateRequest(BaseModel):
+    evidence_id: str
+    subject_type: str
+    subject_id: str
+    evidence_level: str
+    status: str
+    source_ref: Optional[str] = None
+    claim: str
+    observed_value: Optional[Dict[str, Any]] = None
+    verified_by: str
+    notes: Optional[str] = None
+
+
+EVIDENCE_RECORDS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/evidence", status_code=status.HTTP_201_CREATED)
+def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
+    allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
+    if req.evidence_level not in allowed_levels:
+        raise HTTPException(status_code=400, detail="invalid evidence level")
+    if not req.evidence_id.strip() or not req.subject_id.strip() or not req.claim.strip():
+        raise HTTPException(status_code=400, detail="evidence_id, subject_id and claim are required")
+    if not req.verified_by.strip():
+        raise HTTPException(status_code=400, detail="verified_by is required")
+    now = datetime.utcnow().isoformat()
+    record = {
+        "evidence_id": req.evidence_id,
+        "subject_type": req.subject_type,
+        "subject_id": req.subject_id,
+        "evidence_level": req.evidence_level,
+        "status": req.status,
+        "source_ref": req.source_ref,
+        "claim": req.claim,
+        "observed_value": req.observed_value,
+        "verified_by": req.verified_by,
+        "verified_at": now,
+        "notes": req.notes,
+    }
+    EVIDENCE_RECORDS[req.evidence_id] = record
+    persistence.upsert_evidence(record)
+    log_action(
+        req.verified_by,
+        "EVIDENCE_RECORDED",
+        None,
+        record,
+        "Evidence recorded with explicit subject, level, status, provenance and verifier.",
+    )
+    return record
+
+
+@app.get("/api/v1/evidence/{evidence_id}")
+def get_evidence(evidence_id: str) -> Dict[str, Any]:
+    record = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="evidence not found")
+    return record
+
+
+@app.get("/api/v1/evidence")
+def list_evidence(subject_id: Optional[str] = None) -> Dict[str, Any]:
+    records = persistence.list_evidence(subject_id) if persistence.is_postgres_enabled() else list(EVIDENCE_RECORDS.values())
+    if subject_id:
+        records = [r for r in records if r["subject_id"] == subject_id]
+    return {"total_evidence": len(records), "records": records}
+
+
 @app.get("/api/v1/audit/logs")
 def get_audit_logs():
     logs = persistence.list_audit_logs() if persistence.is_postgres_enabled() else AUDIT_LOGS
