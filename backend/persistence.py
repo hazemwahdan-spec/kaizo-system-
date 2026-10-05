@@ -221,6 +221,18 @@ CREATE TABLE IF NOT EXISTS kaizo_decision_records (
     recorded_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_training_plans (
+    plan_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    decision_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    constraints JSONB NOT NULL,
+    status TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
@@ -957,6 +969,36 @@ def list_coach_decision_reviews(candidate_id: str) -> list[Dict[str, Any]]:
         "override_reason": r[9], "reviewed_at": r[10],
         "coach_final_authority": True, "execution_authorized": False,
     } for r in rows]
+
+
+def upsert_training_plan(plan: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO kaizo_training_plans
+                (plan_id,athlete_id,decision_id,title,objective,constraints,status,created_by,created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (plan_id) DO UPDATE SET title=EXCLUDED.title,
+                objective=EXCLUDED.objective,constraints=EXCLUDED.constraints,status=EXCLUDED.status""",
+                (plan["plan_id"],plan["athlete_id"],plan["decision_id"],plan["title"],plan["objective"],
+                 json.dumps(plan["constraints"]),plan["status"],plan["created_by"],plan["created_at"]))
+        conn.commit()
+
+
+def get_training_plan(plan_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT plan_id,athlete_id,decision_id,title,objective,constraints,status,created_by,created_at
+                           FROM kaizo_training_plans WHERE plan_id=%s""",(plan_id,))
+            r=cur.fetchone()
+    if not r:
+        return None
+    return {"plan_id":r[0],"athlete_id":r[1],"decision_id":r[2],"title":r[3],"objective":r[4],
+            "constraints":r[5],"status":r[6],"created_by":r[7],"created_at":r[8],
+            "coach_final_authority":True,"execution_authorized":False}
 
 
 def upsert_decision_record(record: Dict[str, Any]) -> None:
