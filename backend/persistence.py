@@ -17,6 +17,15 @@ except ImportError:  # pragma: no cover
 
 
 SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS kaizo_athletes (
+    athlete_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_audit_logs (
     id BIGSERIAL PRIMARY KEY,
     timestamp TEXT NOT NULL,
@@ -82,6 +91,52 @@ def initialize() -> None:
         with conn.cursor() as cur:
             cur.execute(SCHEMA_SQL)
         conn.commit()
+
+
+def upsert_athlete(athlete: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO kaizo_athletes
+                    (athlete_id, display_name, status, metadata, created_at, updated_at)
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+                ON CONFLICT (athlete_id) DO UPDATE SET
+                    display_name = EXCLUDED.display_name,
+                    status = EXCLUDED.status,
+                    metadata = EXCLUDED.metadata,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    athlete["athlete_id"], athlete["display_name"], athlete["status"],
+                    json.dumps(athlete.get("metadata", {})),
+                    athlete["created_at"], athlete["updated_at"],
+                ),
+            )
+        conn.commit()
+
+
+def get_athlete(athlete_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT athlete_id, display_name, status, metadata, created_at, updated_at
+                FROM kaizo_athletes WHERE athlete_id = %s
+                """,
+                (athlete_id,),
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "athlete_id": row[0], "display_name": row[1], "status": row[2],
+        "metadata": row[3], "created_at": row[4], "updated_at": row[5],
+    }
 
 
 def append_audit(
