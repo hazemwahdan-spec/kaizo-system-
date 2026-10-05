@@ -46,6 +46,20 @@ CREATE TABLE IF NOT EXISTS kaizo_audit_logs (
     why TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_evidence_records (
+    evidence_id TEXT PRIMARY KEY,
+    subject_type TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    evidence_level TEXT NOT NULL,
+    status TEXT NOT NULL,
+    source_ref TEXT,
+    claim TEXT NOT NULL,
+    observed_value JSONB,
+    verified_by TEXT NOT NULL,
+    verified_at TEXT NOT NULL,
+    notes TEXT
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_digital_twin_state (
     entity_id TEXT PRIMARY KEY,
     version INTEGER NOT NULL,
@@ -345,3 +359,85 @@ def get_assessment(assessment_id: str) -> Optional[Dict[str, Any]]:
         "assessed_at": row[5],
         "created_at": row[6],
     }
+
+
+def upsert_evidence(record: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO kaizo_evidence_records
+                    (evidence_id, subject_type, subject_id, evidence_level, status,
+                     source_ref, claim, observed_value, verified_by, verified_at, notes)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
+                ON CONFLICT (evidence_id) DO UPDATE SET
+                    evidence_level=EXCLUDED.evidence_level,
+                    status=EXCLUDED.status,
+                    source_ref=EXCLUDED.source_ref,
+                    claim=EXCLUDED.claim,
+                    observed_value=EXCLUDED.observed_value,
+                    verified_by=EXCLUDED.verified_by,
+                    verified_at=EXCLUDED.verified_at,
+                    notes=EXCLUDED.notes
+                """,
+                (
+                    record["evidence_id"], record["subject_type"], record["subject_id"],
+                    record["evidence_level"], record["status"], record.get("source_ref"),
+                    record["claim"], json.dumps(record.get("observed_value")),
+                    record["verified_by"], record["verified_at"], record.get("notes"),
+                ),
+            )
+        conn.commit()
+
+
+def get_evidence(evidence_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT evidence_id, subject_type, subject_id, evidence_level, status,
+                          source_ref, claim, observed_value, verified_by, verified_at, notes
+                   FROM kaizo_evidence_records WHERE evidence_id=%s""",
+                (evidence_id,),
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "evidence_id": row[0], "subject_type": row[1], "subject_id": row[2],
+        "evidence_level": row[3], "status": row[4], "source_ref": row[5],
+        "claim": row[6], "observed_value": row[7], "verified_by": row[8],
+        "verified_at": row[9], "notes": row[10],
+    }
+
+
+def list_evidence(subject_id: Optional[str] = None) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            if subject_id:
+                cur.execute(
+                    """SELECT evidence_id, subject_type, subject_id, evidence_level, status,
+                              source_ref, claim, observed_value, verified_by, verified_at, notes
+                       FROM kaizo_evidence_records WHERE subject_id=%s ORDER BY verified_at""",
+                    (subject_id,),
+                )
+            else:
+                cur.execute(
+                    """SELECT evidence_id, subject_type, subject_id, evidence_level, status,
+                              source_ref, claim, observed_value, verified_by, verified_at, notes
+                       FROM kaizo_evidence_records ORDER BY verified_at"""
+                )
+            rows = cur.fetchall()
+    return [
+        {
+            "evidence_id": r[0], "subject_type": r[1], "subject_id": r[2],
+            "evidence_level": r[3], "status": r[4], "source_ref": r[5],
+            "claim": r[6], "observed_value": r[7], "verified_by": r[8],
+            "verified_at": r[9], "notes": r[10],
+        } for r in rows
+    ]
