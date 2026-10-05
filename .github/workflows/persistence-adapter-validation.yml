@@ -60,7 +60,7 @@ jobs:
       - name: Run FEAT-016 structured problem statement acceptance tests
         run: PYTHONPATH=. python test_feat_016_problem_statement.py
       - name: Run FEAT-017 problem library selection acceptance tests
-        run: PYTHONPATH=. python test_feat_017_problem_library_selection.py
+        run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT017ProblemLibrarySelectionTests
       - name: Run FEAT-017 problem library selection acceptance tests
         run: PYTHONPATH=. python test_feat_017_problem_library_selection.py
 
