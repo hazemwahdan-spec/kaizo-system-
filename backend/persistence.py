@@ -205,6 +205,22 @@ CREATE TABLE IF NOT EXISTS kaizo_coach_decision_reviews (
     reviewed_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_decision_records (
+    decision_id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL,
+    diagnosis_id TEXT NOT NULL,
+    problem_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    candidate_type TEXT NOT NULL,
+    coach_action TEXT NOT NULL,
+    coach_id TEXT NOT NULL,
+    decision_summary TEXT NOT NULL,
+    outcome_intent TEXT NOT NULL,
+    status TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
@@ -941,6 +957,41 @@ def list_coach_decision_reviews(candidate_id: str) -> list[Dict[str, Any]]:
         "override_reason": r[9], "reviewed_at": r[10],
         "coach_final_authority": True, "execution_authorized": False,
     } for r in rows]
+
+
+def upsert_decision_record(record: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO kaizo_decision_records
+                (decision_id,candidate_id,diagnosis_id,problem_id,athlete_id,assessment_id,
+                 candidate_type,coach_action,coach_id,decision_summary,outcome_intent,status,recorded_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (decision_id) DO UPDATE SET
+                    coach_action=EXCLUDED.coach_action, coach_id=EXCLUDED.coach_id,
+                    decision_summary=EXCLUDED.decision_summary, outcome_intent=EXCLUDED.outcome_intent,
+                    status=EXCLUDED.status, recorded_at=EXCLUDED.recorded_at""",
+                (record["decision_id"],record["candidate_id"],record["diagnosis_id"],record["problem_id"],
+                 record["athlete_id"],record["assessment_id"],record["candidate_type"],record["coach_action"],
+                 record["coach_id"],record["decision_summary"],record["outcome_intent"],record["status"],record["recorded_at"]))
+        conn.commit()
+
+
+def list_decision_records(candidate_id: str) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT decision_id,candidate_id,diagnosis_id,problem_id,athlete_id,assessment_id,
+                                  candidate_type,coach_action,coach_id,decision_summary,outcome_intent,status,recorded_at
+                           FROM kaizo_decision_records WHERE candidate_id=%s ORDER BY recorded_at,decision_id""",
+                        (candidate_id,))
+            rows=cur.fetchall()
+    return [{"decision_id":r[0],"candidate_id":r[1],"diagnosis_id":r[2],"problem_id":r[3],
+             "athlete_id":r[4],"assessment_id":r[5],"candidate_type":r[6],"coach_action":r[7],
+             "coach_id":r[8],"decision_summary":r[9],"outcome_intent":r[10],"status":r[11],
+             "recorded_at":r[12],"coach_final_authority":True,"execution_authorized":False} for r in rows]
 
 
 def upsert_cause_context_framing(framing: Dict[str, Any]) -> None:
