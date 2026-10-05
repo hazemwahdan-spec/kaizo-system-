@@ -1,6 +1,6 @@
 # KAIZO PRODUCTIZATION — STATE CHECKPOINT
 Date: 2026-10-05
-Status: R1 IN EXECUTION — FEAT-001 + FEAT-011 + FEAT-046 VERIFIED
+Status: R1 IN EXECUTION — FEAT-001 + FEAT-011 + FEAT-046 + FEAT-051 + FEAT-041 VERIFIED
 
 ## Frozen checkpoints
 - Phase 4 Domain Design: `f89a757b36a518af5768986bb4f0cf30e973276c`
@@ -27,8 +27,8 @@ Status: R1 IN EXECUTION — FEAT-001 + FEAT-011 + FEAT-046 VERIFIED
 | FEAT-001 — Create athlete profile | DONE / VERIFIED | FEAT-001 verification; CI Run #39; PACK-B Run #243 |
 | FEAT-011 — Measurement persistence | DONE / VERIFIED | PR #5; CI Run #44; PACK-B Run #248 |
 | FEAT-046 — Audit spine | DONE / VERIFIED | PR #6; audit acceptance suite; merge SHA `8969b9fd0baae38b86c500484e97203e17f60ef8` |
-| FEAT-051 — Evidence spine | NEXT | R1 execution point |
-| FEAT-041 — Digital Twin state | QUEUED | R1 |
+| FEAT-051 — Evidence spine | DONE / VERIFIED | PR #7; CI Run #53; PACK-B Run #257; merge SHA `e602a808e174ed3cac59a67080e76b79b2cdfc43` |
+| FEAT-041 — Digital Twin state | DONE / VERIFIED | PR #8; CI Run #59; merge SHA `cf19ed2c9fa4faa452f684b97304439def455b25` |
 | FEAT-056 — Safety/evidence guardrails | QUEUED | R1 |
 
 ## FEAT-001 closure
@@ -52,6 +52,17 @@ Status: R1 IN EXECUTION — FEAT-001 + FEAT-011 + FEAT-046 VERIFIED
 - Audit acceptance coverage passed in the verified scope.
 - No Frozen Core semantic change.
 
+## FEAT-051 closure
+- Verification record: `docs/product/verification/FEAT-051-VERIFICATION.md`.
+- PR #7 merged into `main`; CI Run #53 passed; PACK-B Run #257 passed.
+- No Frozen Core semantic change.
+
+## FEAT-041 closure
+- Verification record: `docs/product/verification/FEAT-041-VERIFICATION.md`.
+- PR #8 merged into `main`.
+- Persistence Adapter Validation Run #59 passed, including FEAT-041 acceptance.
+- No Frozen Core semantic change.
+
 ## Exact resume point
-**R1 / FEAT-051 — Evidence spine.**
-Inspect the existing evidence implementation first; implement only the minimum required delta; add regression/evidence; verify; then close FEAT-051 before moving forward.
+**R1 / FEAT-056 — Safety/evidence guardrails.**
+Inspect the existing guardrail implementation first; implement only the minimum required delta; add regression/evidence; verify; then close FEAT-056 before moving forward.
