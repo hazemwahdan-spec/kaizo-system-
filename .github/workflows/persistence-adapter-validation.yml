@@ -65,6 +65,9 @@ jobs:
       - name: Run FEAT-019 evidence-linked diagnosis acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT019EvidenceLinkedDiagnosisTests
 
+      - name: Run FEAT-020 diagnosis confidence acceptance tests
+        run: PYTHONPATH=. python test_feat_020_diagnosis_confidence.py
+
       - name: Run FEAT-046 audit spine acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_011_measurements.FEAT046AuditSpineTests
 
