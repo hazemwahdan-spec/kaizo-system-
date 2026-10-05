@@ -1,6 +1,6 @@
 # KAIZO PRODUCTIZATION — STATE CHECKPOINT
 Date: 2026-10-05
-Status: R1 IN EXECUTION — FEAT-001 VERIFIED
+Status: R1 IN EXECUTION — FEAT-001 + FEAT-011 VERIFIED
 
 ## Frozen checkpoints
 - Phase 4 Domain Design: `f89a757b36a518af5768986bb4f0cf30e973276c`
@@ -25,8 +25,8 @@ Status: R1 IN EXECUTION — FEAT-001 VERIFIED
 | Feature | Status | Evidence |
 |---|---|---|
 | FEAT-001 — Create athlete profile | DONE / VERIFIED | FEAT-001 verification; CI Run #39; PACK-B Run #243 |
-| FEAT-011 — Measurement persistence | NEXT | R1 execution point |
-| FEAT-046 — Audit spine | QUEUED | R1 |
+| FEAT-011 — Measurement persistence | DONE / VERIFIED | PR #5; CI Run #44; PACK-B Run #248 |
+| FEAT-046 — Audit spine | NEXT | R1 execution point |
 | FEAT-051 — Evidence spine | QUEUED | R1 |
 | FEAT-041 — Digital Twin state | QUEUED | R1 |
 | FEAT-056 — Safety/evidence guardrails | QUEUED | R1 |
@@ -38,6 +38,14 @@ Status: R1 IN EXECUTION — FEAT-001 VERIFIED
 - Happy path, blocked path and missing-resource path are covered by regression tests.
 - No Frozen Core semantic change.
 
+## FEAT-011 closure
+- PR #5 merged into `main`.
+- Squash merge SHA: `3622ac775c01a9f5efac4ae04c78c0d82db998bd`.
+- Verification record: `docs/product/verification/FEAT-011-VERIFICATION.md`.
+- CI Run #44 passed, including the dedicated FEAT-011 acceptance suite.
+- PACK-B Run #248 passed.
+- No Frozen Core semantic change.
+
 ## Exact resume point
-**R1 / FEAT-011 — Measurement persistence.**
-Inspect existing repository implementation first; implement only the minimum required delta; add regression/evidence; verify; then close FEAT-011 before moving forward.
+**R1 / FEAT-046 — Audit spine.**
+Inspect the existing audit implementation first; implement only the minimum required delta; add regression/evidence; verify; then close FEAT-046 before moving forward.
