@@ -106,7 +106,8 @@ def update_athlete(athlete_id: str, req: AthleteUpdateRequest) -> Dict[str, Any]
 
 
 
-ASSESSMENT_RECORDS: Dict[str, Dict[str, Any]] = {}\n_ASSESSMENT_EVIDENCE_ATTACHMENTS: Dict[str, Dict[str, Any]] = {}
+ASSESSMENT_RECORDS: Dict[str, Dict[str, Any]] = {}
+_ASSESSMENT_EVIDENCE_ATTACHMENTS: Dict[str, Dict[str, Any]] = {}
 
 class AssessmentCreateRequest(BaseModel):
     athlete_id: str
