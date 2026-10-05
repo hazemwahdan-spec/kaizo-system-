@@ -1,6 +1,6 @@
 # KAIZO PRODUCTIZATION — STATE CHECKPOINT
 Date: 2026-10-05
-Status: R2 IN PROGRESS — FEAT-021 DONE / VERIFIED
+Status: R2 IN PROGRESS — FEAT-022 DONE / VERIFIED
 
 ## Frozen checkpoints
 - Phase 4 Domain Design: `f89a757b36a518af5768986bb4f0cf30e973276c`
@@ -26,6 +26,17 @@ Status: R2 IN PROGRESS — FEAT-021 DONE / VERIFIED
 - FEAT-019 — DONE / VERIFIED — CI #106 — PACK-B #310 — merge `e2461f3a1209eec65ccb63a1b06a0271ea3a1301`
 - FEAT-020 — DONE / VERIFIED — CI #110 — PACK-B #314 — merge `a9c7c73a40a4df651bc4b0c44eb632c8c84618b6`
 - FEAT-021 — DONE / VERIFIED — CI #114 — PACK-B #318 — merge `ae8dee42b7ce5684458a4684a84a1b8f85cdba14`
+- FEAT-022 — DONE / VERIFIED — CI #118 — PACK-B #322 — merge `48e5b7b85473f2e19a73c52460b26ca000dcd2de`
+
+## FEAT-022 closure
+- PR #20 merged into `main`.
+- Verification record: `docs/product/verification/FEAT-022-VERIFICATION.md`.
+- Decision rationale is explicitly linked to existing evidence records.
+- Durable PostgreSQL persistence verified.
+- Audit coverage verified.
+- Coach Final Authority remains required.
+- No Frozen Core semantic change.
+- Evidence Before Claim satisfied.
 
 ## FEAT-021 closure
 - PR #19 merged into `main`.
@@ -81,7 +92,7 @@ Status: R2 IN PROGRESS — FEAT-021 DONE / VERIFIED
 
 ## Resume rule
 The next feature must be selected from the frozen Master Feature Backlog; do not infer or rewrite feature IDs from implementation history.
-Exact next resume point: **R2 / inspect frozen backlog for FEAT-022**.
+Exact next resume point: **R2 / FEAT-023 — Alternative decision comparison**.
 
 ## Governance
 - ONE PLATFORM / MULTIPLE EXPERIENCES remains frozen.
