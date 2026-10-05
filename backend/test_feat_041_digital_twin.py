@@ -27,7 +27,7 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
         self.assertEqual(payload["sync"]["new_version"], 1)
         self.assertTrue(payload["coach_final_authority"])
 
-        fetched = self.client.get("/api/v1/digital-twin/ATHLETE-041")
+        fetched = self.client.get("/api/v1/digital-twin/ATHLETE-041-PRIMARY")
         self.assertEqual(fetched.status_code, 200)
         self.assertEqual(fetched.json()["digital_twin_state"]["version"], 1)
         self.assertEqual(
@@ -70,7 +70,7 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
         self.assertEqual(conflict.json()["status"], "HOLD")
         self.assertEqual(conflict.json()["reason_code"], "DIGITAL_TWIN_VERSION_CONFLICT")
 
-        fetched = self.client.get("/api/v1/digital-twin/ATHLETE-041")
+        fetched = self.client.get("/api/v1/digital-twin/ATHLETE-041-CONFLICT")
         self.assertEqual(fetched.json()["digital_twin_state"]["state"]["score"], 1)
         self.assertEqual(fetched.json()["digital_twin_state"]["version"], 1)
 
