@@ -56,3 +56,6 @@ jobs:
 
       - name: Run FEAT-041 digital twin state acceptance tests
         run: PYTHONPATH=. python test_feat_041_digital_twin.py
+
+      - name: Run FEAT-056 safety/evidence guardrail acceptance tests
+        run: PYTHONPATH=. python test_feat_056_safety_guardrails.py
