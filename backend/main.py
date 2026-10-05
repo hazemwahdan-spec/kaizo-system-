@@ -170,6 +170,58 @@ def get_assessment(assessment_id: str) -> Dict[str, Any]:
 
 
 
+class AssessmentEvidenceAttachmentRequest(BaseModel):
+    assessment_id: str
+    evidence_id: str
+    attached_by: str
+
+
+@app.post("/api/v1/assessments/{assessment_id}/evidence", status_code=status.HTTP_201_CREATED)
+def attach_assessment_evidence(assessment_id: str, req: AssessmentEvidenceAttachmentRequest) -> Dict[str, Any]:
+    if assessment_id != req.assessment_id:
+        raise HTTPException(status_code=400, detail="assessment_id mismatch")
+    if not req.evidence_id.strip() or not req.attached_by.strip():
+        raise HTTPException(status_code=400, detail="evidence_id and attached_by are required")
+
+    assessment = persistence.get_assessment(assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(assessment_id)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="assessment not found")
+
+    evidence = persistence.get_evidence(req.evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(req.evidence_id)
+    if evidence is None:
+        raise HTTPException(status_code=404, detail="evidence not found")
+    if evidence.get("subject_type") != "assessment" or evidence.get("subject_id") != assessment_id:
+        raise HTTPException(status_code=400, detail="evidence is not scoped to this assessment")
+
+    attachment = {
+        "assessment_id": assessment_id,
+        "evidence_id": req.evidence_id,
+        "attached_by": req.attached_by,
+        "attached_at": datetime.utcnow().isoformat(),
+    }
+    _ASSESSMENT_EVIDENCE_ATTACHMENTS[f"{assessment_id}:{req.evidence_id}"] = attachment
+    persistence.attach_assessment_evidence(attachment)
+    log_action(
+        req.attached_by,
+        "ASSESSMENT_EVIDENCE_ATTACHED",
+        None,
+        attachment,
+        "Assessment evidence attachment created with explicit assessment and evidence linkage.",
+    )
+    return attachment
+
+
+@app.get("/api/v1/assessments/{assessment_id}/evidence")
+def list_assessment_evidence(assessment_id: str) -> Dict[str, Any]:
+    assessment = persistence.get_assessment(assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(assessment_id)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="assessment not found")
+    attachments = persistence.list_assessment_evidence(assessment_id) if persistence.is_postgres_enabled() else [
+        value for value in _ASSESSMENT_EVIDENCE_ATTACHMENTS.values() if value["assessment_id"] == assessment_id
+    ]
+    return {"assessment_id": assessment_id, "attachments": attachments}
+
+
 
 class KPIDefinitionCreateRequest(BaseModel):
     kpi_id: str
