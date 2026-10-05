@@ -76,3 +76,45 @@ class FEAT011MeasurementPersistenceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FEAT046AuditSpineTests(unittest.TestCase):
+    def test_assessment_action_is_written_to_audit_spine(self):
+        ATHLETE_RECORDS.clear()
+        ASSESSMENT_RECORDS.clear()
+        client = TestClient(app)
+
+        athlete = client.post("/api/v1/athletes", json={"display_name": "Audit Athlete"})
+        self.assertEqual(athlete.status_code, 201)
+
+        created = client.post(
+            "/api/v1/assessments",
+            json={
+                "athlete_id": athlete.json()["athlete_id"],
+                "template_id": "AUDIT-SPINE",
+                "measurements": {"score": 7},
+                "recorded_by": "coach-audit",
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+
+        audit = client.get("/api/v1/audit/logs")
+        self.assertEqual(audit.status_code, 200)
+        matching = [x for x in audit.json()["logs"] if x["action"] == "ASSESSMENT_RECORDED"]
+        self.assertTrue(matching)
+        self.assertEqual(matching[-1]["who"], "coach-audit")
+        self.assertEqual(matching[-1]["new_value"]["athlete_id"], athlete.json()["athlete_id"])
+        self.assertEqual(matching[-1]["why"], "Assessment measurements persisted with explicit athlete ownership and timestamp.")
+
+    def test_audit_log_preserves_old_and_new_values(self):
+        client = TestClient(app)
+        response = client.get("/api/v1/audit/logs")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("logs", response.json())
+        for entry in response.json()["logs"]:
+            self.assertIn("timestamp", entry)
+            self.assertIn("who", entry)
+            self.assertIn("action", entry)
+            self.assertIn("old_value", entry)
+            self.assertIn("new_value", entry)
+            self.assertIn("why", entry)
