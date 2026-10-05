@@ -150,6 +150,9 @@ CREATE TABLE IF NOT EXISTS kaizo_evidence_linked_diagnoses (
     diagnosed_at TEXT NOT NULL
 );
 
+
+ALTER TABLE kaizo_evidence_linked_diagnoses
+    ADD COLUMN IF NOT EXISTS resolution_state TEXT NOT NULL DEFAULT 'UNRESOLVED';
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
