@@ -1,6 +1,7 @@
 import unittest
 from fastapi.testclient import TestClient
 import main
+import persistence
 
 class FEAT016StructuredProblemStatementTests(unittest.TestCase):
     def setUp(self):
@@ -73,3 +74,49 @@ class FEAT016StructuredProblemStatementTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+
+
+
+class FEAT017ProblemLibrarySelectionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        persistence.initialize()
+        item = {"id": "PRB-017-001", "domain": "Problem", "title": "Grip entry timing problem", "status": "Published"}
+        main.KNOWLEDGE_REPOSITORY["PRB-017-001"] = item
+        persistence.upsert_knowledge("PRB-017-001", item, "2026-10-05T00:00:00")
+        cls.client = TestClient(main.app)
+
+    def setUp(self):
+        athlete = self.client.post("/api/v1/athletes", json={"display_name": "FEAT-017 Athlete", "metadata": {}})
+        self.athlete_id = athlete.json()["athlete_id"]
+        assessment = self.client.post("/api/v1/assessments", json={"athlete_id": self.athlete_id, "template_id": "TPL-017", "measurements": {"entry_timing": "late"}, "recorded_by": "coach-017"})
+        self.assessment_id = assessment.json()["assessment_id"]
+
+    def test_library_lists_problem_entries(self):
+        response = self.client.get("/api/v1/problem-library")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("PRB-017-001", [item["id"] for item in response.json()["items"]])
+
+    def test_selection_persists_and_reads_back(self):
+        response = self.client.post("/api/v1/problem-library/selections", json={"athlete_id": self.athlete_id, "assessment_id": self.assessment_id, "library_item_id": "PRB-017-001", "selected_by": "coach-017"})
+        self.assertEqual(response.status_code, 201)
+        selection = response.json()
+        read = self.client.get(f"/api/v1/problem-library/selections/{selection['selection_id']}")
+        self.assertEqual(read.status_code, 200)
+        self.assertEqual(read.json(), selection)
+
+    def test_invalid_library_item_and_cross_owner_are_blocked(self):
+        unknown = self.client.post("/api/v1/problem-library/selections", json={"athlete_id": self.athlete_id, "assessment_id": self.assessment_id, "library_item_id": "PRB-DOES-NOT-EXIST", "selected_by": "coach-017"})
+        self.assertEqual(unknown.status_code, 404)
+        main.KNOWLEDGE_REPOSITORY["TEC-017-001"] = {"id": "TEC-017-001", "domain": "Technique", "title": "Technique item"}
+        non_problem = self.client.post("/api/v1/problem-library/selections", json={"athlete_id": self.athlete_id, "assessment_id": self.assessment_id, "library_item_id": "TEC-017-001", "selected_by": "coach-017"})
+        self.assertEqual(non_problem.status_code, 400)
+        other = self.client.post("/api/v1/athletes", json={"display_name": "Other Athlete", "metadata": {}})
+        cross = self.client.post("/api/v1/problem-library/selections", json={"athlete_id": other.json()["athlete_id"], "assessment_id": self.assessment_id, "library_item_id": "PRB-017-001", "selected_by": "coach-017"})
+        self.assertEqual(cross.status_code, 400)
+
+    def test_selection_is_audited(self):
+        response = self.client.post("/api/v1/problem-library/selections", json={"athlete_id": self.athlete_id, "assessment_id": self.assessment_id, "library_item_id": "PRB-017-001", "selected_by": "coach-017"})
+        self.assertEqual(response.status_code, 201)
+        logs = self.client.get("/api/v1/audit/logs")
+        self.assertTrue(any(item["action"] == "PROBLEM_LIBRARY_SELECTED" and item["new_value"]["library_item_id"] == "PRB-017-001" for item in logs.json()["logs"]))

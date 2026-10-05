@@ -119,6 +119,24 @@ CREATE TABLE IF NOT EXISTS kaizo_state_snapshots (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_problem_library_selections (
+    selection_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    library_item_id TEXT NOT NULL,
+    selected_by TEXT NOT NULL,
+    selected_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS kaizo_problem_library_selections (
+    selection_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    library_item_id TEXT NOT NULL,
+    selected_by TEXT NOT NULL,
+    selected_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_problem_statements (
     problem_id TEXT PRIMARY KEY,
     athlete_id TEXT NOT NULL,
@@ -502,6 +520,90 @@ def list_evidence(subject_id: Optional[str] = None) -> list[Dict[str, Any]]:
     ]
 
 
+
+
+def upsert_problem_library_selection(selection: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_problem_library_selections
+                (selection_id, athlete_id, assessment_id, library_item_id, selected_by, selected_at)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (selection_id) DO UPDATE SET
+                    athlete_id=EXCLUDED.athlete_id,
+                    assessment_id=EXCLUDED.assessment_id,
+                    library_item_id=EXCLUDED.library_item_id,
+                    selected_by=EXCLUDED.selected_by,
+                    selected_at=EXCLUDED.selected_at""",
+                (selection["selection_id"], selection["athlete_id"], selection["assessment_id"],
+                 selection["library_item_id"], selection["selected_by"], selection["selected_at"]))
+        conn.commit()
+
+
+def get_problem_library_selection(selection_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT selection_id, athlete_id, assessment_id, library_item_id, selected_by, selected_at
+                   FROM kaizo_problem_library_selections WHERE selection_id=%s""",
+                (selection_id,))
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "selection_id": row[0],
+        "athlete_id": row[1],
+        "assessment_id": row[2],
+        "library_item_id": row[3],
+        "selected_by": row[4],
+        "selected_at": row[5],
+    }
+
+
+def upsert_problem_library_selection(selection: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_problem_library_selections
+                (selection_id, athlete_id, assessment_id, library_item_id, selected_by, selected_at)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (selection_id) DO UPDATE SET
+                    athlete_id=EXCLUDED.athlete_id,
+                    assessment_id=EXCLUDED.assessment_id,
+                    library_item_id=EXCLUDED.library_item_id,
+                    selected_by=EXCLUDED.selected_by,
+                    selected_at=EXCLUDED.selected_at""",
+                (selection["selection_id"], selection["athlete_id"], selection["assessment_id"],
+                 selection["library_item_id"], selection["selected_by"], selection["selected_at"]))
+        conn.commit()
+
+
+def get_problem_library_selection(selection_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT selection_id, athlete_id, assessment_id, library_item_id, selected_by, selected_at
+                   FROM kaizo_problem_library_selections WHERE selection_id=%s""",
+                (selection_id,))
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "selection_id": row[0],
+        "athlete_id": row[1],
+        "assessment_id": row[2],
+        "library_item_id": row[3],
+        "selected_by": row[4],
+        "selected_at": row[5],
+    }
 
 
 def upsert_problem_statement(problem: Dict[str, Any]) -> None:
