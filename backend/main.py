@@ -286,6 +286,7 @@ class EvidenceLinkedDiagnosisRequest(BaseModel):
     diagnosis: str
     diagnosed_by: str
     confidence: Optional[str] = None
+    resolution_state: str = "UNRESOLVED"
 
 
 EVIDENCE_LINKED_DIAGNOSES: Dict[str, Dict[str, Any]] = {}
@@ -299,6 +300,12 @@ def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnos
         raise HTTPException(status_code=400, detail="diagnosis and diagnosed_by are required")
     if not req.evidence_ids:
         raise HTTPException(status_code=400, detail="at least one evidence_id is required")
+    allowed_confidence = {"LOW", "MEDIUM", "HIGH"}
+    if req.confidence is not None and req.confidence.upper() not in allowed_confidence:
+        raise HTTPException(status_code=400, detail="confidence must be LOW, MEDIUM, or HIGH")
+    allowed_resolution_states = {"UNRESOLVED", "RESOLVED"}
+    if req.resolution_state.upper() not in allowed_resolution_states:
+        raise HTTPException(status_code=400, detail="resolution_state must be UNRESOLVED or RESOLVED")
     problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
         raise HTTPException(status_code=404, detail="problem statement not found")
@@ -310,7 +317,8 @@ def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnos
     diagnosis = {"diagnosis_id": str(uuid.uuid4()), "problem_id": problem_id,
                  "athlete_id": problem["athlete_id"], "assessment_id": problem["assessment_id"],
                  "evidence_ids": req.evidence_ids, "diagnosis": req.diagnosis.strip(),
-                 "diagnosed_by": req.diagnosed_by.strip(), "confidence": req.confidence,
+                 "diagnosed_by": req.diagnosed_by.strip(), "confidence": req.confidence.upper() if req.confidence else None,
+                 "resolution_state": req.resolution_state.upper(),
                  "diagnosed_at": datetime.utcnow().isoformat()}
     EVIDENCE_LINKED_DIAGNOSES[diagnosis["diagnosis_id"]] = diagnosis
     persistence.upsert_evidence_linked_diagnosis(diagnosis)
