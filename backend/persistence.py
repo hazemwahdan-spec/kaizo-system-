@@ -118,6 +118,21 @@ CREATE TABLE IF NOT EXISTS kaizo_state_snapshots (
     captured_at TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS kaizo_problem_statements (
+    problem_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    problem_type TEXT NOT NULL,
+    impact TEXT,
+    context JSONB NOT NULL,
+    structured_fields JSONB NOT NULL,
+    status TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -488,6 +503,59 @@ def list_evidence(subject_id: Optional[str] = None) -> list[Dict[str, Any]]:
 
 
 
+
+def upsert_problem_statement(problem: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_problem_statements
+                (problem_id, athlete_id, assessment_id, statement, problem_type, impact,
+                 context, structured_fields, status, created_by, created_at, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s,%s)
+                ON CONFLICT (problem_id) DO UPDATE SET
+                  statement=EXCLUDED.statement, problem_type=EXCLUDED.problem_type,
+                  impact=EXCLUDED.impact, context=EXCLUDED.context,
+                  structured_fields=EXCLUDED.structured_fields, status=EXCLUDED.status,
+                  updated_at=EXCLUDED.updated_at""",
+                (problem["problem_id"],problem["athlete_id"],problem["assessment_id"],
+                 problem["statement"],problem["problem_type"],problem.get("impact"),
+                 json.dumps(problem.get("context",{})),json.dumps(problem.get("structured_fields",{})),
+                 problem["status"],problem["created_by"],problem["created_at"],problem["updated_at"]))
+        conn.commit()
+
+def get_problem_statement(problem_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT problem_id, athlete_id, assessment_id, statement, problem_type,
+                                  impact, context, structured_fields, status, created_by, created_at, updated_at
+                           FROM kaizo_problem_statements WHERE problem_id=%s""",(problem_id,))
+            row=cur.fetchone()
+    if row is None: return None
+    return {"problem_id":row[0],"athlete_id":row[1],"assessment_id":row[2],"statement":row[3],
+            "problem_type":row[4],"impact":row[5],"context":row[6],"structured_fields":row[7],
+            "status":row[8],"created_by":row[9],"created_at":row[10],"updated_at":row[11]}
+
+def list_problem_statements(athlete_id: Optional[str]=None) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            if athlete_id:
+                cur.execute("""SELECT problem_id, athlete_id, assessment_id, statement, problem_type,
+                                      impact, context, structured_fields, status, created_by, created_at, updated_at
+                               FROM kaizo_problem_statements WHERE athlete_id=%s ORDER BY created_at""",(athlete_id,))
+            else:
+                cur.execute("""SELECT problem_id, athlete_id, assessment_id, statement, problem_type,
+                                      impact, context, structured_fields, status, created_by, created_at, updated_at
+                               FROM kaizo_problem_statements ORDER BY created_at""")
+            rows=cur.fetchall()
+    return [{"problem_id":r[0],"athlete_id":r[1],"assessment_id":r[2],"statement":r[3],
+             "problem_type":r[4],"impact":r[5],"context":r[6],"structured_fields":r[7],
+             "status":r[8],"created_by":r[9],"created_at":r[10],"updated_at":r[11]} for r in rows]
 
 def upsert_state_snapshot(snapshot: Dict[str, Any]) -> None:
     if not is_postgres_enabled():
