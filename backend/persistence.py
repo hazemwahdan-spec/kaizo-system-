@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS kaizo_evidence_linked_diagnoses (
     diagnosis TEXT NOT NULL,
     diagnosed_by TEXT NOT NULL,
     confidence TEXT,
+    resolution_state TEXT NOT NULL DEFAULT 'UNRESOLVED',
     diagnosed_at TEXT NOT NULL
 );
 
@@ -636,15 +637,15 @@ def upsert_evidence_linked_diagnosis(diagnosis: Dict[str, Any]) -> None:
     with connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO kaizo_evidence_linked_diagnoses
-                (diagnosis_id, problem_id, athlete_id, assessment_id, evidence_ids, diagnosis, diagnosed_by, confidence, diagnosed_at)
-                VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)
+                (diagnosis_id, problem_id, athlete_id, assessment_id, evidence_ids, diagnosis, diagnosed_by, confidence, resolution_state, diagnosed_at)
+                VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s)
                 ON CONFLICT (diagnosis_id) DO UPDATE SET evidence_ids=EXCLUDED.evidence_ids,
                 diagnosis=EXCLUDED.diagnosis, diagnosed_by=EXCLUDED.diagnosed_by,
-                confidence=EXCLUDED.confidence, diagnosed_at=EXCLUDED.diagnosed_at""",
+                confidence=EXCLUDED.confidence, resolution_state=EXCLUDED.resolution_state, diagnosed_at=EXCLUDED.diagnosed_at""",
                 (diagnosis["diagnosis_id"], diagnosis["problem_id"], diagnosis["athlete_id"],
                  diagnosis["assessment_id"], json.dumps(diagnosis["evidence_ids"]),
                  diagnosis["diagnosis"], diagnosis["diagnosed_by"], diagnosis["confidence"],
-                 diagnosis["diagnosed_at"]))
+                 diagnosis["resolution_state"], diagnosis["diagnosed_at"]))
         conn.commit()
 
 
@@ -654,13 +655,13 @@ def list_evidence_linked_diagnoses(problem_id: str) -> list[Dict[str, Any]]:
     with connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT diagnosis_id, problem_id, athlete_id, assessment_id,
-                                  evidence_ids, diagnosis, diagnosed_by, confidence, diagnosed_at
+                                  evidence_ids, diagnosis, diagnosed_by, confidence, resolution_state, diagnosed_at
                            FROM kaizo_evidence_linked_diagnoses WHERE problem_id=%s
                            ORDER BY diagnosed_at""", (problem_id,))
             rows=cur.fetchall()
     return [{"diagnosis_id":r[0],"problem_id":r[1],"athlete_id":r[2],"assessment_id":r[3],
              "evidence_ids":r[4],"diagnosis":r[5],"diagnosed_by":r[6],"confidence":r[7],
-             "diagnosed_at":r[8]} for r in rows]
+             "resolution_state":r[8],"diagnosed_at":r[9]} for r in rows]
 
 
 def upsert_cause_context_framing(framing: Dict[str, Any]) -> None:
