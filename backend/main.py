@@ -331,6 +331,79 @@ def evaluate_rule(req: RuleEvaluationRequest) -> Dict[str, Any]:
         "timestamp": datetime.utcnow().isoformat()
     }
 
+class SafetyEvaluationRequest(BaseModel):
+    action_id: str
+    subject_id: str
+    action_type: str
+    evidence_level: str
+    evidence_status: str
+    safety_constraints_met: bool
+    coach_final_authority: bool = True
+    rationale: Optional[str] = None
+
+
+@app.post("/api/v1/safety/evaluate", status_code=status.HTTP_200_OK)
+def evaluate_safety(req: SafetyEvaluationRequest) -> Dict[str, Any]:
+    allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
+    if req.evidence_level not in allowed_levels:
+        raise HTTPException(status_code=400, detail="invalid evidence level")
+    if not req.action_id.strip() or not req.subject_id.strip() or not req.action_type.strip():
+        raise HTTPException(status_code=400, detail="action_id, subject_id and action_type are required")
+
+    base = {
+        "action_id": req.action_id,
+        "subject_id": req.subject_id,
+        "action_type": req.action_type,
+        "evidence_level": req.evidence_level,
+        "evidence_status": req.evidence_status,
+        "safety_constraints_met": req.safety_constraints_met,
+        "coach_final_authority": req.coach_final_authority,
+        "rationale": req.rationale,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    if not req.coach_final_authority:
+        output = {
+            **base,
+            "status": "HOLD",
+            "reason_code": "COACH_FINAL_AUTHORITY_REQUIRED",
+            "diagnostic_required": True,
+            "decision_blocked": True,
+        }
+        log_action(req.subject_id, "SAFETY_EVALUATION_HOLD", None, output, "Coach Final Authority is required before a safety-cleared action can proceed.")
+        return output
+
+    if req.evidence_status.upper() != "VERIFIED" or req.evidence_level == "E0":
+        output = {
+            **base,
+            "status": "HOLD",
+            "reason_code": "EVIDENCE_QUALITY_INSUFFICIENT",
+            "diagnostic_required": True,
+            "decision_blocked": True,
+        }
+        log_action(req.subject_id, "SAFETY_EVALUATION_HOLD", None, output, "Safety evaluation requires verified evidence above E0.")
+        return output
+
+    if not req.safety_constraints_met:
+        output = {
+            **base,
+            "status": "HOLD",
+            "reason_code": "SAFETY_CONSTRAINT_VIOLATION",
+            "diagnostic_required": True,
+            "decision_blocked": True,
+        }
+        log_action(req.subject_id, "SAFETY_EVALUATION_HOLD", None, output, "One or more safety constraints are not satisfied.")
+        return output
+
+    output = {
+        **base,
+        "status": "SAFE_TO_PROCEED",
+        "decision_blocked": False,
+    }
+    log_action(req.subject_id, "SAFETY_EVALUATION_PASSED", None, output, "Verified evidence and declared safety constraints support the evaluated action.")
+    return output
+
+
 class KnowledgeIngestRequest(BaseModel):
     item_id: str
     domain: str
