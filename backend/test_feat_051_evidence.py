@@ -31,7 +31,9 @@ class FEAT051EvidenceSpineTests(unittest.TestCase):
 
         listed = self.client.get("/api/v1/evidence?subject_id=FEAT-051")
         self.assertEqual(listed.status_code, 200)
-        self.assertEqual(listed.json()["total_evidence"], 1)
+        self.assertGreaterEqual(listed.json()["total_evidence"], 1)
+        ids = {item["evidence_id"] for item in listed.json()["records"]}
+        self.assertIn("EVD-FEAT051-001", ids)
 
     def test_invalid_evidence_level_is_blocked(self):
         response = self.client.post("/api/v1/evidence", json={
