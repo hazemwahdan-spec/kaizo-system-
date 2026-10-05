@@ -754,6 +754,77 @@ def list_evidence_linked_diagnoses_for_id(diagnosis_id: str) -> list[Dict[str, A
              "resolution_state":r[8],"diagnosed_at":r[9]} for r in rows]
 
 
+def get_decision_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT candidate_id, diagnosis_id, problem_id, athlete_id, assessment_id,
+                          candidate_type, title, rationale, source_diagnosis, status,
+                          generated_by, created_at
+                   FROM kaizo_decision_candidates WHERE candidate_id=%s""",
+                (candidate_id,),
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "candidate_id": row[0], "diagnosis_id": row[1], "problem_id": row[2],
+        "athlete_id": row[3], "assessment_id": row[4], "candidate_type": row[5],
+        "title": row[6], "rationale": row[7], "source_diagnosis": row[8],
+        "status": row[9], "generated_by": row[10], "created_at": row[11],
+    }
+
+
+def upsert_decision_rationale(rationale: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_decision_rationales
+                (rationale_id, candidate_id, diagnosis_id, problem_id, athlete_id,
+                 assessment_id, rationale, evidence_ids, recorded_by, recorded_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)
+                ON CONFLICT (rationale_id) DO UPDATE SET
+                    rationale=EXCLUDED.rationale,
+                    evidence_ids=EXCLUDED.evidence_ids,
+                    recorded_by=EXCLUDED.recorded_by,
+                    recorded_at=EXCLUDED.recorded_at""",
+                (
+                    rationale["rationale_id"], rationale["candidate_id"],
+                    rationale["diagnosis_id"], rationale["problem_id"],
+                    rationale["athlete_id"], rationale["assessment_id"],
+                    rationale["rationale"], json.dumps(rationale["evidence_ids"]),
+                    rationale["recorded_by"], rationale["recorded_at"],
+                ),
+            )
+        conn.commit()
+
+
+def list_decision_rationales(candidate_id: str) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT rationale_id, candidate_id, diagnosis_id, problem_id,
+                          athlete_id, assessment_id, rationale, evidence_ids,
+                          recorded_by, recorded_at
+                   FROM kaizo_decision_rationales
+                   WHERE candidate_id=%s ORDER BY recorded_at, rationale_id""",
+                (candidate_id,),
+            )
+            rows = cur.fetchall()
+    return [{
+        "rationale_id": r[0], "candidate_id": r[1], "diagnosis_id": r[2],
+        "problem_id": r[3], "athlete_id": r[4], "assessment_id": r[5],
+        "rationale": r[6], "evidence_ids": r[7], "recorded_by": r[8],
+        "recorded_at": r[9], "coach_review_required": True,
+    } for r in rows]
+
+
 def upsert_cause_context_framing(framing: Dict[str, Any]) -> None:
     if not is_postgres_enabled():
         return
