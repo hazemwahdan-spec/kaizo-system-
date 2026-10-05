@@ -50,3 +50,6 @@ jobs:
         run: PYTHONPATH=. python test_feat_011_measurements.py
       - name: Run FEAT-046 audit spine acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_011_measurements.FEAT046AuditSpineTests
+
+      - name: Run FEAT-051 evidence spine acceptance tests
+        run: PYTHONPATH=. python test_feat_051_evidence.py
