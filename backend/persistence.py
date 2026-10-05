@@ -36,6 +36,30 @@ CREATE TABLE IF NOT EXISTS kaizo_assessments (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_kpi_definitions (
+    kpi_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    target DOUBLE PRECISION,
+    direction TEXT NOT NULL,
+    defined_by TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS kaizo_kpi_captures (
+    capture_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    kpi_id TEXT NOT NULL,
+    value DOUBLE PRECISION NOT NULL,
+    captured_by TEXT NOT NULL,
+    assessment_id TEXT,
+    captured_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_audit_logs (
     id BIGSERIAL PRIMARY KEY,
     timestamp TEXT NOT NULL,
@@ -441,3 +465,58 @@ def list_evidence(subject_id: Optional[str] = None) -> list[Dict[str, Any]]:
             "verified_at": r[9], "notes": r[10],
         } for r in rows
     ]
+
+
+def upsert_kpi_definition(definition: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO kaizo_kpi_definitions
+                    (kpi_id, name, metric_name, unit, target, direction, defined_by, status, created_at, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (kpi_id) DO UPDATE SET
+                    name=EXCLUDED.name, metric_name=EXCLUDED.metric_name, unit=EXCLUDED.unit,
+                    target=EXCLUDED.target, direction=EXCLUDED.direction, defined_by=EXCLUDED.defined_by,
+                    status=EXCLUDED.status, updated_at=EXCLUDED.updated_at
+            """, (definition["kpi_id"],definition["name"],definition["metric_name"],definition["unit"],definition.get("target"),definition["direction"],definition["defined_by"],definition["status"],definition["created_at"],definition["updated_at"]))
+        conn.commit()
+
+
+def get_kpi_definition(kpi_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT kpi_id,name,metric_name,unit,target,direction,defined_by,status,created_at,updated_at FROM kaizo_kpi_definitions WHERE kpi_id=%s", (kpi_id,))
+            row=cur.fetchone()
+    if row is None:
+        return None
+    return {"kpi_id":row[0],"name":row[1],"metric_name":row[2],"unit":row[3],"target":row[4],"direction":row[5],"defined_by":row[6],"status":row[7],"created_at":row[8],"updated_at":row[9]}
+
+
+def upsert_kpi_capture(capture: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO kaizo_kpi_captures
+                    (capture_id,athlete_id,kpi_id,value,captured_by,assessment_id,captured_at,created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (capture_id) DO UPDATE SET value=EXCLUDED.value,captured_by=EXCLUDED.captured_by,assessment_id=EXCLUDED.assessment_id,captured_at=EXCLUDED.captured_at
+            """, (capture["capture_id"],capture["athlete_id"],capture["kpi_id"],capture["value"],capture["captured_by"],capture.get("assessment_id"),capture["captured_at"],capture["created_at"]))
+        conn.commit()
+
+
+def get_kpi_capture(capture_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT capture_id,athlete_id,kpi_id,value,captured_by,assessment_id,captured_at,created_at FROM kaizo_kpi_captures WHERE capture_id=%s", (capture_id,))
+            row=cur.fetchone()
+    if row is None:
+        return None
+    return {"capture_id":row[0],"athlete_id":row[1],"kpi_id":row[2],"value":row[3],"captured_by":row[4],"assessment_id":row[5],"captured_at":row[6],"created_at":row[7]}
