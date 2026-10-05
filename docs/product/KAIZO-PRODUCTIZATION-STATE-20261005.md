@@ -29,6 +29,14 @@ Status: R2 IN PROGRESS — FEAT-023 DONE / VERIFIED
 - FEAT-022 — DONE / VERIFIED — CI #118 — PACK-B #322 — merge `48e5b7b85473f2e19a73c52460b26ca000dcd2de`
 - FEAT-023 — DONE / VERIFIED — CI #123 — PACK-B #327 — merge `f887e1a7ccc8e4678c98ff2a7cd551257adfd984`
 
+## FEAT-025
+
+- PR #23 merged; Merge SHA `32ad6cf365a5257c922a6443f52f40a9463a584c`
+- Persistence #134: SUCCESS
+- PACK-B #338: SUCCESS
+- Status: DONE / VERIFIED
+- Next: R2 / FEAT-026 — Training-plan builder
+
 ## FEAT-024
 
 - Feature: Coach confirm/override
@@ -37,7 +45,7 @@ Status: R2 IN PROGRESS — FEAT-023 DONE / VERIFIED
 - Persistence Adapter Validation #131: SUCCESS
 - PACK-B #335: SUCCESS
 - Acceptance: DONE / VERIFIED
-- Next resume point: R2 / FEAT-025 — Decision record and outcome intent
+- Next resume point: R2 / FEAT-026 — Training-plan builder
 
 ## FEAT-023 closure
 - PR #21 merged into `main`.
