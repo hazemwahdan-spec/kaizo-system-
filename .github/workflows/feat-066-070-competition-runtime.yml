@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest
+        run: pip install -r requirements.txt pytest httpx
       - name: Compile runtime
         run: python -m py_compile backend/competition_runtime.py backend/main.py
       - name: Run FEAT-066..070 tests
