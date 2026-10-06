@@ -807,6 +807,55 @@ def get_training_plan(plan_id: str) -> Dict[str, Any]:
     return plan
 
 
+class TrainingSessionRequest(BaseModel):
+    plan_id: str
+    athlete_id: str
+    title: str
+    duration_minutes: int
+    blocks: List[Dict[str, Any]]
+    created_by: str
+
+
+TRAINING_SESSIONS: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/training-plans/{plan_id}/sessions", status_code=status.HTTP_201_CREATED)
+def create_training_session(plan_id: str, req: TrainingSessionRequest) -> Dict[str, Any]:
+    if plan_id != req.plan_id:
+        raise HTTPException(status_code=400, detail="plan_id mismatch")
+    if not req.title.strip() or not req.created_by.strip() or req.duration_minutes <= 0:
+        raise HTTPException(status_code=400, detail="title, created_by and positive duration_minutes are required")
+    plan = persistence.get_training_plan(plan_id) if persistence.is_postgres_enabled() else TRAINING_PLANS.get(plan_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="training plan not found")
+    if plan["athlete_id"] != req.athlete_id:
+        raise HTTPException(status_code=400, detail="athlete_id mismatch")
+    if not req.blocks:
+        raise HTTPException(status_code=400, detail="at least one session block is required")
+    total = sum(int(block.get("duration_minutes", 0)) for block in req.blocks)
+    if total != req.duration_minutes:
+        raise HTTPException(status_code=400, detail="block durations must equal session duration")
+    import uuid
+    now = datetime.utcnow().isoformat()
+    session = {"session_id":str(uuid.uuid4()),"plan_id":plan_id,"athlete_id":req.athlete_id,
+               "title":req.title.strip(),"duration_minutes":req.duration_minutes,"blocks":req.blocks,
+               "status":"DRAFT","created_by":req.created_by.strip(),"created_at":now,
+               "coach_final_authority":True,"execution_authorized":False}
+    TRAINING_SESSIONS[session["session_id"]] = session
+    persistence.upsert_training_session(session)
+    log_action(req.created_by,"TRAINING_SESSION_CREATED",plan,session,
+               "Session structure and timing recorded under a coach-owned training plan; execution remains separately controlled.")
+    return session
+
+
+@app.get("/api/v1/training-sessions/{session_id}")
+def get_training_session(session_id: str) -> Dict[str, Any]:
+    session = persistence.get_training_session(session_id) if persistence.is_postgres_enabled() else TRAINING_SESSIONS.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="training session not found")
+    return session
+
+
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
     cause: str

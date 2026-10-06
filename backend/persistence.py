@@ -233,6 +233,18 @@ CREATE TABLE IF NOT EXISTS kaizo_training_plans (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_training_sessions (
+    session_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    blocks JSONB NOT NULL,
+    status TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
@@ -1286,3 +1298,37 @@ def list_assessment_evidence(assessment_id: str) -> list[Dict[str, Any]]:
         }
         for row in rows
     ]
+
+
+def upsert_training_session(session: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO kaizo_training_sessions
+                (session_id,plan_id,athlete_id,title,duration_minutes,blocks,status,created_by,created_at)
+                VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
+                ON CONFLICT (session_id) DO UPDATE SET title=EXCLUDED.title,
+                duration_minutes=EXCLUDED.duration_minutes, blocks=EXCLUDED.blocks,
+                status=EXCLUDED.status""",
+                (session["session_id"],session["plan_id"],session["athlete_id"],session["title"],
+                 session["duration_minutes"],json.dumps(session["blocks"]),session["status"],
+                 session["created_by"],session["created_at"]))
+        conn.commit()
+
+
+def get_training_session(session_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT session_id,plan_id,athlete_id,title,duration_minutes,blocks,
+                                  status,created_by,created_at
+                           FROM kaizo_training_sessions WHERE session_id=%s""",(session_id,))
+            row=cur.fetchone()
+    if row is None:
+        return None
+    return {"session_id":row[0],"plan_id":row[1],"athlete_id":row[2],"title":row[3],
+            "duration_minutes":row[4],"blocks":row[5],"status":row[6],"created_by":row[7],
+            "created_at":row[8]}
+

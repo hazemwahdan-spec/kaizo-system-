@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - feat/kaizo-persistence-adapter
+      - feat-027-session-structure-timing
   pull_request:
     branches:
       - main
@@ -39,6 +40,8 @@ jobs:
           python-version: "3.12"
       - name: Install backend dependencies
         run: pip install -r requirements.txt
+      - name: Install pytest for FEAT-027 acceptance
+        run: pip install pytest
       - name: Compile backend
         run: python -m compileall -q .
       - name: Run persistence integration test
@@ -62,39 +65,29 @@ jobs:
         run: PYTHONPATH=. python test_feat_016_problem_statement.py
       - name: Run FEAT-017 problem library selection acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT017ProblemLibrarySelectionTests
-
       - name: Run FEAT-019 evidence-linked diagnosis acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT019EvidenceLinkedDiagnosisTests
-
       - name: Run FEAT-020 diagnosis confidence acceptance tests
         run: PYTHONPATH=. python test_feat_020_diagnosis_confidence.py
-
       - name: Run FEAT-021 decision candidate generation acceptance tests
         run: PYTHONPATH=. python test_feat_021_decision_candidates.py
-
       - name: Run FEAT-022 decision rationale and evidence acceptance tests
         run: PYTHONPATH=. python test_feat_022_decision_rationale.py
-
       - name: Run FEAT-023 alternative decision comparison acceptance tests
         run: PYTHONPATH=. python test_feat_023_decision_comparison.py
-
       - name: Run FEAT-024 coach confirm and override acceptance tests
         run: PYTHONPATH=. python test_feat_024_coach_review.py
-
       - name: Run FEAT-025 decision record acceptance tests
         run: PYTHONPATH=. python test_feat_025_decision_record.py
-
+      - name: Run FEAT-027 session structure and timing acceptance tests
+        run: PYTHONPATH=.. pytest -q test_feat_027_session_structure.py
       - name: Run FEAT-026 training plan acceptance tests
         run: PYTHONPATH=. python test_feat_026_training_plan.py
-
       - name: Run FEAT-046 audit spine acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_011_measurements.FEAT046AuditSpineTests
-
       - name: Run FEAT-051 evidence spine acceptance tests
         run: PYTHONPATH=. python test_feat_051_evidence.py
-
       - name: Run FEAT-041 digital twin state acceptance tests
         run: PYTHONPATH=. python test_feat_041_digital_twin.py
-
       - name: Run FEAT-056 safety/evidence guardrail acceptance tests
         run: PYTHONPATH=. python test_feat_056_safety_guardrails.py
