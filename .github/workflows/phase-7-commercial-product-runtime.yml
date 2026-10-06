@@ -17,4 +17,4 @@ jobs:
       - name: Install runtime dependencies
         run: pip install fastapi pydantic pytest
       - name: Validate commercial product runtime
-        run: python -m pytest productization/test_product_surface.py productization/test_runtime_adapter.py productization/test_product_surface_contract.py -q
+        run: python -m pytest productization/test_product_surface.py productization/test_runtime_adapter.py productization/test_product_surface_contract.py productization/test_product_api.py -q
