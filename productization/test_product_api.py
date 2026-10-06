@@ -75,7 +75,7 @@ def test_parent_api_requires_explicit_link():
 
 def test_product_api_fails_closed_without_production_identity(monkeypatch):
     monkeypatch.delenv("KAIZO_IDENTITY_MODE", raising=False)
-    response = client.get(
+    response = client().get(
         "/api/v1/product/navigation",
         headers={
             "X-KAIZO-Actor": "coach-1",
