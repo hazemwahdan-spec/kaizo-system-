@@ -1,0 +1,20 @@
+name: Phase 7 Commercial Product Runtime
+
+on:
+  push:
+    branches: [phase-7-commercial-product-runtime]
+  pull_request:
+    branches: [main]
+
+jobs:
+  product-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependencies
+        run: pip install fastapi pydantic pytest httpx2
+      - name: Validate commercial product runtime
+        run: python -m pytest productization/test_product_surface.py productization/test_runtime_adapter.py productization/test_product_surface_contract.py productization/test_product_api.py -q
