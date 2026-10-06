@@ -196,6 +196,90 @@ def _list(feature_id: str) -> List[Dict[str, Any]]:
              "created_at":r[9],"updated_at":r[10]} for r in rows]
 
 
+def _semantic_validate(feature_id: str, payload: Dict[str, Any]) -> None:
+    """Reject semantically invalid records, not merely missing-field records."""
+    def req(name: str) -> Any:
+        value = payload.get(name)
+        if value is None or (isinstance(value, str) and not value.strip()) or value == []:
+            raise ValueError(f"{name} must be non-empty")
+        return value
+
+    for key in {
+        "FEAT-033": ["decision_id","drill_id","selection_rationale"],
+        "FEAT-034": ["drill_id","session_id","dosage","rationale"],
+        "FEAT-035": ["prescription_id","cues","checks"],
+        "FEAT-036": ["session_id","athlete_id","response"],
+        "FEAT-037": ["athlete_id","baseline_ref","retest_measurements"],
+        "FEAT-038": ["before_ref","after_ref","comparison"],
+        "FEAT-039": ["athlete_id","state","state_basis"],
+        "FEAT-040": ["athlete_id","trigger_type","reason"],
+        "FEAT-042": ["entity_id","state","source_event"],
+        "FEAT-043": ["entity_id","version","state"],
+        "FEAT-044": ["decision_id","state_ref"],
+        "FEAT-045": ["athlete_id","requested_by"],
+        "FEAT-047": ["knowledge_id","source_type","source_ref","provenance_note"],
+        "FEAT-048": ["knowledge_id","lifecycle_status","changed_by"],
+        "FEAT-049": ["workflow_context","query"],
+        "FEAT-050": ["knowledge_id","unit_id","link_type"],
+        "FEAT-052": ["actor_id","action","occurred_at"],
+        "FEAT-053": ["object_type","governance_status","owner"],
+        "FEAT-054": ["query","reviewed_by"],
+        "FEAT-055": ["product_action","source_record_ids","trace_reason"],
+        "FEAT-057": ["subject_id","evidence_level","quality_status"],
+        "FEAT-058": ["subject_id","provenance_refs"],
+        "FEAT-059": ["action_id","block_reason","diagnostic"],
+        "FEAT-060": ["subject_id","escalation_reason","review_state"],
+        "FEAT-061": ["academy_id","name","status"],
+        "FEAT-062": ["academy_id","coach_id","role"],
+        "FEAT-063": ["academy_id","group_id","name"],
+        "FEAT-064": ["athlete_id","coach_ids","academy_id"],
+        "FEAT-065": ["academy_id","metrics"],
+        "FEAT-066": ["event_id","event_name","date","context"],
+        "FEAT-067": ["athlete_id","event_id","indicators"],
+        "FEAT-068": ["athlete_id","event_id","performance"],
+        "FEAT-069": ["athlete_id","event_ids","trend"],
+        "FEAT-070": ["athlete_id","event_id","decision_basis"],
+        "FEAT-071": ["athlete_id","period","progress"],
+        "FEAT-072": ["athlete_id","kpi_id","period","trend"],
+        "FEAT-073": ["coach_id","period","summary"],
+        "FEAT-074": ["academy_id","period","metrics"],
+        "FEAT-075": ["report_id","approved_record_ids","format"],
+    }.get(feature_id, []):
+        req(key)
+
+    if feature_id in {"FEAT-035","FEAT-064"}:
+        key = "cues" if feature_id == "FEAT-035" else "coach_ids"
+        if not isinstance(payload[key], list) or not payload[key]:
+            raise ValueError(f"{key} must be a non-empty list")
+    if feature_id == "FEAT-055" and (not isinstance(payload["source_record_ids"], list) or not payload["source_record_ids"]):
+        raise ValueError("source_record_ids must be a non-empty list")
+    if feature_id == "FEAT-058" and (not isinstance(payload["provenance_refs"], list) or not payload["provenance_refs"]):
+        raise ValueError("provenance_refs must be a non-empty list")
+    if feature_id == "FEAT-069" and (not isinstance(payload["event_ids"], list) or len(payload["event_ids"]) < 2):
+        raise ValueError("event_ids must contain at least two events for a trend")
+    if feature_id == "FEAT-075":
+        if not isinstance(payload["approved_record_ids"], list) or not payload["approved_record_ids"]:
+            raise ValueError("approved_record_ids must be a non-empty list")
+        if str(payload["format"]).upper() not in {"CSV","JSON","PDF"}:
+            raise ValueError("format must be CSV, JSON, or PDF")
+    if feature_id == "FEAT-039" and payload["state"] not in {"IMPROVING","STABLE","REGRESSING","HOLD","UNKNOWN"}:
+        raise ValueError("invalid progress state")
+    if feature_id == "FEAT-043" and int(payload["version"]) < 1:
+        raise ValueError("version must be >= 1")
+    if feature_id == "FEAT-048" and payload["lifecycle_status"] not in {"DRAFT","REVIEW","APPROVED","RETIRED","REJECTED"}:
+        raise ValueError("invalid knowledge lifecycle_status")
+    if feature_id == "FEAT-057" and payload["evidence_level"] not in {"E0","E1","E2","E3","E4","E5","E6"}:
+        raise ValueError("evidence_level must be E0-E6")
+    if feature_id == "FEAT-060" and payload["review_state"] not in {"OPEN","UNDER_REVIEW","RESOLVED","REJECTED"}:
+        raise ValueError("invalid review_state")
+    if feature_id == "FEAT-042" and not isinstance(payload["state"], dict):
+        raise ValueError("state must be an object")
+    if feature_id == "FEAT-037" and not isinstance(payload["retest_measurements"], dict):
+        raise ValueError("retest_measurements must be an object")
+    if feature_id == "FEAT-035" and (not isinstance(payload["checks"], list) or not payload["checks"]):
+        raise ValueError("checks must be a non-empty list")
+
+
 def _validate(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
     contract=CONTRACTS.get(feature_id)
     if not contract:
@@ -210,6 +294,7 @@ def _validate(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
     if missing:
         raise HTTPException(status_code=400, detail={"missing_fields":missing,"feature_id":feature_id})
     try:
+        _semantic_validate(feature_id, req.payload)
         if feature_id == "FEAT-029":
             p=req.payload
             validate_progression_rule(ProgressionRegressionRule(
