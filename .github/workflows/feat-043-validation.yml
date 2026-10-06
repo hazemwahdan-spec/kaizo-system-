@@ -1,0 +1,15 @@
+name: FEAT-043 Validation
+on:
+  pull_request:
+    paths:
+      - backend/state_version_history.py
+      - backend/test_feat_043_state_version_history.py
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m unittest test_feat_043_state_version_history.py
+        working-directory: backend
