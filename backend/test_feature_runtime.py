@@ -75,3 +75,25 @@ def test_canonical_domain_validation_is_enforced():
         "safety_constraints":"coach supervised"},
         "evidence_refs":["REF-015"],"coach_final_authority":True,"execution_authorized":False})
     assert r.status_code==201
+
+
+def test_semantic_validation_rejects_invalid_feature_shapes():
+    bad = client.post("/api/v1/features/feat-069/competition-trend-analysis", json={
+        "subject_id":"athlete-1","actor_id":"coach-1",
+        "payload":{"athlete_id":"athlete-1","event_ids":["E1"],"trend":"up"},
+        "evidence_refs":["REF-015"],"coach_final_authority":True,"execution_authorized":False})
+    assert bad.status_code == 400
+    assert "two events" in str(bad.json()["detail"])
+
+    bad = client.post("/api/v1/features/feat-075/approved-data-reporting-export", json={
+        "subject_id":"report-1","actor_id":"coach-1",
+        "payload":{"report_id":"R1","approved_record_ids":["A1"],"format":"XML"},
+        "coach_final_authority":True,"execution_authorized":False})
+    assert bad.status_code == 400
+    assert "format" in str(bad.json()["detail"])
+
+    bad = client.post("/api/v1/features/feat-039/progress-state-update", json={
+        "subject_id":"athlete-1","actor_id":"coach-1",
+        "payload":{"athlete_id":"athlete-1","state":"GUESS","state_basis":"unsupported"},
+        "evidence_refs":["REF-015"],"coach_final_authority":True,"execution_authorized":False})
+    assert bad.status_code == 400
