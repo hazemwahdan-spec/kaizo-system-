@@ -11,6 +11,7 @@ from datetime import datetime
 
 import persistence
 from feature_runtime import router as feature_runtime_router
+from training_workflow import router as training_workflow_router
 
 app = FastAPI(
     title="KAIZO Core Engine API",
@@ -19,6 +20,7 @@ app = FastAPI(
 )
 
 app.include_router(feature_runtime_router)
+app.include_router(training_workflow_router)
 
 app.add_middleware(
     CORSMiddleware,
