@@ -1,0 +1,22 @@
+name: FEAT-029 Acceptance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/progression_rules.py"
+      - "backend/test_feat_029_progression_regression.py"
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Install
+        working-directory: backend
+        run: pip install -r requirements.txt && pip install pytest
+      - name: Acceptance
+        working-directory: backend
+        run: PYTHONPATH=.. pytest -q test_feat_029_progression_regression.py
