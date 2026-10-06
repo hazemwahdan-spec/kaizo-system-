@@ -1332,3 +1332,92 @@ def get_training_session(session_id: str) -> Optional[Dict[str, Any]]:
             "duration_minutes":row[4],"blocks":row[5],"status":row[6],"created_by":row[7],
             "created_at":row[8]}
 
+def _ensure_training_dosages_table() -> None:
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS kaizo_training_dosages (
+                    dosage_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    athlete_id TEXT NOT NULL,
+                    block_name TEXT NOT NULL,
+                    sets INTEGER NOT NULL,
+                    reps INTEGER NOT NULL,
+                    rest_seconds INTEGER NOT NULL DEFAULT 0,
+                    dosage_notes TEXT,
+                    status TEXT NOT NULL,
+                    prescribed_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+        conn.commit()
+
+
+def upsert_training_dosage(dosage: Dict[str, Any]) -> None:
+    if not is_postgres_enabled():
+        return
+    _ensure_training_dosages_table()
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO kaizo_training_dosages
+                    (dosage_id, session_id, plan_id, athlete_id, block_name, sets, reps,
+                     rest_seconds, dosage_notes, status, prescribed_by, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (dosage_id) DO UPDATE SET
+                    block_name=EXCLUDED.block_name, sets=EXCLUDED.sets, reps=EXCLUDED.reps,
+                    rest_seconds=EXCLUDED.rest_seconds, dosage_notes=EXCLUDED.dosage_notes,
+                    status=EXCLUDED.status, prescribed_by=EXCLUDED.prescribed_by
+            """, (
+                dosage["dosage_id"], dosage["session_id"], dosage["plan_id"], dosage["athlete_id"],
+                dosage["block_name"], dosage["sets"], dosage["reps"], dosage["rest_seconds"],
+                dosage.get("dosage_notes"), dosage["status"], dosage["prescribed_by"], dosage["created_at"]
+            ))
+        conn.commit()
+
+
+def get_training_dosage(dosage_id: str) -> Optional[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return None
+    _ensure_training_dosages_table()
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT dosage_id, session_id, plan_id, athlete_id, block_name, sets, reps,
+                       rest_seconds, dosage_notes, status, prescribed_by, created_at
+                FROM kaizo_training_dosages WHERE dosage_id=%s
+            """, (dosage_id,))
+            r = cur.fetchone()
+    if r is None:
+        return None
+    return {
+        "dosage_id": r[0], "session_id": r[1], "plan_id": r[2], "athlete_id": r[3],
+        "block_name": r[4], "sets": r[5], "reps": r[6], "rest_seconds": r[7],
+        "dosage_notes": r[8], "status": r[9], "prescribed_by": r[10], "created_at": r[11],
+        "coach_final_authority": True, "execution_authorized": False,
+    }
+
+
+def list_training_dosages(session_id: str) -> list[Dict[str, Any]]:
+    if not is_postgres_enabled():
+        return []
+    _ensure_training_dosages_table()
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT dosage_id, session_id, plan_id, athlete_id, block_name, sets, reps,
+                       rest_seconds, dosage_notes, status, prescribed_by, created_at
+                FROM kaizo_training_dosages
+                WHERE session_id=%s ORDER BY created_at, dosage_id
+            """, (session_id,))
+            rows = cur.fetchall()
+    return [{
+        "dosage_id": r[0], "session_id": r[1], "plan_id": r[2], "athlete_id": r[3],
+        "block_name": r[4], "sets": r[5], "reps": r[6], "rest_seconds": r[7],
+        "dosage_notes": r[8], "status": r[9], "prescribed_by": r[10], "created_at": r[11],
+        "coach_final_authority": True, "execution_authorized": False,
+    } for r in rows]
+

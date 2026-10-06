@@ -855,6 +855,104 @@ def get_training_session(session_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="training session not found")
     return session
 
+class TrainingDosageRequest(BaseModel):
+    session_id: str
+    block_name: str
+    sets: int
+    reps: int
+    rest_seconds: int = 0
+    dosage_notes: Optional[str] = None
+    prescribed_by: str
+
+
+TRAINING_DOSAGES: Dict[str, Dict[str, Any]] = {}
+
+
+@app.post("/api/v1/training-sessions/{session_id}/dosage", status_code=status.HTTP_201_CREATED)
+def create_training_dosage(session_id: str, req: TrainingDosageRequest) -> Dict[str, Any]:
+    if session_id != req.session_id:
+        raise HTTPException(status_code=400, detail="session_id mismatch")
+    if not req.block_name.strip() or not req.prescribed_by.strip():
+        raise HTTPException(status_code=400, detail="block_name and prescribed_by are required")
+    if req.sets <= 0 or req.reps <= 0 or req.rest_seconds < 0:
+        raise HTTPException(status_code=400, detail="sets and reps must be positive and rest_seconds cannot be negative")
+
+    session = (
+        persistence.get_training_session(session_id)
+        if persistence.is_postgres_enabled()
+        else TRAINING_SESSIONS.get(session_id)
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="training session not found")
+
+    block_names = {str(block.get("name", "")).strip() for block in session.get("blocks", [])}
+    if req.block_name.strip() not in block_names:
+        raise HTTPException(status_code=400, detail="block_name must match an existing session block")
+
+    import uuid
+    now = datetime.utcnow().isoformat()
+    dosage = {
+        "dosage_id": str(uuid.uuid4()),
+        "session_id": session_id,
+        "plan_id": session["plan_id"],
+        "athlete_id": session["athlete_id"],
+        "block_name": req.block_name.strip(),
+        "sets": req.sets,
+        "reps": req.reps,
+        "rest_seconds": req.rest_seconds,
+        "dosage_notes": req.dosage_notes.strip() if req.dosage_notes else None,
+        "status": "DRAFT",
+        "prescribed_by": req.prescribed_by.strip(),
+        "created_at": now,
+        "coach_final_authority": True,
+        "execution_authorized": False,
+    }
+    TRAINING_DOSAGES[dosage["dosage_id"]] = dosage
+    persistence.upsert_training_dosage(dosage)
+    log_action(
+        req.prescribed_by,
+        "TRAINING_DOSAGE_PRESCRIBED",
+        session,
+        dosage,
+        "Dosage prescription recorded for an existing coach-owned session; execution remains separately controlled.",
+    )
+    return dosage
+
+
+@app.get("/api/v1/training-sessions/{session_id}/dosage")
+def list_training_dosages(session_id: str) -> Dict[str, Any]:
+    session = (
+        persistence.get_training_session(session_id)
+        if persistence.is_postgres_enabled()
+        else TRAINING_SESSIONS.get(session_id)
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="training session not found")
+    dosages = (
+        persistence.list_training_dosages(session_id)
+        if persistence.is_postgres_enabled()
+        else [item for item in TRAINING_DOSAGES.values() if item["session_id"] == session_id]
+    )
+    return {
+        "session_id": session_id,
+        "total": len(dosages),
+        "dosages": dosages,
+        "coach_final_authority": True,
+        "execution_authorized": False,
+    }
+
+
+@app.get("/api/v1/training-dosages/{dosage_id}")
+def get_training_dosage(dosage_id: str) -> Dict[str, Any]:
+    dosage = (
+        persistence.get_training_dosage(dosage_id)
+        if persistence.is_postgres_enabled()
+        else TRAINING_DOSAGES.get(dosage_id)
+    )
+    if dosage is None:
+        raise HTTPException(status_code=404, detail="training dosage not found")
+    return dosage
+
 
 class CauseContextFramingRequest(BaseModel):
     problem_id: str
