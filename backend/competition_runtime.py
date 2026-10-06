@@ -159,7 +159,8 @@ def capture_performance(req: PerformanceCreate) -> Dict[str, Any]:
 
 
 @router.get("/trend/{athlete_id}")
-def performance_trend(athlete_id: str, event_ids: List[str]) -> Dict[str, Any]:
+def performance_trend(athlete_id: str, event_ids: str) -> Dict[str, Any]:
+    event_ids = [item.strip() for item in event_ids.split(",") if item.strip()]
     if len(event_ids) < 2:
         raise HTTPException(status_code=400, detail="at least two event_ids are required")
     records = []
