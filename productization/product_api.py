@@ -26,7 +26,7 @@ def navigation(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     try:
-        return surface.navigation(ctx(actor_id, role, tenant_id, owner))
+        return get_surface().navigation(ctx(actor_id, role, tenant_id, owner))
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
@@ -49,7 +49,7 @@ def decision(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     try:
-        return surface.request_decision(ctx(actor_id, role, tenant_id, owner), req.resource_tenant_id,
+        return get_surface().request_decision(ctx(actor_id, role, tenant_id, owner), req.resource_tenant_id,
                                         req.model_dump(exclude={"resource_tenant_id"}))
     except RuntimeAuthorizationError as exc:
         deny(exc)
@@ -70,7 +70,7 @@ def intervention(
     try:
         c = ctx(actor_id, role, tenant_id, owner)
         c = RuntimeContext(c.actor_id, c.role, c.tenant_id, c.resource_owner_id, req.coach_approved)
-        return surface.record_intervention(c, req.resource_tenant_id, req.model_dump(exclude={"resource_tenant_id", "coach_approved"}))
+        return get_surface().record_intervention(c, req.resource_tenant_id, req.model_dump(exclude={"resource_tenant_id", "coach_approved"}))
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
@@ -87,7 +87,7 @@ def progress(
     if role == "athlete" and owner != athlete_id:
         raise HTTPException(status_code=403, detail="athlete self-scope required")
     try:
-        return surface.athlete_progress(ctx(actor_id, role, tenant_id, owner), resource_tenant_id, athlete_id, [])
+        return get_surface().athlete_progress(ctx(actor_id, role, tenant_id, owner), resource_tenant_id, athlete_id, [])
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
@@ -102,6 +102,6 @@ def parent_progress(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     try:
-        return surface.parent_progress(ctx(actor_id, role, tenant_id, owner), resource_tenant_id, athlete_id, [])
+        return get_surface().parent_progress(ctx(actor_id, role, tenant_id, owner), resource_tenant_id, athlete_id, [])
     except RuntimeAuthorizationError as exc:
         deny(exc)
