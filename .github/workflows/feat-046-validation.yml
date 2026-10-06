@@ -1,0 +1,13 @@
+name: FEAT-046 Validation
+on:
+  pull_request:
+    paths: [backend/governed_knowledge_record.py, backend/test_feat_046_governed_knowledge_record.py]
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m unittest test_feat_046_governed_knowledge_record.py
+        working-directory: backend
