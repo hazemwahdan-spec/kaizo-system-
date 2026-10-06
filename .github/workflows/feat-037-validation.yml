@@ -1,0 +1,16 @@
+name: FEAT-037 Validation
+on:
+  pull_request:
+    paths:
+      - "backend/retest_capture.py"
+      - "backend/test_feat_037_retest_capture.py"
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Acceptance
+        working-directory: backend
+        run: python -m unittest test_feat_037_retest_capture.py
