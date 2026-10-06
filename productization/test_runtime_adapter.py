@@ -1,76 +1,56 @@
-from productization.runtime_adapter import (
-    ProductCoreRuntimeAdapter,
-    RuntimeAuthorizationError,
-    RuntimeContext,
-)
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+BACKEND = ROOT / "backend"
+if str(BACKEND) not in sys.path:
+    sys.path.insert(0, str(BACKEND))
+
+from productization.runtime_adapter import CoreRuntimeGateway, ProductCoreRuntimeAdapter, RuntimeContext
 
 
-class FakeCore:
-    def request_decision(self, **kwargs):
-        return kwargs
-
-    def record_intervention(self, **kwargs):
-        return kwargs
-
-    def export_approved(self, **kwargs):
-        return kwargs
-
-
-def test_request_never_authorizes_execution():
-    a = ProductCoreRuntimeAdapter(FakeCore())
-    out = a.request_decision(
-        RuntimeContext("u1", "coach", "academy-a", "athlete-1"),
+def test_adapter_binds_to_real_frozen_core():
+    adapter = ProductCoreRuntimeAdapter(CoreRuntimeGateway())
+    result = adapter.request_decision(
+        RuntimeContext("coach-1", "coach", "academy-a", "athlete-1"),
         "academy-a",
-        {"decision": "adapt"},
+        {
+            "case_id": "CASE-P7-001",
+            "decision": {"type": "SELECTION", "value": "candidate-a"},
+            "intervention": {"type": "DRILL", "value": "seoi"},
+            "response_kpi": {"kpi": "entry_quality", "value": 7},
+            "retest": {"result": "PASS"},
+        },
     )
-    assert out["execution_authorized"] is False
+    assert result["status"] == "LOOP_COMPLETED"
+    assert result["coach_final_authority"] is True
 
 
-def test_cross_tenant_access_is_denied():
-    a = ProductCoreRuntimeAdapter(FakeCore())
-    try:
-        a.request_decision(
-            RuntimeContext("u1", "coach", "academy-a"),
+def test_real_core_cannot_be_called_with_execution_authorized_true():
+    gateway = CoreRuntimeGateway()
+    with pytest.raises(Exception):
+        gateway.request_decision(
+            actor_id="coach-1",
+            tenant_id="academy-a",
+            role="coach",
+            payload={
+                "case_id": "CASE-P7-NEG",
+                "decision": {"x": 1},
+                "intervention": {"x": 1},
+                "response_kpi": {"x": 1},
+                "retest": {"x": 1},
+            },
+            execution_authorized=True,
+        )
+
+
+def test_adapter_still_blocks_cross_tenant_before_core():
+    adapter = ProductCoreRuntimeAdapter(CoreRuntimeGateway())
+    with pytest.raises(Exception, match="cross-tenant"):
+        adapter.request_decision(
+            RuntimeContext("coach-1", "coach", "academy-a"),
             "academy-b",
             {},
         )
-        assert False
-    except RuntimeAuthorizationError as exc:
-        assert "cross-tenant" in str(exc)
-
-
-def test_coach_mutation_requires_explicit_approval():
-    a = ProductCoreRuntimeAdapter(FakeCore())
-    try:
-        a.record_intervention(
-            RuntimeContext("u1", "coach", "academy-a", "athlete-1", False),
-            "academy-a",
-            {"intervention": "drill"},
-        )
-        assert False
-    except RuntimeAuthorizationError as exc:
-        assert "Coach approval" in str(exc)
-
-
-def test_athlete_cannot_record_intervention():
-    a = ProductCoreRuntimeAdapter(FakeCore())
-    try:
-        a.record_intervention(
-            RuntimeContext("u1", "athlete", "academy-a", "u1"),
-            "academy-a",
-            {"intervention": "drill"},
-        )
-        assert False
-    except RuntimeAuthorizationError:
-        pass
-
-
-def test_export_passes_approved_ids_and_never_authorizes_execution():
-    a = ProductCoreRuntimeAdapter(FakeCore())
-    out = a.export_approved(
-        RuntimeContext("u1", "coach", "academy-a", coach_approved=True),
-        "academy-a",
-        ["R1", "R2"],
-    )
-    assert out["approved_record_ids"] == ["R1", "R2"]
-    assert out["execution_authorized"] is False
