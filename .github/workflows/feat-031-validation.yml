@@ -1,0 +1,23 @@
+name: FEAT-031 Validation
+
+on:
+  pull_request:
+    paths:
+      - "backend/drill_library.py"
+      - "backend/test_feat_031_drill_library.py"
+      - ".github/workflows/feat-031-validation.yml"
+  push:
+    branches:
+      - feat-031-drill-library
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run FEAT-031 acceptance
+        working-directory: backend
+        run: python -m unittest test_feat_031_drill_library.py
