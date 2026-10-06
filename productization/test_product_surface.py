@@ -11,15 +11,15 @@ from productization.runtime_adapter import RuntimeAuthorizationError, RuntimeCon
 
 class StubRuntime:
     def request_decision(self, **kwargs):
-        assert kwargs["execution_authorized"] is False
-        return {"status": "LOOP_COMPLETED", "coach_final_authority": True}
+        assert "execution_authorized" not in kwargs
+        return {"status": "LOOP_COMPLETED", "coach_final_authority": True, "execution_authorized": False}
 
     def record_intervention(self, **kwargs):
-        assert kwargs["execution_authorized"] is False
-        return {"status": "LOOP_COMPLETED"}
+        assert "execution_authorized" not in kwargs
+        return {"status": "LOOP_COMPLETED", "execution_authorized": False}
 
     def export_approved(self, **kwargs):
-        assert kwargs["execution_authorized"] is False
+        assert "execution_authorized" not in kwargs
         return {"status": "APPROVAL_REQUIRED", "execution_authorized": False}
 
 
