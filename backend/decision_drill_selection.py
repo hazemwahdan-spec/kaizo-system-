@@ -1,9 +1,12 @@
-"""FEAT-033 Decision-to-drill selection domain model."""
+"""FEAT-033 domain model."""
 from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DecisionDrillSelection:
-    decision_id: str, drill_id: str, rationale: str, selected_by: str
+    decision_id: str
+    drill_id: str
+    rationale: str
+    selected_by: str
     coach_final_authority: bool = True
     execution_authorized: bool = False
 
