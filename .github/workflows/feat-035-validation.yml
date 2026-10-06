@@ -1,0 +1,16 @@
+name: FEAT-035 Validation
+on:
+  pull_request:
+    paths:
+      - "backend/execution_cues_checklist.py"
+      - "backend/test_feat_035_execution_cues_checklist.py"
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Acceptance
+        working-directory: backend
+        run: python -m unittest test_feat_035_execution_cues_checklist.py
