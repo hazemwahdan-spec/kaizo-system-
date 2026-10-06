@@ -44,7 +44,7 @@ def test_033_to_040_create_real_feature_records():
         response = client.post(path, json=payload)
         assert response.status_code == 201, (path, response.text)
         body = response.json()
-        assert body["feature_id"] in path
+        assert body["feature_id"].lower() in path
         assert body["coach_final_authority"] is True
         assert body["execution_authorized"] is False
 

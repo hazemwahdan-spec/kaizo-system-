@@ -1,0 +1,21 @@
+name: FEAT-042-045 State Cycle Integration
+on:
+  pull_request:
+    paths:
+      - backend/state_cycle.py
+      - backend/test_state_cycle.py
+      - backend/main.py
+      - backend/persistence.py
+  push:
+    branches:
+      - "feat/integrate-042-045-state-cycle"
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r backend/requirements.txt pytest
+      - run: python -m pytest -q backend/test_state_cycle.py
