@@ -53,9 +53,9 @@ class FeatureRecord(BaseModel):
 # Required fields are deliberately feature-specific. This prevents the common
 # failure mode where a single generic JSON envelope is mistaken for 47 features.
 CONTRACTS: Dict[str, Dict[str, Any]] = {
-    "FEAT-029": {"name":"Progression/regression rules","required":["rule_type","condition","action"],"evidence":False,"status":"ACTIVE"},
-    "FEAT-030": {"name":"Session constraints and notes","required":["constraint_type","notes"],"evidence":False,"status":"ACTIVE"},
-    "FEAT-031": {"name":"Drill library","required":["drill_id","name","purpose"],"evidence":True,"status":"PUBLISHED"},
+    "FEAT-029": {"name":"Progression/regression rules","required":["metric","threshold","action","adjustment"],"evidence":False,"status":"ACTIVE"},
+    "FEAT-030": {"name":"Session constraints and notes","required":["session_id","kind","content","priority"],"evidence":False,"status":"ACTIVE"},
+    "FEAT-031": {"name":"Drill library","required":["drill_id","name","judo_area","technical_skill","problem_target","decision_target","age_suitability","skill_level","execution_pattern","kpi","safety_constraints"],"evidence":True,"status":"PUBLISHED"},
     "FEAT-032": {"name":"Problem-to-drill linkage","required":["problem_id","drill_id","link_rationale"],"evidence":True,"status":"ACTIVE"},
     "FEAT-033": {"name":"Decision-to-drill selection","required":["decision_id","drill_id","selection_rationale"],"evidence":True,"status":"PENDING_COACH_REVIEW"},
     "FEAT-034": {"name":"Drill prescription","required":["drill_id","session_id","dosage","rationale"],"evidence":False,"status":"DRAFT"},
