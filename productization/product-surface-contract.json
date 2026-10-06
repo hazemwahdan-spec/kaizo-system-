@@ -1,0 +1,43 @@
+{
+  "$schema": "kaizo-product-surface-contract-v1",
+  "phase": 7,
+  "purpose": "commercial product surface over the frozen Core Engine",
+  "execution_authorized_default": false,
+  "coach_final_authority": true,
+  "evidence_before_claim": true,
+  "roles": {
+    "academy": {
+      "surfaces": ["dashboard", "groups", "coaches", "athletes", "approved_reports"],
+      "allowed_actions": ["manage_groups", "assign_coaches", "view_authorized_reports"],
+      "mutation_requires": ["authenticated_identity", "tenant_membership", "server_side_rbac"],
+      "forbidden": ["execute_training", "override_coach_decision", "bypass_evidence_gate", "export_unapproved_data"]
+    },
+    "coach": {
+      "surfaces": ["decision_cases", "adaptation", "decision_loop", "digital_twin", "audit"],
+      "allowed_actions": ["request_core_decision", "record_intervention", "record_retest", "review_state", "export_approved"],
+      "mutation_requires": ["authenticated_identity", "tenant_membership", "assigned_resource_scope", "coach_final_authority"],
+      "forbidden": ["autonomous_execution", "safety_override", "evidence_bypass", "cross_tenant_access"]
+    },
+    "athlete": {
+      "surfaces": ["my_progress", "approved_feedback", "competition_results"],
+      "allowed_actions": ["view_own_progress", "view_approved_feedback", "view_own_results"],
+      "writes": false,
+      "forbidden": ["request_core_decision", "record_intervention", "export_records", "change_coach_decision"]
+    },
+    "parent": {
+      "surfaces": ["linked_athlete", "progress", "approved_reports"],
+      "allowed_actions": ["view_linked_progress", "view_approved_reports"],
+      "writes": false,
+      "forbidden": ["request_core_decision", "record_intervention", "export_records", "change_coach_decision"]
+    }
+  },
+  "global_denials": [
+    "execution_authorized=true",
+    "implicit_execution",
+    "safety_override",
+    "evidence_bypass",
+    "coach_authority_bypass",
+    "cross_tenant_access"
+  ],
+  "production_verified": false
+}
