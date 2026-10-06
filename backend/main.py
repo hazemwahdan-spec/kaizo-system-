@@ -10,12 +10,15 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
+from feature_runtime import router as feature_runtime_router
 
 app = FastAPI(
     title="KAIZO Core Engine API",
     version="2.0.0",
     description="Enterprise AI-Native Coaching OS for Combat Sports"
 )
+
+app.include_router(feature_runtime_router)
 
 app.add_middleware(
     CORSMiddleware,
