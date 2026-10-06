@@ -1,0 +1,26 @@
+name: FEAT-071-075 Reporting Runtime Integration
+
+on:
+  pull_request:
+    paths:
+      - "backend/reporting_runtime.py"
+      - "backend/test_reporting_runtime.py"
+      - "backend/main.py"
+      - ".github/workflows/feat-071-075-reporting-runtime.yml"
+
+jobs:
+  reporting-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest httpx
+      - name: Compile runtime
+        run: python -m py_compile backend/reporting_runtime.py backend/main.py
+      - name: Run FEAT-071..075 tests
+        env:
+          PYTHONPATH: backend
+        run: pytest -q backend/test_reporting_runtime.py
