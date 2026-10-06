@@ -1865,5 +1865,11 @@ def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
     log_action(req.case_id, "DECISION_ADAPTATION", None, output, "Runtime adaptation executed under Coach Final Authority with Common Core preservation.")
     return output
 
-# Mounted after Core decision functions are defined to keep the product-to-Core boundary acyclic.\nimport sys\nfrom pathlib import Path\n_ROOT = Path(__file__).resolve().parents[1]\nif str(_ROOT) not in sys.path:\n    sys.path.insert(0, str(_ROOT))\nfrom productization.product_api import router as product_api_router
+# Mounted after Core decision functions are defined to keep the product-to-Core boundary acyclic.
+import sys
+from pathlib import Path
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+from productization.product_api import router as product_api_router
 app.include_router(product_api_router)
