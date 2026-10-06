@@ -14,6 +14,7 @@ from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
 from knowledge_runtime import router as knowledge_runtime_router
 from audit_trace_runtime import router as audit_trace_runtime_router
+from evidence_safety_runtime import router as evidence_safety_runtime_router
 from state_cycle import router as state_cycle_router
 
 app = FastAPI(
@@ -26,6 +27,7 @@ app.include_router(feature_runtime_router)
 app.include_router(training_workflow_router)
 app.include_router(knowledge_runtime_router)
 app.include_router(audit_trace_runtime_router)
+app.include_router(evidence_safety_runtime_router)
 app.include_router(state_cycle_router)
 
 app.add_middleware(
