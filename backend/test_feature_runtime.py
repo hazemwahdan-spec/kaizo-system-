@@ -57,3 +57,21 @@ def test_feature_list_and_get():
     l=client.get("/api/v1/features/feat-061/academy-entity")
     assert l.status_code==200
     assert any(x["record_id"]==rid for x in l.json()["records"])
+
+
+def test_canonical_domain_validation_is_enforced():
+    r=client.post("/api/v1/features/feat-029/progression-regression-rules",json={
+        "subject_id":"athlete-1","actor_id":"coach-1",
+        "payload":{"metric":"technical_quality","threshold":8,"action":"PROGRESS","adjustment":1},
+        "coach_final_authority":True,"execution_authorized":False})
+    assert r.status_code==400  # rule requires explicit rule identity/name semantics and remains fail-closed
+
+    r=client.post("/api/v1/features/feat-031/drill-library",json={
+        "subject_id":"drill-1","actor_id":"coach-1",
+        "payload":{"drill_id":"D1","name":"Uchi-komi","judo_area":"Nage-waza",
+        "technical_skill":"Seoi-nage entry","problem_target":"late entry",
+        "decision_target":"entry timing","age_suitability":"U11+","skill_level":"intermediate",
+        "execution_pattern":"controlled repetitions","kpi":"entry quality",
+        "safety_constraints":"coach supervised"},
+        "evidence_refs":["REF-015"],"coach_final_authority":True,"execution_authorized":False})
+    assert r.status_code==201
