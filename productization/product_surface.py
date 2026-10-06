@@ -34,6 +34,7 @@ class ProductSurface:
 
     def request_decision(self, ctx: RuntimeContext, resource_tenant_id: str,
                          payload: Mapping[str, Any]) -> Any:
+        self._authorize_mutation(ctx, resource_tenant_id, {"coach"})
         result = self.runtime.request_decision(ctx=ctx, resource_tenant_id=resource_tenant_id, payload=payload)
         if isinstance(result, dict):
             result = {**result, "execution_authorized": False}
@@ -41,6 +42,9 @@ class ProductSurface:
 
     def record_intervention(self, ctx: RuntimeContext, resource_tenant_id: str,
                             payload: Mapping[str, Any]) -> Any:
+        self._authorize_mutation(ctx, resource_tenant_id, {"coach"})
+        if not ctx.coach_approved:
+            raise RuntimeAuthorizationError("Coach approval is required")
         result = self.runtime.record_intervention(ctx=ctx, resource_tenant_id=resource_tenant_id, payload=payload)
         if isinstance(result, dict):
             result = {**result, "execution_authorized": False}
@@ -48,7 +52,11 @@ class ProductSurface:
 
     def approved_export(self, ctx: RuntimeContext, resource_tenant_id: str,
                         record_ids: list[str]) -> Any:
-        return self.runtime.export_approved(ctx=ctx, resource_tenant_id=resource_tenant_id, record_ids=record_ids)
+        self._authorize_mutation(ctx, resource_tenant_id, {"academy", "coach"})
+        result = self.runtime.export_approved(ctx=ctx, resource_tenant_id=resource_tenant_id, record_ids=record_ids)
+        if isinstance(result, dict):
+            result = {**result, "execution_authorized": False}
+        return result
 
     def athlete_progress(self, ctx: RuntimeContext, resource_tenant_id: str,
                          athlete_id: str, records: list[Mapping[str, Any]]) -> dict[str, Any]:
@@ -67,6 +75,15 @@ class ProductSurface:
             raise RuntimeAuthorizationError("explicit athlete linkage is required")
         return {"athlete_id": linked_athlete_id, "records": list(records), "approved_only": True,
                 "execution_authorized": False}
+
+    @staticmethod
+    def _authorize_mutation(ctx: RuntimeContext, resource_tenant_id: str, allowed_roles: set[str]) -> None:
+        if not ctx.actor_id or not ctx.tenant_id:
+            raise RuntimeAuthorizationError("authenticated identity and tenant are required")
+        if ctx.tenant_id != resource_tenant_id:
+            raise RuntimeAuthorizationError("cross-tenant access denied")
+        if ctx.role not in allowed_roles:
+            raise RuntimeAuthorizationError("role is not authorized for this operation")
 
     @staticmethod
     def _read_scope(ctx: RuntimeContext, resource_tenant_id: str, owner_id: str) -> None:
