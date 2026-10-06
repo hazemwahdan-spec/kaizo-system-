@@ -39,6 +39,8 @@ jobs:
           python-version: "3.12"
       - name: Install backend dependencies
         run: pip install -r requirements.txt
+      - name: Install pytest for FEAT-027 acceptance
+        run: pip install pytest
       - name: Compile backend
         run: python -m compileall -q .
       - name: Run persistence integration test
@@ -85,7 +87,7 @@ jobs:
         run: PYTHONPATH=. python test_feat_025_decision_record.py
 
       - name: Run FEAT-027 session structure and timing acceptance tests
-        run: pytest -q backend/test_feat_027_session_structure.py
+        run: pytest -q test_feat_027_session_structure.py
       - name: Run FEAT-026 training plan acceptance tests
         run: PYTHONPATH=. python test_feat_026_training_plan.py
 
