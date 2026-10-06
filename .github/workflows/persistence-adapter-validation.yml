@@ -39,9 +39,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install backend dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt PyJWT[crypto]
       - name: Install pytest for FEAT-027 acceptance
-        run: pip install pytest
+        run: pip install pytest PyJWT[crypto]
       - name: Compile backend
         run: python -m compileall -q .
       - name: Run persistence integration test
