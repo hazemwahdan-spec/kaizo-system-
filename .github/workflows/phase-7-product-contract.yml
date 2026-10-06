@@ -1,0 +1,30 @@
+name: Phase 7 Product Contract
+
+on:
+  pull_request:
+    paths:
+      - "productization/**"
+      - ".github/workflows/phase-7-product-contract.yml"
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate role contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("productization/role-contract.json")
+          data = json.loads(p.read_text())
+          assert data["execution_authorized_default"] is False
+          assert set(data["roles"]) == {"academy", "coach", "athlete", "parent"}
+          assert "execution_authorized=true" in data["global_denials"]
+          for role, spec in data["roles"].items():
+              assert spec["purpose"]
+              assert spec["can_request"]
+              assert spec["cannot"]
+              assert any("authorize_execution" in x or "execution" in x for x in spec["cannot"])
+          print("PHASE_7_PRODUCT_CONTRACT_PASS")
+          PY
