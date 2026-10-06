@@ -1,0 +1,13 @@
+name: FEAT-050 Validation
+on:
+  pull_request:
+    paths: [backend/reusable_knowledge_linkage.py, backend/test_feat_050_reusable_knowledge_linkage.py]
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m unittest test_feat_050_reusable_knowledge_linkage.py
+        working-directory: backend
