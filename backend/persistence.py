@@ -233,6 +233,18 @@ CREATE TABLE IF NOT EXISTS kaizo_training_plans (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_training_sessions (
+    session_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    blocks JSONB NOT NULL,
+    status TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
