@@ -18,9 +18,9 @@ def get_surface() -> ProductSurface:
     return _surface
 
 
-def ctx(actor_id: str, role: str, tenant_id: str, owner: str | None) -> RuntimeContext:
+def ctx(actor_id: str, role: str, tenant_id: str, owner: str | None, authorization: str | None = None) -> RuntimeContext:
     try:
-        principal = resolve_principal(actor_id, role, tenant_id, owner)
+        principal = resolve_principal(actor_id, role, tenant_id, owner, authorization)
     except IdentityNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     return RuntimeContext(
@@ -43,7 +43,7 @@ def navigation(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     try:
-        return get_surface().navigation(ctx(actor_id, role, tenant_id, owner))
+        return get_surface().navigation(ctx(actor_id, role, tenant_id, owner, authorization))
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
