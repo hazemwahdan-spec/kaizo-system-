@@ -7,7 +7,14 @@ from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
-surface = ProductSurface(ProductCoreRuntimeAdapter())
+
+_surface: ProductSurface | None = None
+
+def get_surface() -> ProductSurface:
+    global _surface
+    if _surface is None:
+        _surface = ProductSurface(ProductCoreRuntimeAdapter())
+    return _surface
 
 
 def ctx(actor_id: str, role: str, tenant_id: str, owner: str | None) -> RuntimeContext:
