@@ -19,7 +19,6 @@ from state_cycle import router as state_cycle_router
 from reporting_runtime import router as reporting_runtime_router
 from competition_runtime import router as competition_runtime_router
 from academy_ops_runtime import router as academy_ops_runtime_router
-from productization.product_api import router as product_api_router
 
 app = FastAPI(
     title="KAIZO Core Engine API",
@@ -36,7 +35,6 @@ app.include_router(state_cycle_router)
 app.include_router(reporting_runtime_router)
 app.include_router(competition_runtime_router)
 app.include_router(academy_ops_runtime_router)
-app.include_router(product_api_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1866,3 +1864,7 @@ def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
         output.update({"scope":"individual","individual_change":req.individual_change or {},"isolated_output_change":True})
     log_action(req.case_id, "DECISION_ADAPTATION", None, output, "Runtime adaptation executed under Coach Final Authority with Common Core preservation.")
     return output
+
+# Mounted after Core decision functions are defined to keep the product-to-Core boundary acyclic.
+from productization.product_api import router as product_api_router
+app.include_router(product_api_router)
