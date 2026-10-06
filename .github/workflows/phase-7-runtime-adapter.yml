@@ -1,0 +1,18 @@
+name: Phase 7 Runtime Adapter
+
+on:
+  push:
+    branches: [phase-7-product-execution-foundation]
+  pull_request:
+    branches: [main]
+
+jobs:
+  runtime-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run Phase 7 adapter tests
+        run: python -m unittest discover -s productization -p 'test_runtime_adapter.py'
