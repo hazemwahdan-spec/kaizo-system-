@@ -80,7 +80,7 @@ jobs:
       - name: Run FEAT-025 decision record acceptance tests
         run: PYTHONPATH=. python test_feat_025_decision_record.py
       - name: Run FEAT-027 session structure and timing acceptance tests
-        run: pytest -q test_feat_027_session_structure.py
+        run: PYTHONPATH=.. pytest -q test_feat_027_session_structure.py
       - name: Run FEAT-026 training plan acceptance tests
         run: PYTHONPATH=. python test_feat_026_training_plan.py
       - name: Run FEAT-046 audit spine acceptance tests
