@@ -34,11 +34,17 @@ class ProductSurface:
 
     def request_decision(self, ctx: RuntimeContext, resource_tenant_id: str,
                          payload: Mapping[str, Any]) -> Any:
-        return self.runtime.request_decision(ctx=ctx, resource_tenant_id=resource_tenant_id, payload=payload)
+        result = self.runtime.request_decision(ctx=ctx, resource_tenant_id=resource_tenant_id, payload=payload)
+        if isinstance(result, dict):
+            result = {**result, "execution_authorized": False}
+        return result
 
     def record_intervention(self, ctx: RuntimeContext, resource_tenant_id: str,
                             payload: Mapping[str, Any]) -> Any:
-        return self.runtime.record_intervention(ctx=ctx, resource_tenant_id=resource_tenant_id, payload=payload)
+        result = self.runtime.record_intervention(ctx=ctx, resource_tenant_id=resource_tenant_id, payload=payload)
+        if isinstance(result, dict):
+            result = {**result, "execution_authorized": False}
+        return result
 
     def approved_export(self, ctx: RuntimeContext, resource_tenant_id: str,
                         record_ids: list[str]) -> Any:
