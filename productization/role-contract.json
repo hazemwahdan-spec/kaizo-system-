@@ -1,0 +1,33 @@
+{
+  "schema_version": "kaizo-product-role-contract-v1",
+  "execution_authorized_default": false,
+  "roles": {
+    "academy": {
+      "purpose": "academy-level operations, groups, coaches, athletes and approved reporting",
+      "can_request": ["academy_dashboard", "group_view", "coach_assignment", "athlete_progress", "approved_reporting_export"],
+      "cannot": ["authorize_execution", "override_core_safety", "bypass_coach_final_authority"]
+    },
+    "coach": {
+      "purpose": "coach decision workspace and human decision ownership",
+      "can_request": ["decision_case", "adaptation", "decision_loop", "digital_twin_review", "audit_review", "approved_reporting_export"],
+      "cannot": ["delegate_final_authority_to_system", "bypass_evidence_gate", "authorize_unsupported_execution"]
+    },
+    "athlete": {
+      "purpose": "athlete-facing approved progress and feedback visibility",
+      "can_request": ["own_progress", "approved_feedback", "approved_competition_results"],
+      "cannot": ["change_coach_decisions", "authorize_execution", "access_other_athletes_data"]
+    },
+    "parent": {
+      "purpose": "guardian-facing approved progress and safety-aware visibility",
+      "can_request": ["linked_athlete_progress", "approved_feedback", "approved_reports"],
+      "cannot": ["change_coach_decisions", "authorize_execution", "access_unlinked_athlete_data"]
+    }
+  },
+  "global_denials": [
+    "execution_authorized=true",
+    "implicit_execution",
+    "safety_override",
+    "evidence_bypass",
+    "coach_authority_bypass"
+  ]
+}
