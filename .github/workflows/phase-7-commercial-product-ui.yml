@@ -1,0 +1,18 @@
+name: Phase 7 Commercial Product UI
+
+on:
+  push:
+    branches: [phase-7-commercial-product-ui]
+  pull_request:
+    branches: [main]
+
+jobs:
+  product-ui-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate commercial UI contract
+        run: python -m pytest frontend/test_product_ui_contract.py -q
