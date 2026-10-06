@@ -44,7 +44,7 @@ def test_full_competition_context_to_decision_cycle():
         "recorded_by":"coach-1"
     })
 
-    trend=client.get(f"/api/v1/competition/trend/athlete-1?event_ids={event_id}&event_ids={second}")
+    trend=client.get(f"/api/v1/competition/trend/athlete-1?event_ids={event_id},{second}")
     assert trend.status_code == 200
     assert trend.json()["trend"] == "IMPROVING"
     assert trend.json()["delta"] == 9
@@ -88,5 +88,5 @@ def test_trend_requires_numeric_scores():
         client.post("/api/v1/competition/performance",json={
             "athlete_id":"a","event_id":ids[-1],"performance":{"score":"unknown"},"recorded_by":"coach"
         })
-    r=client.get(f"/api/v1/competition/trend/a?event_ids={ids[0]}&event_ids={ids[1]}")
+    r=client.get(f"/api/v1/competition/trend/a?event_ids={ids[0]},{ids[1]}")
     assert r.status_code==400
