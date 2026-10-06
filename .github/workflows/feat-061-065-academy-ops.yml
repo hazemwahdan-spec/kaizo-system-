@@ -1,0 +1,26 @@
+name: FEAT-061-065 Academy Operations Integration
+
+on:
+  pull_request:
+    paths:
+      - "backend/academy_ops_runtime.py"
+      - "backend/test_academy_ops_runtime.py"
+      - "backend/main.py"
+      - ".github/workflows/feat-061-065-academy-ops.yml"
+
+jobs:
+  academy-operations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest httpx
+      - name: Compile academy runtime
+        run: python -m py_compile backend/academy_ops_runtime.py backend/main.py
+      - name: Run FEAT-061..065 tests
+        env:
+          PYTHONPATH: backend
+        run: pytest -q backend/test_academy_ops_runtime.py
