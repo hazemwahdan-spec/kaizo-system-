@@ -1,0 +1,29 @@
+name: Apply FEAT-028 changes
+
+on:
+  push:
+    branches:
+      - feat-028-dosage-reps-sets
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply FEAT-028 changes
+        run: python scripts/apply_feat028.py
+      - name: Commit applied feature
+        run: |
+          rm -f .github/workflows/apply-feat-028.yml scripts/apply_feat028.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/main.py backend/persistence.py backend/test_feat_028_dosage_reps_sets.py .github/workflows/persistence-adapter-validation.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(FEAT-028): dosage reps sets prescription [skip ci]"
+          git push
