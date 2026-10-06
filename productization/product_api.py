@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
+from .identity import IdentityNotConfiguredError, resolve_principal
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -18,7 +19,16 @@ def get_surface() -> ProductSurface:
 
 
 def ctx(actor_id: str, role: str, tenant_id: str, owner: str | None) -> RuntimeContext:
-    return RuntimeContext(actor_id=actor_id, role=role, tenant_id=tenant_id, resource_owner_id=owner)
+    try:
+        principal = resolve_principal(actor_id, role, tenant_id, owner)
+    except IdentityNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return RuntimeContext(
+        actor_id=principal.actor_id,
+        role=principal.role,
+        tenant_id=principal.tenant_id,
+        resource_owner_id=principal.resource_owner_id,
+    )
 
 
 def deny(exc: Exception):
