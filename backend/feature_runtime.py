@@ -18,6 +18,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 import persistence
+from progression_rules import ProgressionRegressionRule, validate_rule as validate_progression_rule
+from session_constraints_notes import SessionConstraintNote, validate_item as validate_session_constraint
+from drill_library import Drill, validate_drill
+from problem_drill_linkage import ProblemDrillLink, validate_link
 
 
 router = APIRouter(prefix="/api/v1/features", tags=["Feature Runtime"])
@@ -205,6 +209,38 @@ def _validate(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
     missing=[k for k in contract["required"] if k not in req.payload or req.payload[k] in (None,"",[])]
     if missing:
         raise HTTPException(status_code=400, detail={"missing_fields":missing,"feature_id":feature_id})
+    try:
+        if feature_id == "FEAT-029":
+            p=req.payload
+            validate_progression_rule(ProgressionRegressionRule(
+                rule_id=str(p.get("rule_id", req.subject_id)), name=str(p.get("name","progression rule")),
+                metric=str(p["metric"]), operator=str(p.get("operator","GTE")),
+                threshold=float(p["threshold"]), action=str(p["action"]),
+                adjustment=float(p["adjustment"]), created_by=req.actor_id))
+        elif feature_id == "FEAT-030":
+            p=req.payload
+            validate_session_constraint(SessionConstraintNote(
+                item_id=str(p.get("item_id", req.subject_id)), session_id=str(p["session_id"]),
+                kind=str(p["kind"]), content=str(p["content"]), priority=str(p["priority"]),
+                created_by=req.actor_id))
+        elif feature_id == "FEAT-031":
+            p=req.payload
+            validate_drill(Drill(
+                drill_id=str(p["drill_id"]), name=str(p["name"]),
+                judo_area=str(p["judo_area"]), technical_skill=str(p["technical_skill"]),
+                problem_target=str(p["problem_target"]), decision_target=str(p["decision_target"]),
+                age_suitability=str(p["age_suitability"]), skill_level=str(p["skill_level"]),
+                execution_pattern=str(p["execution_pattern"]), kpi=str(p["kpi"]),
+                safety_constraints=str(p["safety_constraints"]),
+                evidence=tuple(req.evidence_refs), source=tuple(req.evidence_refs)))
+        elif feature_id == "FEAT-032":
+            p=req.payload
+            validate_link(ProblemDrillLink(
+                link_id=str(p.get("link_id", req.subject_id)), problem_id=str(p["problem_id"]),
+                drill_id=str(p["drill_id"]), rationale=str(p["link_rationale"]),
+                created_by=req.actor_id))
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"feature_id":feature_id,"domain_validation":str(exc)})
     if contract["evidence"] and not req.evidence_refs:
         raise HTTPException(status_code=400, detail="evidence_refs are required for this feature")
     return contract
