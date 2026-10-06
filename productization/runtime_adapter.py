@@ -24,9 +24,8 @@ class CoreRuntimeGateway:
     """Concrete gateway to the frozen backend/main.py Core functions."""
 
     def __init__(self):
-        from main import decision_loop, adapt_decision
+        from main import decision_loop
         self._decision_loop = decision_loop
-        self._adapt_decision = adapt_decision
 
     def request_decision(self, *, actor_id: str, tenant_id: str, role: str,
                          payload: Mapping[str, Any], execution_authorized: bool) -> Any:
@@ -46,7 +45,6 @@ class CoreRuntimeGateway:
                             payload: Mapping[str, Any], execution_authorized: bool) -> Any:
         if execution_authorized:
             raise RuntimeAuthorizationError("execution authorization is forbidden")
-        # Core's Decision Loop records the intervention as part of the governed cycle.
         return self.request_decision(
             actor_id=actor_id, tenant_id=tenant_id, role=role,
             payload=payload, execution_authorized=False
@@ -67,6 +65,8 @@ class CoreRuntimeGateway:
 
 
 class ProductCoreRuntimeAdapter:
+    ROLE_SET = {"academy", "coach", "athlete", "parent"}
+
     def __init__(self, core: Any | None = None):
         self.core = core or CoreRuntimeGateway()
 
@@ -75,12 +75,14 @@ class ProductCoreRuntimeAdapter:
             raise RuntimeAuthorizationError("authenticated identity and tenant are required")
         if ctx.tenant_id != resource_tenant_id:
             raise RuntimeAuthorizationError("cross-tenant access denied")
-        if ctx.role not in {"academy", "coach", "athlete", "parent"}:
+        if ctx.role not in self.ROLE_SET:
             raise RuntimeAuthorizationError("unsupported product role")
 
     def request_decision(self, ctx: RuntimeContext, resource_tenant_id: str,
                          payload: Mapping[str, Any]) -> Any:
         self._authorize(ctx, resource_tenant_id)
+        if ctx.role != "coach":
+            raise RuntimeAuthorizationError("only Coach may request a Core decision")
         return self.core.request_decision(
             actor_id=ctx.actor_id, tenant_id=ctx.tenant_id, role=ctx.role,
             payload=dict(payload), execution_authorized=False
@@ -89,9 +91,9 @@ class ProductCoreRuntimeAdapter:
     def record_intervention(self, ctx: RuntimeContext, resource_tenant_id: str,
                             payload: Mapping[str, Any]) -> Any:
         self._authorize(ctx, resource_tenant_id)
-        if ctx.role not in {"academy", "coach"}:
-            raise RuntimeAuthorizationError("role cannot record intervention")
-        if ctx.role == "coach" and not ctx.coach_approved:
+        if ctx.role != "coach":
+            raise RuntimeAuthorizationError("only Coach may record intervention")
+        if not ctx.coach_approved:
             raise RuntimeAuthorizationError("Coach approval is required")
         return self.core.record_intervention(
             actor_id=ctx.actor_id, tenant_id=ctx.tenant_id, role=ctx.role,
