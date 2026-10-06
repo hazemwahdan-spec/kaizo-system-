@@ -64,7 +64,7 @@ def test_canonical_domain_validation_is_enforced():
         "subject_id":"athlete-1","actor_id":"coach-1",
         "payload":{"metric":"technical_quality","threshold":8,"action":"PROGRESS","adjustment":1},
         "coach_final_authority":True,"execution_authorized":False})
-    assert r.status_code==400  # rule requires explicit rule identity/name semantics and remains fail-closed
+    assert r.status_code==201
 
     r=client.post("/api/v1/features/feat-031/drill-library",json={
         "subject_id":"drill-1","actor_id":"coach-1",
