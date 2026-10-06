@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
 import os, uuid
+
 os.environ["KAIZO_PERSISTENCE_MODE"]="postgres"
-os.environ["DATABASE_URL"]="postgresql://postgres:postgres@localhost:5432/kaizo"
+
 from backend.main import app
 
 def test_feat_027_session_structure_and_timing():
