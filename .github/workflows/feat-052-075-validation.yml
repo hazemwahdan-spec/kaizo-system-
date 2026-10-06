@@ -1,0 +1,13 @@
+name: FEAT-052-075 Validation
+on:
+  pull_request:
+    paths: [backend/remaining_features_052_075.py, backend/test_feat_052_075.py]
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m unittest test_feat_052_075.py
+        working-directory: backend
