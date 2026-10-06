@@ -1,0 +1,15 @@
+name: FEAT-045 Validation
+on:
+  pull_request:
+    paths:
+      - backend/next_state_retrieval.py
+      - backend/test_feat_045_next_state_retrieval.py
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m unittest test_feat_045_next_state_retrieval.py
+        working-directory: backend
