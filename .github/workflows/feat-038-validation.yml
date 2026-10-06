@@ -1,0 +1,16 @@
+name: FEAT-038 Validation
+on:
+  pull_request:
+    paths:
+      - "backend/before_after_comparison.py"
+      - "backend/test_feat_038_before_after_comparison.py"
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Acceptance
+        working-directory: backend
+        run: python -m unittest test_feat_038_before_after_comparison.py
