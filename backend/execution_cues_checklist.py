@@ -1,9 +1,13 @@
-"""FEAT-035 Execution cues and checklist domain model."""
+"""FEAT-035 domain model."""
 from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ExecutionCueChecklist:
-    checklist_id: str, prescription_id: str, cues: str, checks: str, created_by: str
+    checklist_id: str
+    prescription_id: str
+    cues: str
+    checks: str
+    created_by: str
     coach_final_authority: bool = True
     execution_authorized: bool = False
 
