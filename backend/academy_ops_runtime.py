@@ -165,7 +165,7 @@ def _membership_exists(academy_id: str, coach_id: str) -> bool:
     )
 
 
-@router.post("/v1/academies", status_code=201)
+@router.post("/academies", status_code=201)
 def create_academy(req: AcademyCreate) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("name", req.name), ("owner_id", req.owner_id))
@@ -200,12 +200,12 @@ def create_academy(req: AcademyCreate) -> Dict[str, Any]:
     return item
 
 
-@router.get("/v1/academies/{academy_id}")
+@router.get("/academies/{academy_id}")
 def get_academy(academy_id: str) -> Dict[str, Any]:
     return _academy(academy_id)
 
 
-@router.post("/v1/memberships", status_code=201)
+@router.post("/memberships", status_code=201)
 def add_membership(req: MembershipCreate) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("academy_id", req.academy_id), ("coach_id", req.coach_id), ("role", req.role))
@@ -243,7 +243,7 @@ def add_membership(req: MembershipCreate) -> Dict[str, Any]:
     return item
 
 
-@router.post("/v1/groups", status_code=201)
+@router.post("/groups", status_code=201)
 def create_group(req: GroupCreate) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("academy_id", req.academy_id), ("name", req.name))
@@ -281,7 +281,7 @@ def create_group(req: GroupCreate) -> Dict[str, Any]:
     return item
 
 
-@router.post("/v1/assignments", status_code=201)
+@router.post("/assignments", status_code=201)
 def assign_athlete(req: AssignmentCreate) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("academy_id", req.academy_id), ("athlete_id", req.athlete_id))
@@ -331,7 +331,7 @@ def assign_athlete(req: AssignmentCreate) -> Dict[str, Any]:
     return item
 
 
-@router.get("/v1/academies/{academy_id}/dashboard")
+@router.get("/academies/{academy_id}/dashboard")
 def academy_dashboard(academy_id: str) -> Dict[str, Any]:
     academy = _academy(academy_id)
     members = [x for x in MEMBERSHIPS.values() if x["academy_id"] == academy_id and x["status"] == "ACTIVE"]
