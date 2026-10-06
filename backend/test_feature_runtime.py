@@ -49,7 +49,9 @@ def test_evidence_required_features_hold_without_evidence():
         },
         "coach_final_authority":True,"execution_authorized":False})
     assert r.status_code==400
-    assert "evidence_refs" in str(r.json()["detail"])
+    detail=str(r.json()["detail"])
+    assert "evidence" in detail.lower()
+    assert "at least one evidence reference is required" in detail.lower()
 
 def test_feature_list_and_get():
     r=client.post("/api/v1/features/feat-061/academy-entity",json={
@@ -63,7 +65,6 @@ def test_feature_list_and_get():
     l=client.get("/api/v1/features/feat-061/academy-entity")
     assert l.status_code==200
     assert any(x["record_id"]==rid for x in l.json()["records"])
-
 
 def test_canonical_domain_validation_is_enforced():
     r=client.post("/api/v1/features/feat-029/progression-regression-rules",json={
@@ -81,7 +82,6 @@ def test_canonical_domain_validation_is_enforced():
         "safety_constraints":"coach supervised"},
         "evidence_refs":["REF-015"],"coach_final_authority":True,"execution_authorized":False})
     assert r.status_code==201
-
 
 def test_semantic_validation_rejects_invalid_feature_shapes():
     bad = client.post("/api/v1/features/feat-069/competition-trend-analysis", json={
