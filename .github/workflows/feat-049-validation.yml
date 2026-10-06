@@ -1,0 +1,13 @@
+name: FEAT-049 Validation
+on:
+  pull_request:
+    paths: [backend/knowledge_retrieval.py, backend/test_feat_049_knowledge_retrieval.py]
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m unittest test_feat_049_knowledge_retrieval.py
+        working-directory: backend
