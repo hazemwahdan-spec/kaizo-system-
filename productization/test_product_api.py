@@ -71,3 +71,16 @@ def test_parent_api_requires_explicit_link():
         headers=headers("parent", owner="athlete-1"),
     )
     assert r.status_code == 403
+
+
+def test_product_api_fails_closed_without_production_identity(monkeypatch):
+    monkeypatch.delenv("KAIZO_IDENTITY_MODE", raising=False)
+    response = client.get(
+        "/api/v1/product/navigation",
+        headers={
+            "X-KAIZO-Actor": "coach-1",
+            "X-KAIZO-Role": "coach",
+            "X-KAIZO-Tenant": "academy-a",
+        },
+    )
+    assert response.status_code == 503
