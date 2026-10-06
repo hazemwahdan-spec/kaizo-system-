@@ -6,6 +6,9 @@ on:
       - backend/test_state_cycle.py
       - backend/main.py
       - backend/persistence.py
+  push:
+    branches:
+      - "feat/integrate-042-045-state-cycle"
 jobs:
   integration:
     runs-on: ubuntu-latest
