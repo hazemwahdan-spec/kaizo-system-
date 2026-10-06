@@ -1,9 +1,14 @@
-"""FEAT-034 Drill prescription domain model."""
+"""FEAT-034 domain model."""
 from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DrillPrescription:
-    prescription_id: str, drill_id: str, session_id: str, dosage: str, rationale: str, created_by: str
+    prescription_id: str
+    drill_id: str
+    session_id: str
+    dosage: str
+    rationale: str
+    created_by: str
     coach_final_authority: bool = True
     execution_authorized: bool = False
 
