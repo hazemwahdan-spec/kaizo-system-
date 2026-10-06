@@ -1,0 +1,23 @@
+{
+  "schema":"kaizo-identity-rbac-boundary-v1",
+  "execution_authorized_default":false,
+  "authority_model":"Coach Final Authority",
+  "enforcement":"server-side",
+  "identity_required":true,
+  "roles":{
+    "academy":{"scope":"tenant","permissions":["manage_groups","assign_coaches","view_authorized_reports"]},
+    "coach":{"scope":"tenant-assigned-athletes","permissions":["create_decision_case","record_intervention","record_retest","review_state","view_audit"]},
+    "athlete":{"scope":"self","permissions":["view_own_progress","view_approved_feedback","view_own_competition_results"]},
+    "parent":{"scope":"explicitly-linked-athletes","permissions":["view_linked_progress","view_approved_reports"]}
+  },
+  "denials":[
+    "execute_without_coach_approval",
+    "override_safety_hold",
+    "bypass_evidence_gate",
+    "change_coach_decision",
+    "cross_tenant_access",
+    "export_unapproved_data"
+  ],
+  "required_controls":["authentication","server_side_rbac","tenant_scope_check","resource_ownership_check","audit_event_on_privileged_action"],
+  "not_yet_production_verified":true
+}

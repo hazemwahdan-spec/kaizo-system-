@@ -1,0 +1,26 @@
+{
+  "schema":"kaizo-product-core-runtime-integration-v1",
+  "integration_target":"frozen_phase_5_core",
+  "execution_authorized_default":false,
+  "coach_final_authority":true,
+  "evidence_before_claim":true,
+  "integration_rules":[
+    "product_requests_decision_or_records_outcome",
+    "core_remains_decision_engine",
+    "product_must_not_authorize_execution",
+    "all_mutations_require_authenticated_role_and_tenant_scope",
+    "approved_exports_only"
+  ],
+  "runtime_flow":[
+    "authenticate",
+    "resolve_tenant_and_role",
+    "authorize_resource_scope",
+    "submit_or_request_core_operation",
+    "receive_core_decision_or_evidence",
+    "human_coach_review_where_required",
+    "record_outcome",
+    "audit_privileged_action"
+  ],
+  "forbidden":["execution_authorization_bypass","evidence_gate_bypass","coach_authority_bypass","cross_tenant_access"],
+  "production_verified":false
+}

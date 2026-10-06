@@ -1,0 +1,27 @@
+name: Phase 7 Core Runtime Integration Contract
+
+on:
+  push:
+    branches: [phase-7-product-execution-foundation]
+  pull_request:
+    branches: [main]
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate runtime contract
+        run: |
+          python - <<'PY'
+          import json
+          p="productization/core-runtime-integration.json"
+          d=json.load(open(p))
+          assert d["execution_authorized_default"] is False
+          assert d["coach_final_authority"] is True
+          assert d["evidence_before_claim"] is True
+          assert d["production_verified"] is False
+          required={"execution_authorization_bypass","evidence_gate_bypass","coach_authority_bypass","cross_tenant_access"}
+          assert required.issubset(set(d["forbidden"]))
+          print("Phase 7 Core Runtime Integration Contract: PASS")
+          PY

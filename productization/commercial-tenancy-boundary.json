@@ -1,0 +1,18 @@
+{
+  "schema":"kaizo-commercial-tenancy-boundary-v1",
+  "tenancy_model":"academy_isolated_tenant",
+  "default_tenant_isolation":"deny",
+  "cross_tenant_access":"forbidden",
+  "roles":{
+    "academy":"tenant-scoped",
+    "coach":"tenant-scoped_plus_assigned_resources",
+    "athlete":"self-scoped_within_tenant",
+    "parent":"explicit_linked_athletes_within_tenant"
+  },
+  "required_resource_scope_fields":["tenant_id","resource_owner_id"],
+  "required_checks":["authenticated_identity","tenant_membership","role_permission","resource_scope","coach_authority"],
+  "privileged_actions_require_audit":true,
+  "approved_export_only":true,
+  "execution_authorized_default":false,
+  "production_verified":false
+}

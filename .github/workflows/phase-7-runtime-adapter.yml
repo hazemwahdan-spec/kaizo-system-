@@ -1,0 +1,25 @@
+name: Phase 7 Runtime Adapter
+
+on:
+  push:
+    branches: [phase-7-product-execution-foundation]
+  pull_request:
+    branches: [main]
+
+jobs:
+  runtime-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install fastapi pydantic pytest
+      - name: Run real Core integration tests
+        working-directory: backend
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
+        run: python -m pytest ../productization/test_runtime_adapter.py -q

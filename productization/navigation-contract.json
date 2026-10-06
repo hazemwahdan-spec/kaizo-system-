@@ -1,0 +1,17 @@
+{
+  "schema": "kaizo-product-navigation-contract-v1",
+  "default_role": "coach",
+  "principles": {
+    "core_preserved": true,
+    "coach_final_authority": true,
+    "execution_authorized_default": false,
+    "evidence_before_claim": true
+  },
+  "roles": {
+    "academy": {"surfaces":["Dashboard","Groups","Coaches","Athletes","Reports"],"scope":"academy-owned-or-shared","writes":["assign_coach","manage_group_membership"],"report_export_requires_approval":true},
+    "coach": {"surfaces":["Decision Cases","Adaptation","Decision Loop","Digital Twin","Audit"],"scope":"assigned-athletes-and-authorized-cases","writes":["create_decision_case","record_intervention","record_retest","review_state"],"report_export_requires_approval":true},
+    "athlete": {"surfaces":["My Progress","Approved Feedback","Competition Results"],"scope":"self-only","writes":[]},
+    "parent": {"surfaces":["Linked Athlete","Progress","Approved Reports"],"scope":"explicitly-linked-athletes","writes":[]}
+  },
+  "forbidden_actions":["execute_training_without_coach_approval","override_safety_hold","bypass_evidence_gate","change_coach_decision","export_unapproved_data"]
+}
