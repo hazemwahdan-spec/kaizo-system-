@@ -1,0 +1,20 @@
+name: FEAT-032 Validation
+on:
+  push:
+    branches: [feat-032-problem-drill-linkage]
+  pull_request:
+    paths:
+      - "backend/problem_drill_linkage.py"
+      - "backend/test_feat_032_problem_drill_linkage.py"
+      - ".github/workflows/feat-032-validation.yml"
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run FEAT-032 acceptance
+        working-directory: backend
+        run: python -m unittest test_feat_032_problem_drill_linkage.py
