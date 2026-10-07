@@ -5,9 +5,20 @@ from pydantic import BaseModel
 
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
-from .identity import IdentityNotConfiguredError, resolve_principal
+from .identity import IdentityNotConfiguredError, resolve_principal, verify_bearer_token
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
+
+
+@router.get("/auth/oidc/verify")
+def verify_oidc(
+    authorization: str | None = Header(None, alias="Authorization"),
+):
+    """Live OIDC verification endpoint for standard JWT validation."""
+    try:
+        return verify_bearer_token(authorization)
+    except IdentityNotConfiguredError as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
 
 _surface: ProductSurface | None = None
 

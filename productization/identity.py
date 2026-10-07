@@ -86,6 +86,36 @@ def resolve_bearer_principal(authorization: str | None) -> Principal:
 
     return _claims_to_principal(claims)
 
+def verify_bearer_token(authorization: str | None) -> dict[str, Any]:
+    """Verify an OIDC bearer token using standard JWT claims only."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise IdentityNotConfiguredError("Bearer authentication is required")
+    token = authorization[7:].strip()
+    if not token:
+        raise IdentityNotConfiguredError("Bearer token is empty")
+    issuer = os.getenv("KAIZO_OIDC_ISSUER", "").strip()
+    audience = os.getenv("KAIZO_OIDC_AUDIENCE", "").strip()
+    jwks_url = os.getenv("KAIZO_OIDC_JWKS_URL", "").strip()
+    if not issuer or not audience or not jwks_url:
+        raise IdentityNotConfiguredError(
+            "OIDC production identity requires KAIZO_OIDC_ISSUER, "
+            "KAIZO_OIDC_AUDIENCE and KAIZO_OIDC_JWKS_URL"
+        )
+    try:
+        client = PyJWKClient(jwks_url)
+        signing_key = client.get_signing_key_from_jwt(token)
+        claims = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=audience,
+            issuer=issuer,
+            options={"require": ["sub", "iss", "aud", "exp"]},
+        )
+    except Exception as exc:
+        raise IdentityNotConfiguredError(f"OIDC token verification failed: {exc}") from exc
+    return {"verified": True, "source": "oidc_jwt", "subject": str(claims["sub"])}
+
 
 def resolve_principal(
     actor_id: str,
