@@ -1,0 +1,40 @@
+name: PACK-B Production Evidence
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack-b-production-red-team:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute independent PACK-B production red team
+        run: bash pack-b-production-redteam.sh
+      - name: Persist PASS evidence record
+        if: success()
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          mkdir -p docs/governance
+          cat > "docs/governance/DB-04-PRODUCTION-PERSISTENCE-PASS-${RUN_ID}.md" <<EOF
+# DB-04 Production Persistence PASS
+
+- Workflow: PACK-B Production Evidence
+- Run ID: ${RUN_ID}
+- Source commit: ${SHA}
+- Runtime: https://kaizo-core-engine-production.up.railway.app
+- Test: independent PACK-B production red-team sequence
+- Result: PASS
+- Evidence scope: production digital-twin write, read-back, version-conflict guard, missing-input guard, coach-authority guard, and audit-log verification.
+- Secrets: none recorded.
+EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "docs/governance/DB-04-PRODUCTION-PERSISTENCE-PASS-${RUN_ID}.md"
+          git commit -m "evidence: DB-04 production persistence PASS [skip ci]"
+          git push
