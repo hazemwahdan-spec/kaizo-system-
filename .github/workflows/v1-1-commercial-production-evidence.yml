@@ -8,18 +8,44 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KAIZO_PRODUCTION_BASE_URL: https://kaizo-core-engine-production.up.railway.app
-      KAIZO_OIDC_BEARER_TOKEN: ${{ secrets.KAIZO_OIDC_BEARER_TOKEN }}
+      AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
+      AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+      AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+      AUTH0_AUDIENCE: ${{ secrets.AUTH0_AUDIENCE }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate required secret without exposing it
+      - name: Validate required Auth0 configuration without exposing values
         shell: bash
         run: |
-          if [ -z "${KAIZO_OIDC_BEARER_TOKEN}" ]; then
-            echo "MISSING_SECRET: KAIZO_OIDC_BEARER_TOKEN"
+          set -euo pipefail
+          for name in AUTH0_DOMAIN AUTH0_CLIENT_ID AUTH0_CLIENT_SECRET AUTH0_AUDIENCE; do
+            if [ -z "${!name}" ]; then
+              echo "MISSING_CONFIGURATION: $name"
+              exit 1
+            fi
+          done
+          echo "Required Auth0 configuration is present."
+
+      - name: Request short-lived Auth0 access token
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS --retry 2 --retry-delay 1 \
+            -X POST "https://${AUTH0_DOMAIN}/oauth/token" \
+            -H "content-type: application/x-www-form-urlencoded" \
+            --data-urlencode "grant_type=client_credentials" \
+            --data-urlencode "client_id=${AUTH0_CLIENT_ID}" \
+            --data-urlencode "client_secret=${AUTH0_CLIENT_SECRET}" \
+            --data-urlencode "audience=${AUTH0_AUDIENCE}")
+          token=$(printf '%s' "$response" | python -c 'import json,sys; print(json.load(sys.stdin).get("access_token", ""))')
+          if [ -z "$token" ]; then
+            echo "AUTH0_TOKEN_ISSUANCE_FAILED: response did not contain access_token"
             exit 1
           fi
-          echo "Secret present: KAIZO_OIDC_BEARER_TOKEN"
+          echo "::add-mask::$token"
+          echo "KAIZO_OIDC_BEARER_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "AUTH0_TOKEN_ISSUANCE: PASS (token value masked and not persisted)"
 
       - name: Verify live OIDC identity
         shell: bash
@@ -28,16 +54,30 @@ jobs:
           code=$(curl -sS -o /tmp/oidc.json -w "%{http_code}" \
             -H "Authorization: Bearer ${KAIZO_OIDC_BEARER_TOKEN}" \
             "${KAIZO_PRODUCTION_BASE_URL}/api/v1/product/auth/oidc/verify")
-          test "$code" = "200"
+          if [ "$code" != "200" ]; then
+            echo "OIDC_LIVE_VERIFICATION: FAIL (HTTP $code)"
+            python - <<'PY'
+          import json
+          try:
+              d=json.load(open('/tmp/oidc.json'))
+              print("Response detail:", d.get("detail", "non-JSON error response"))
+          except Exception:
+              print("Response body was not valid JSON; body omitted.")
+          PY
+            exit 1
+          fi
           python - <<'PY'
           import json
           d=json.load(open('/tmp/oidc.json'))
-          assert d.get("authenticated") is True
+          assert d.get("verified") is True
+          assert d.get("source") == "oidc_jwt"
           print("OIDC_LIVE_VERIFICATION: PASS")
           PY
 
       - name: Verify production health
+        shell: bash
         run: |
+          set -euo pipefail
           curl -fsS "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
           python - <<'PY'
           import json
@@ -49,6 +89,6 @@ jobs:
       - name: Record governed evidence boundary
         shell: bash
         run: |
-          echo "Commercial production evidence workflow is configured."
-          echo "No token value is printed or persisted."
-          echo "Full activation remains gated until live positive/negative RBAC, tenant, intervention, audit and independent retest evidence is collected."
+          echo "Short-lived Auth0 access token was requested at runtime and masked."
+          echo "No token value is printed or persisted as a repository artifact."
+          echo "Full commercial activation remains gated until live positive/negative RBAC, tenant, intervention, audit and independent retest evidence is collected."
