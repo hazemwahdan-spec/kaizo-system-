@@ -22,17 +22,17 @@ jobs:
         run: |
           mkdir -p docs/governance
           cat > "docs/governance/DB-04-PRODUCTION-PERSISTENCE-PASS-${RUN_ID}.md" <<EOF
-# DB-04 Production Persistence PASS
+          # DB-04 Production Persistence PASS
 
-- Workflow: PACK-C and PACK-B Production Evidence
-- Run ID: ${RUN_ID}
-- Source commit: ${SHA}
-- Runtime: https://kaizo-core-engine-production.up.railway.app
-- Tests: independent PACK-C numeric-claim and PACK-B persistence red-team sequences
-- Result: PASS
-- Evidence scope: numeric-claim validation guard; digital-twin production write/read-back; version-conflict, missing-input, coach-authority guards; audit-log verification.
-- Secrets: none recorded.
-EOF
+          - Workflow: PACK-C and PACK-B Production Evidence
+          - Run ID: ${RUN_ID}
+          - Source commit: ${SHA}
+          - Runtime: https://kaizo-core-engine-production.up.railway.app
+          - Tests: independent PACK-C numeric-claim and PACK-B persistence red-team sequences
+          - Result: PASS
+          - Evidence scope: numeric-claim validation guard; digital-twin production write/read-back; version-conflict, missing-input, coach-authority guards; audit-log verification.
+          - Secrets: none recorded.
+          EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "docs/governance/DB-04-PRODUCTION-PERSISTENCE-PASS-${RUN_ID}.md"
