@@ -123,3 +123,15 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 ## 11. Change log
 
 - **V1.2 / 2026-10-09:** Created a controlled execution and Gemini handover record. Captured confirmed repository state, identified the discrepancy between the historical Phase 5 freeze assertion and current production-evidence blockers, and defined the next evidence-gated action.
+
+
+## 12. Execution checkpoint — 2026-10-09 (after V1.2 merge)
+
+- V1.2 handover PR #76 is **MERGED**. Squash merge commit: `48ce56461ba6551cb95db53c306574c64a05d6a3`.
+- PR #75 remains **OPEN** and mergeable. Head commit observed: `1a777c200896bd5201aedd4ee86f0b1dd39afee5`.
+- The workflow file `.github/workflows/v1-1-commercial-production-evidence.yml` uses `workflow_dispatch` and secret `KAIZO_OIDC_BEARER_TOKEN`. It checks the live OIDC verification endpoint and `/api/v1/health`; it does not execute the full positive/negative commercial transaction.
+- The evidence-attempt artifact reports that OIDC endpoint telemetry included 2 HTTP 2xx and 3 HTTP 4xx requests, with zero 5xx in the reported 24-hour window, but no navigation/decision/intervention traffic. This is not end-to-end commercial proof.
+- No workflow run was returned for the inspected PR #75 head during this check. The connected GitHub tools available in this execution do not expose a workflow-dispatch action.
+- Required direct UI action: in GitHub → Actions → **KAIZO V1.1 Commercial Production Evidence** → **Run workflow**, select the PR #75 branch. First verify that repository secret `KAIZO_OIDC_BEARER_TOKEN` is configured; never disclose its value in chat, logs, or repository files.
+- If the manual workflow passes, record its run URL and exact output, then continue with the separate end-to-end sequence: allowed coach action, cross-tenant denial, non-coach denial, intervention-without-approval denial, approved intervention acceptance, durable audit verification, consent boundary where applicable, and independent negative retest.
+- **Gate decision:** V1.2 handover is merged; commercial production activation remains **OPEN / NOT PROVEN** until that evidence sequence is complete.
