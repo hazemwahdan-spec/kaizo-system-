@@ -135,3 +135,16 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - Required direct UI action: in GitHub → Actions → **KAIZO V1.1 Commercial Production Evidence** → **Run workflow**, select the PR #75 branch. First verify that repository secret `KAIZO_OIDC_BEARER_TOKEN` is configured; never disclose its value in chat, logs, or repository files.
 - If the manual workflow passes, record its run URL and exact output, then continue with the separate end-to-end sequence: allowed coach action, cross-tenant denial, non-coach denial, intervention-without-approval denial, approved intervention acceptance, durable audit verification, consent boundary where applicable, and independent negative retest.
 - **Gate decision:** V1.2 handover is merged; commercial production activation remains **OPEN / NOT PROVEN** until that evidence sequence is complete.
+
+
+## 13. Execution checkpoint — 2026-10-09 (PR #77 merged)
+
+- PR #77, **Use short-lived Auth0 tokens for production evidence**, is merged. Merge SHA: `9ef5c3212e3b260837e9159ae3e18b6bd08cb2d2`.
+- The production evidence workflow now requests an Auth0 Client Credentials access token at runtime and masks it. It no longer requires a manually generated `KAIZO_OIDC_BEARER_TOKEN` repository secret.
+- Required GitHub Actions secrets are now `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `AUTH0_CLIENT_SECRET`. Use a dedicated production Machine-to-Machine application authorized for the KAIZO Core API; do not use a Regular Web App client secret or paste credentials into chat.
+- The workflow audience is currently set to `https://api.kaizo.system`. Auth0 tenant domain and M2M credentials have not been verified from GitHub Actions secrets; their values are intentionally not visible to this workflow audit.
+- No successful run of the updated workflow has been evidenced in this checkpoint. Do not claim live OIDC or production health verification from the merge alone.
+- Code inspection confirms `productization/identity.py` validates standard Bearer JWTs using RS256, issuer, audience, JWKS and required claims. It does not implement a DPoP proof-verification path. Before changing Auth0 sender-constraining settings or implementing DPoP, verify the actual current Auth0 API setting and the deployed runtime contract; do not weaken production security just to make the workflow pass.
+- The live verification endpoint's historical closure record reports a successful Auth0-issued Bearer JWT test on 2026-10-08, but that is historical evidence and must be reconciled with the current Auth0 configuration and current deployment before asserting today's status.
+- Next execution: configure the three required GitHub Actions secrets using the dedicated production M2M app, run **Actions → KAIZO V1.1 Commercial Production Evidence → Run workflow**, capture the run URL and each result, then continue with negative/positive authorization, tenant isolation, approval, audit durability, consent, and independent retest. Never store token output as an artifact.
+- Commercial activation remains **OPEN / NOT PROVEN** until the end-to-end evidence sequence is complete.
