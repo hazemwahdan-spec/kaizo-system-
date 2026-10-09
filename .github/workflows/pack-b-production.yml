@@ -3,17 +3,12 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
 permissions:
   contents: write
 
 jobs:
   pack-b-production-red-team:
-    # This job writes test entities to the live production digital twin.
-    # Never run a mutating production red-team sequence from an unmerged PR.
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +17,7 @@ jobs:
         run: bash pack-b-production-redteam.sh
 
       - name: Persist PASS evidence record
-        if: success() && github.event_name != 'pull_request'
+        if: success()
         env:
           RUN_ID: ${{ github.run_id }}
           SHA: ${{ github.sha }}
