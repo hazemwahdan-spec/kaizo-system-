@@ -35,5 +35,22 @@ authority=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H "Content-T
 python -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="HOLD"; assert d["reason_code"]=="COACH_FINAL_AUTHORITY_REQUIRED"; assert d["diagnostic_required"] is True' <<<"$authority"
 
 audit=$(curl -fsS "$BASE_URL/api/v1/audit/logs")
-python -c 'import json,sys; d=json.load(sys.stdin); events=[x.get("action") for x in d.get("logs",[])]; assert "DIGITAL_TWIN_SYNCHRONIZED" in events; assert "DIGITAL_TWIN_SYNC_HOLD" in events' <<<"$audit"
+python - "$CASE" <<'PY' <<<"$audit"
+import json, sys
+case = sys.argv[1]
+data = json.load(sys.stdin)
+logs = data.get("logs", [])
+seen = {(str(row.get("who", "")), str(row.get("action", ""))) for row in logs}
+expected = {
+    (case, "DIGITAL_TWIN_SYNCHRONIZED"),
+    (case + "-CONFLICT", "DIGITAL_TWIN_SYNC_HOLD"),
+    (case + "-MISSING", "DIGITAL_TWIN_SYNC_HOLD"),
+    (case + "-AUTH", "DIGITAL_TWIN_SYNC_HOLD"),
+}
+missing = sorted(expected - seen)
+if missing:
+    print("AUDIT_EVIDENCE_MISSING:", missing)
+    raise SystemExit(1)
+print("PACK-B RUN-SCOPED AUDIT EVIDENCE: PASS")
+PY
 echo "PACK-B PRODUCTION RED TEAM: PASS"
