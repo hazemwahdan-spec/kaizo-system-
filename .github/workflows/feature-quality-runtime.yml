@@ -6,6 +6,7 @@ on:
       - "backend/feature_runtime.py"
       - "backend/test_feature_runtime.py"
       - "backend/main.py"
+      - "backend/requirements.txt"
       - "docs/product/KAIZO-FEATURE-QUALITY-TECHNICAL-EVIDENCE-BASELINE-V1.md"
   push:
     branches: ["main"]
