@@ -35,10 +35,12 @@ authority=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H "Content-T
 python -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="HOLD"; assert d["reason_code"]=="COACH_FINAL_AUTHORITY_REQUIRED"; assert d["diagnostic_required"] is True' <<<"$authority"
 
 audit=$(curl -fsS "$BASE_URL/api/v1/audit/logs")
-python - "$CASE" <<'PY' <<<"$audit"
+printf '%s' "$audit" > /tmp/pack-b-audit.json
+python - "$CASE" /tmp/pack-b-audit.json <<'PY'
 import json, sys
 case = sys.argv[1]
-data = json.load(sys.stdin)
+with open(sys.argv[2], encoding="utf-8") as handle:
+    data = json.load(handle)
 logs = data.get("logs", [])
 seen = {(str(row.get("who", "")), str(row.get("action", ""))) for row in logs}
 expected = {
