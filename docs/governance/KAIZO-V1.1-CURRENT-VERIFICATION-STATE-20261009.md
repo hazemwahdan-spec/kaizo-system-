@@ -20,13 +20,13 @@
 
 ## Open gates — do not mark complete
 
-1. **Persistence Adapter Validation** was still running at snapshot time: [run 37987382809](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/37987382809). Record its final conclusion before closing the acceptance batch.
+1. **Persistence Adapter Validation — PASS:** [run 37987382809](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/37987382809) completed successfully on source commit `f555f3a21ab95568f7836315bf1f75dae1baebf5`. The persistence integration test, PostgreSQL-mode application import, and the listed athlete, KPI, diagnosis, decision, training-plan, audit, evidence, digital-twin and safety acceptance tests all completed successfully.
 2. **Live Auth0/OIDC verification through GitHub Actions** remains blocked. Workflow run [37985008456](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/37985008456) failed at the configuration-presence check because the workflow did not receive non-empty `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `AUTH0_CLIENT_SECRET` values. Do not fabricate these values or print secrets. Configure the actual Auth0 application values as GitHub Actions repository secrets, then rerun the workflow.
 3. Full commercial production activation still requires the real identity gate and separate live positive/negative RBAC, tenant isolation, audit, TLS/monitoring and independent retest evidence. A passing health check or a successful PACK-B test does not close these gates.
 
 ## Resume sequence
 
-1. Finish and record the result of Persistence Adapter Validation.
+1. Persistence Adapter Validation is closed PASS for source commit `f555f3a21ab95568f7836315bf1f75dae1baebf5`.
 2. Re-run PACK-C/PACK-B production evidence after any changes to those paths.
 3. Complete the real Auth0 secret configuration and obtain a passing live OIDC workflow run.
 4. Collect live role/tenant denial and allowed-access evidence; close only the gates supported by artifacts.
