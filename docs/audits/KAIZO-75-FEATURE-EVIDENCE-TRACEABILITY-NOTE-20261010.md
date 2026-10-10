@@ -86,3 +86,14 @@ The CSV maps these tests to FEAT-061..069 where the implementation semantics ali
 ### FEAT-070 acceptance coverage added
 
 Added `test_competition_next_decision_requires_coach_authority_and_basis` to exercise the next-decision endpoint: non-coach-authorized requests are rejected, an empty decision basis is rejected, and an evidence-referenced coach-approved decision is accepted while `execution_authorized` remains false. The CSV now maps FEAT-070 to this named test. Its result remains pending until the latest GitHub Actions run completes.
+
+### CI result — academy and competition acceptance batch
+
+- **Workflow:** [Feature Quality Runtime Validation #102](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38029931186)
+- **Run ID:** `38029931186`
+- **Verified head SHA:** `2500dd6a176ee93994e5548a0c6eef7ca69f040e`
+- **Observed result:** `pytest -q test_feature_runtime.py` — **10 passed, 1 warning in 1.69s**; dependency installation, test step, and artifact upload succeeded.
+- **Artifact:** [feature-runtime-test-evidence.zip](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38029931186/artifacts/11661556893)
+- **Artifact ID:** `11661556893`; SHA-256 digest of ZIP: `9cd3d61ab96e0de70aafbc34828ba41b28f46ca3bd808713ab836e16f702c6e9`; created 2026-10-10 06:09:19 UTC; retention through 2027-01-08 06:09:02 UTC.
+- The run includes the academy and competition tests, including the FEAT-070 next-decision test. The result applies to the exact run SHA above. Later documentation-only commits are not represented as tested by this run.
+- Remaining limitation: these are targeted integration/acceptance assertions across selected feature behavior, not 75 independent test certificates, not a production deployment verification, and not a human expert validation of every feature.
