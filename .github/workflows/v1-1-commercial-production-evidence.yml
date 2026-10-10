@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           # Accept either a bare Auth0 domain or a pasted URL; remove accidental
           # scheme, trailing slash, and whitespace without printing secret values.
-          auth0_domain="$(printf '%s' "${AUTH0_DOMAIN}" | tr -d '\r\n' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g; s#^https?://##; s#/*$##')"
+          auth0_domain="$(printf '%s' "${AUTH0_DOMAIN}" | tr -d '\r\n' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g; s#^https?://##; s#/.*$##; s#:[0-9]+$##; s#/*$##')"
           if [[ ! "$auth0_domain" =~ ^[A-Za-z0-9.-]+$ ]]; then
             echo "INVALID_AUTH0_DOMAIN_FORMAT: set AUTH0_DOMAIN to kaizo-system.us.auth0.com (domain only)"
             exit 1
