@@ -60,3 +60,13 @@ The CSV now has three additional per-feature columns: verified API route mapping
 - This is a source inspection/mapping update, not a new test run. The observed Run #92 result remains tied to its recorded merge-ref commit; it is not represented as a fresh run for this latest audit commit.
 
 **Next batch:** inspect each canonical router and its tests, replace only evidence-backed route gaps, then add named feature-level acceptance tests in prioritized batches. Keep all unknown mappings explicitly open.
+
+### Owning-router inspection — second mapping pass
+
+Inspected the actual route declarations in `training_workflow.py`, `state_cycle.py`, `knowledge_runtime.py`, `audit_trace_runtime.py`, `evidence_safety_runtime.py`, `academy_ops_runtime.py`, `competition_runtime.py`, and `reporting_runtime.py`. The CSV now prefers these feature/domain-specific paths over the generic contract route when an owning route is present, including FEAT-033–040, 042–045, 047–050, 052–055, 057–060, and 061–075.
+
+Two mappings remain explicitly provisional:
+- FEAT-046 → `POST /api/v1/knowledge/ingest`: endpoint exists, but exact one-to-one mapping to “Governed knowledge record” still needs semantic/acceptance verification.
+- FEAT-056 → `POST /api/v1/safety/evaluate`: endpoint exists, but exact one-to-one mapping to “Safety constraint evaluation” still needs semantic/acceptance verification.
+
+Canonical routes for other unmapped features remain marked GAP rather than inferred from nearby route names. Route existence alone is not acceptance coverage, and none of these source inspections constitute a fresh CI run or production verification.
