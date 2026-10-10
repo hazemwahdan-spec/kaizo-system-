@@ -48,3 +48,15 @@ The final audit closure dated 2026-10-05 declares the global governance baseline
 
 ### Governance implication
 The test file has a current successful run, but remains a targeted suite. The terminology candidate is reusable input, not an approved SSOT. Neither warrants broad feature closure or SSOT promotion. Preserve the current Draft status of PR #81 pending review and feature-level evidence mapping.
+
+### Feature-by-feature route/test traceability pass — 2026-10-10
+
+The CSV now has three additional per-feature columns: verified API route mapping, named acceptance-test mapping, and evidence status/next action.
+
+- **43 feature contracts** in `backend/feature_runtime.py` (FEAT-029..075 excluding FEAT-041/046/051/056) have generated route patterns grounded in the runtime registration code: `POST /api/v1/features/{feature-id}/{slug}`, `GET` on that route for list, and `GET /{record_id}` for retrieval. The CSV records each concrete route generated from the source contract name.
+- The current targeted test file contains six test functions, but most are cross-cutting contract/governance checks rather than individual feature acceptance tests.
+- The CSV associates named test assertions only where the inspected test source explicitly exercises that feature: FEAT-029, FEAT-031, FEAT-034, FEAT-039, FEAT-061, FEAT-069 and FEAT-075. These are **partial targeted-test links**, not full acceptance coverage or production proof.
+- The remaining runtime contracts are marked as gaps for dedicated acceptance tests. Canonical features outside the runtime contract registry are marked as gaps until their route-to-feature mapping is verified from the owning source and tests; no route was guessed.
+- This is a source inspection/mapping update, not a new test run. The observed Run #92 result remains tied to its recorded merge-ref commit; it is not represented as a fresh run for this latest audit commit.
+
+**Next batch:** inspect each canonical router and its tests, replace only evidence-backed route gaps, then add named feature-level acceptance tests in prioritized batches. Keep all unknown mappings explicitly open.
