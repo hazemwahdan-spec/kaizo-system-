@@ -70,3 +70,15 @@ Two mappings remain explicitly provisional:
 - FEAT-056 → `POST /api/v1/safety/evaluate`: endpoint exists, but exact one-to-one mapping to “Safety constraint evaluation” still needs semantic/acceptance verification.
 
 Canonical routes for other unmapped features remain marked GAP rather than inferred from nearby route names. Route existence alone is not acceptance coverage, and none of these source inspections constitute a fresh CI run or production verification.
+
+### Acceptance-test implementation batch — academy and competition domains
+
+Added three acceptance-test functions to `backend/test_feature_runtime.py`:
+
+1. `test_competition_event_readiness_and_coach_authority_acceptance` — verifies coach-authority rejection, event creation/read-back, readiness capture/read-back, and that writes do not authorize autonomous execution.
+2. `test_competition_performance_trend_requires_two_evidence_events` — creates two events, records numeric performance scores, and checks the derived trend and non-autonomous execution boundary.
+3. `test_academy_membership_assignment_and_dashboard_acceptance` — verifies authority rejection, academy creation, rejection of coach assignments without membership, membership/group creation, multi-coach assignment, and dashboard aggregates.
+
+The CSV maps these tests to FEAT-061..069 where the implementation semantics align. FEAT-070 remains explicitly open for a dedicated next-decision acceptance test.
+
+**Verification status:** tests were added to the PR branch, but no fresh CI run has yet been observed for the new commit. They must remain labelled pending until GitHub Actions returns a result. Run #92 remains historical evidence for its earlier commit only. The current workflow already triggers on changes to `backend/test_feature_runtime.py`, so this batch should exercise the new tests when the PR workflow runs.
