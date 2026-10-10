@@ -23,21 +23,23 @@ Commit [309ced08bcc2f12c47d2957f07bbeba4c07037b3](https://github.com/hazemwahdan
 The final audit closure dated 2026-10-05 declares the global governance baseline frozen and lists GAP-02/03/05/06/07/08 as closed/frozen. The newer knowledge-foundation package dated 2026-10-08 is marked **IN EXECUTION / OPEN** and identifies authoritative Unified Vocabulary SSOT as the remaining gap. These records may refer to different scopes, but the relationship must be explicitly reconciled; this note does not reopen frozen gates or silently override either record.
 
 ## Next evidence-driven actions
-1. Run/inspect the feature-quality workflow and preserve its current run URL, conclusion, and test output.
-2. Map each feature to specific acceptance-test names and runtime/API routes where such mappings exist; mark unavailable mappings as GAP rather than infer them.
-3. Resolve the governance-scope relationship between global freeze and V1.1 knowledge foundation without reopening closed artifacts absent closure-changing evidence.
-4. Continue V1.1 only on the explicitly recorded open item: locate and version the authoritative Unified Vocabulary SSOT; if absent, leave OPEN rather than fabricate one.
-5. Keep production OIDC/Auth0 verification separate from role-based access, tenant isolation, and broader commercial-readiness claims.
+1. Map each feature to specific acceptance-test names and runtime/API routes where such mappings exist; mark unavailable mappings as GAP rather than infer them.
+2. Resolve the governance-scope relationship between global freeze and V1.1 knowledge foundation without reopening closed artifacts absent closure-changing evidence.
+3. Continue V1.1 only on the explicitly recorded open item: locate and version the authoritative Unified Vocabulary SSOT; if absent, leave OPEN rather than fabricate one.
+4. Keep production OIDC/Auth0 verification separate from role-based access, tenant isolation, and broader commercial-readiness claims.
 
 **Acceptance rule:** Evidence Before Claim. This CSV is a traceability aid, not a feature-closure certificate.
 
 ## Follow-up inspection — 2026-10-10
 
-### Runtime/API quality evidence
+### Runtime/API quality evidence — actual run recorded
 - `backend/feature_runtime.py` exposes the feature runtime under `/api/v1/features` and defines explicit contracts for FEAT-029..075, excluding FEAT-041/046/051/056 which are documented as already-integrated canonical endpoints.
 - `backend/test_feature_runtime.py` contains focused tests for contract inventory, required-field enforcement, Coach Final Authority, execution authorization remaining false, evidence-required HOLD behavior, list/get operations, domain validation, and invalid payload rejection.
-- `.github/workflows/feature-quality-runtime.yml` runs `pytest -q test_feature_runtime.py` on pushes to main and on PRs that touch the listed backend/evidence-baseline paths. PR #81 changes only audit documentation, so this workflow is **not automatically triggered by PR #81's changed-file filter**. A green run from a different workflow is not substituted as proof for this suite. Record a current Feature Quality Runtime Validation run before claiming fresh CI verification.
-- The available test file is targeted, not proof that each of the 75 features has its own distinct acceptance test or production route. Feature-specific route and test coverage must be mapped individually before closure.
+- The workflow was updated on the PR branch to include audit-note/CSV paths in its pull-request trigger and to preserve the pytest output as a 90-day artifact.
+- **Observed run:** [Feature Quality Runtime Validation #92](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38029590264), workflow run ID `38029590264`, PR merge ref commit `80dd701c4d4212c9031653a8b39f579fece0037b`, derived from PR head `bacfce9782153d69f098858bde30f76becb7defb`.
+- **Observed result:** `pytest -q test_feature_runtime.py` — **6 passed, 1 warning in 1.11s**. Dependency installation succeeded; the test step succeeded; the evidence-upload step succeeded. Warning: Starlette TestClient uses a deprecated AnyIO BlockingPortal alias.
+- **Saved artifact:** [feature-runtime-test-evidence.zip](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38029590264/artifacts/11662055874). Artifact ID `11662055874`; SHA-256 of artifact ZIP `f6b92292e2410d85e8f8c63774b56d1e8b24c8c5f444db924c172ee1d0fcff6e`; created 2026-10-10 06:03:21 UTC; retention through 2027-01-08 06:03:06 UTC.
+- This proves the **six tests in this targeted test file passed for the PR merge-ref code in that run**. It does not prove that each of the 75 features has its own distinct acceptance test, that all feature contracts are independently covered, or that all features are deployed/production-ready. Feature-specific route and test coverage must still be mapped individually before closure.
 
 ### Unified Vocabulary SSOT — library search result
 - Repository code search for `Unified Vocabulary`, `Kuzushi Tsukuri Kake`, `vocabulary judo glossary`, and `SSOT terminology` returned no matching files.
@@ -45,4 +47,4 @@ The final audit closure dated 2026-10-05 declares the global governance baseline
 - Current evidence supports this precise status: **an initial terminology candidate set exists in the Library; an authoritative, versioned, machine-readable Unified Vocabulary SSOT has not been established by the sources inspected**. Next action is to locate the source artifact named by the source register/Library, inspect its approval/version metadata and reconcile it with the current registry. If it cannot be located, keep V1.1 OPEN.
 
 ### Governance implication
-The existing test code and terminology candidate are reusable inputs. Neither warrants broad feature closure or SSOT promotion. Preserve the current Draft status of PR #81 pending review and evidence mapping.
+The test file has a current successful run, but remains a targeted suite. The terminology candidate is reusable input, not an approved SSOT. Neither warrants broad feature closure or SSOT promotion. Preserve the current Draft status of PR #81 pending review and feature-level evidence mapping.
