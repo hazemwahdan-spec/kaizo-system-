@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kaizo-system"
-version = "1.1.0"
+version = "1.1.1"
 description = "KAIZO FastAPI deployment adapter"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,9 +15,8 @@ dependencies = [
 ]
 
 [tool.setuptools]
+# Explicitly package only the deployed adapter and runtime package.
+# This prevents the root-level test and feature directories from being
+# treated as installable packages by automatic discovery.
 py-modules = ["app"]
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["longitudinal", "longitudinal.*"]
-exclude = ["tests", "tests.*", "test_*", "test*"]
+packages = ["longitudinal"]
