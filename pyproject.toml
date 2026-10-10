@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kaizo-system"
+version = "1.1.0"
+description = "KAIZO FastAPI deployment adapter"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn[standard]==0.34.0",
+  "psycopg[binary]==3.2.3",
+  "PyJWT[crypto]>=2.10,<3",
+]
+
+[tool.setuptools]
+py-modules = ["app"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["longitudinal", "longitudinal.*"]
+exclude = ["tests", "tests.*", "test_*", "test*"]
