@@ -1,0 +1,37 @@
+name: KAIZO V1.1 Commercial Security Regression
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "productization/**"
+      - "backend/**"
+      - ".github/workflows/v1-1-commercial-security-regression.yml"
+  push:
+    branches: [main]
+    paths:
+      - "productization/**"
+      - "backend/**"
+      - ".github/workflows/v1-1-commercial-security-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commercial-security-regression:
+    runs-on: ubuntu-latest
+    env:
+      KAIZO_IDENTITY_MODE: development
+      KAIZO_PERSISTENCE_MODE: memory
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install "fastapi==0.115.6" "pydantic==2.10.4" "httpx==0.28.1" "pytest>=8,<9" "PyJWT[crypto]>=2.10,<3" "psycopg[binary]==3.2.3"
+      - name: Compile product and backend modules
+        run: python -m compileall -q productization backend
+      - name: Run product identity and authorization regression suite
+        run: python -m pytest -q productization/test_identity.py productization/test_product_surface.py productization/test_runtime_adapter.py productization/test_product_surface_contract.py productization/test_product_api.py productization/test_product_api_security_regression.py
