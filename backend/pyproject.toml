@@ -10,3 +10,43 @@ requires-python = ">=3.11"
 
 [tool.fastapi]
 entrypoint = "main:app"
+
+# The deployment root is this backend directory, which intentionally uses
+# top-level Python modules. Explicitly include runtime modules and exclude
+# test modules from the installable distribution.
+[tool.setuptools]
+py-modules = [
+  "academy_ops_runtime",
+  "audit_trace_runtime",
+  "before_after_comparison",
+  "competition_runtime",
+  "decision_cycle_state_linkage",
+  "decision_drill_selection",
+  "digital_twin_state_update",
+  "drill_library",
+  "drill_prescription",
+  "evidence_safety_runtime",
+  "execution_cues_checklist",
+  "feature_runtime",
+  "governed_knowledge_record",
+  "knowledge_lifecycle_status",
+  "knowledge_retrieval",
+  "knowledge_runtime",
+  "main",
+  "next_decision_trigger",
+  "next_state_retrieval",
+  "persistence",
+  "problem_drill_linkage",
+  "progress_state_update",
+  "progression_rules",
+  "remaining_features_052_075",
+  "reporting_runtime",
+  "retest_capture",
+  "reusable_knowledge_linkage",
+  "session_constraints_notes",
+  "source_provenance_linkage",
+  "state_cycle",
+  "state_version_history",
+  "training_response_capture",
+  "training_workflow",
+]
