@@ -82,3 +82,7 @@ Added three acceptance-test functions to `backend/test_feature_runtime.py`:
 The CSV maps these tests to FEAT-061..069 where the implementation semantics align. FEAT-070 remains explicitly open for a dedicated next-decision acceptance test.
 
 **Verification status:** tests were added to the PR branch, but no fresh CI run has yet been observed for the new commit. They must remain labelled pending until GitHub Actions returns a result. Run #92 remains historical evidence for its earlier commit only. The current workflow already triggers on changes to `backend/test_feature_runtime.py`, so this batch should exercise the new tests when the PR workflow runs.
+
+### FEAT-070 acceptance coverage added
+
+Added `test_competition_next_decision_requires_coach_authority_and_basis` to exercise the next-decision endpoint: non-coach-authorized requests are rejected, an empty decision basis is rejected, and an evidence-referenced coach-approved decision is accepted while `execution_authorized` remains false. The CSV now maps FEAT-070 to this named test. Its result remains pending until the latest GitHub Actions run completes.
