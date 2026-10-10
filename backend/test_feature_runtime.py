@@ -216,3 +216,38 @@ def test_academy_membership_assignment_and_dashboard_acceptance():
     assert metrics["assigned_athletes"] == 1
     assert metrics["multi_coach_athletes"] == 1
     assert dashboard.json()["execution_authorized"] is False
+
+def test_competition_next_decision_requires_coach_authority_and_basis():
+    event = client.post("/api/v1/competition/events", json={
+        "event_name": "Next Decision Acceptance Event", "date": "2026-11-12",
+        "context": {"purpose": "decision-acceptance"}, "created_by": "coach-decision-test",
+        "coach_final_authority": True,
+    })
+    assert event.status_code == 201
+    event_id = event.json()["event_id"]
+
+    denied = client.post("/api/v1/competition/next-decision", json={
+        "athlete_id": "athlete-decision-test", "event_id": event_id,
+        "decision_basis": {"evidence": "REF-DECISION-TEST"},
+        "decision": {"next_step": "retest"}, "decided_by": "coach-decision-test",
+        "coach_final_authority": False,
+    })
+    assert denied.status_code == 409
+
+    missing_basis = client.post("/api/v1/competition/next-decision", json={
+        "athlete_id": "athlete-decision-test", "event_id": event_id,
+        "decision_basis": {}, "decision": {"next_step": "retest"},
+        "decided_by": "coach-decision-test", "coach_final_authority": True,
+    })
+    assert missing_basis.status_code == 400
+
+    accepted = client.post("/api/v1/competition/next-decision", json={
+        "athlete_id": "athlete-decision-test", "event_id": event_id,
+        "decision_basis": {"evidence_refs": ["REF-DECISION-TEST"], "observed_gap": "late entry"},
+        "decision": {"next_step": "retest", "review_after": "next session"},
+        "decided_by": "coach-decision-test", "evidence_refs": ["REF-DECISION-TEST"],
+        "coach_final_authority": True,
+    })
+    assert accepted.status_code == 201
+    assert accepted.json()["coach_final_authority"] is True
+    assert accepted.json()["execution_authorized"] is False
