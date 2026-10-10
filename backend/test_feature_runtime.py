@@ -251,3 +251,74 @@ def test_competition_next_decision_requires_coach_authority_and_basis():
     assert accepted.status_code == 201
     assert accepted.json()["coach_final_authority"] is True
     assert accepted.json()["execution_authorized"] is False
+
+
+def test_reporting_features_require_authority_and_export_only_approved_data():
+    # FEAT-071: athlete progress report
+    denied = client.post("/api/v1/reporting/progress", json={
+        "athlete_id": "report-athlete-test", "period": "2026-W41",
+        "progress": {"technical_quality": 7}, "recorded_by": "coach-report-test",
+        "coach_final_authority": False,
+    })
+    assert denied.status_code == 409
+    progress = client.post("/api/v1/reporting/progress", json={
+        "athlete_id": "report-athlete-test", "period": "2026-W41",
+        "progress": {"technical_quality": 7}, "recorded_by": "coach-report-test",
+        "evidence_refs": ["REF-REPORT-001"], "coach_final_authority": True,
+    })
+    assert progress.status_code == 201
+    assert progress.json()["execution_authorized"] is False
+
+    # FEAT-072: KPI trend report
+    kpi = client.post("/api/v1/reporting/kpi-trend", json={
+        "athlete_id": "report-athlete-test", "kpi_id": "entry-quality",
+        "period": "2026-W41", "trend": {"direction": "improving", "delta": 2},
+        "recorded_by": "coach-report-test", "evidence_refs": ["REF-REPORT-002"],
+        "coach_final_authority": True,
+    })
+    assert kpi.status_code == 201
+    assert kpi.json()["execution_authorized"] is False
+
+    # FEAT-073: coach performance summary
+    coach = client.post("/api/v1/reporting/coach-summary", json={
+        "coach_id": "coach-report-test", "period": "2026-W41",
+        "summary": {"sessions_reviewed": 4, "decision_quality": 8},
+        "recorded_by": "reviewer-test", "coach_final_authority": True,
+    })
+    assert coach.status_code == 201
+    assert coach.json()["execution_authorized"] is False
+
+    # FEAT-074: academy performance dashboard
+    academy = client.post("/api/v1/reporting/academy-dashboard", json={
+        "academy_id": "academy-report-test", "period": "2026-W41",
+        "metrics": {"active_athletes": 12, "sessions_completed": 9},
+        "recorded_by": "reviewer-test", "coach_final_authority": True,
+    })
+    assert academy.status_code == 201
+    assert academy.json()["execution_authorized"] is False
+
+    # FEAT-075: reject unapproved records, then export approved data and read it back.
+    rejected = client.post("/api/v1/reporting/export", json={
+        "approved_record_ids": ["record-pending"],
+        "format": "JSON",
+        "records": [{"record_id": "record-pending", "approval_status": "PENDING"}],
+        "requested_by": "coach-report-test", "coach_final_authority": True,
+    })
+    assert rejected.status_code == 409
+
+    exported = client.post("/api/v1/reporting/export", json={
+        "approved_record_ids": ["record-approved"],
+        "format": "JSON",
+        "records": [{"record_id": "record-approved", "approval_status": "APPROVED",
+                     "value": 8, "evidence_refs": ["REF-REPORT-003"]}],
+        "requested_by": "coach-report-test", "evidence_refs": ["REF-REPORT-003"],
+        "coach_final_authority": True,
+    })
+    assert exported.status_code == 201
+    result = exported.json()
+    assert result["record_count"] == 1
+    assert result["media_type"] == "application/json"
+    assert result["execution_authorized"] is False
+    readback = client.get(f"/api/v1/reporting/export/{result['report_id']}")
+    assert readback.status_code == 200
+    assert readback.json()["content"] == result["content"]
