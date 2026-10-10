@@ -97,3 +97,12 @@ Added `test_competition_next_decision_requires_coach_authority_and_basis` to exe
 - **Artifact ID:** `11661556893`; SHA-256 digest of ZIP: `9cd3d61ab96e0de70aafbc34828ba41b28f46ca3bd808713ab836e16f702c6e9`; created 2026-10-10 06:09:19 UTC; retention through 2027-01-08 06:09:02 UTC.
 - The run includes the academy and competition tests, including the FEAT-070 next-decision test. The result applies to the exact run SHA above. Later documentation-only commits are not represented as tested by this run.
 - Remaining limitation: these are targeted integration/acceptance assertions across selected feature behavior, not 75 independent test certificates, not a production deployment verification, and not a human expert validation of every feature.
+
+
+### Reporting acceptance batch — FEAT-071..075 (2026-10-10)
+
+- Added `test_reporting_features_require_authority_and_export_only_approved_data` to `backend/test_feature_runtime.py` for athlete progress, KPI trend, coach summary, academy dashboard and approved-data export.
+- Tested coach-authority rejection, non-autonomous execution flags, rejection of unapproved export records, approved JSON export and read-back.
+- CI run #106 passed on SHA `f96a49d89fe6e66107f1ccaf090486b948155de2`: **11 passed, 1 warning in 1.26s**. [Run evidence](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38038609090).
+- Artifact ID `11663979599`; SHA-256 `fee2cb9f2a1a87683b7810a41eab3aa0efcc178c966e4f73d64a1dbec5e39088`; [artifact](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38038609090/artifacts/11663979599).
+- The CSV maps FEAT-071..075 to this named test and exact run/SHA. This is targeted behavior evidence only, not closure of all 75 features, production readiness, or human validation.
