@@ -93,3 +93,6 @@ jobs:
         run: PYTHONPATH=. python test_feat_041_digital_twin.py
       - name: Run FEAT-056 safety/evidence guardrail acceptance tests
         run: PYTHONPATH=. python test_feat_056_safety_guardrails.py
+
+      - name: Run Phase 4 Digital Brain integration acceptance tests
+        run: PYTHONPATH=. python test_phase4_digital_brain_acceptance.py
