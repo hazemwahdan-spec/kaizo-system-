@@ -1,0 +1,103 @@
+"""Phase 4 negative tests: unverified/stale/conflicting/E0 evidence must not drive diagnosis."""
+import os
+import uuid
+
+os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
+os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
+
+from fastapi.testclient import TestClient
+import main
+import persistence
+
+persistence.initialize()
+client = TestClient(main.app)
+
+
+def post(path, payload, expected=(200, 201)):
+    response = client.post(path, json=payload)
+    assert response.status_code in expected, (path, response.status_code, response.text)
+    return response.json()
+
+
+def context():
+    suffix = uuid.uuid4().hex[:8]
+    coach = f"phase4-evidence-{suffix}"
+    athlete = post("/api/v1/athletes", {"display_name": f"Phase4 Evidence {suffix}"})
+    assessment = post("/api/v1/assessments", {
+        "athlete_id": athlete["athlete_id"],
+        "template_id": f"P4-EVIDENCE-{suffix}",
+        "measurements": {"score": 4},
+        "recorded_by": coach,
+    })
+    problem = post("/api/v1/problem-statements", {
+        "athlete_id": athlete["athlete_id"],
+        "assessment_id": assessment["assessment_id"],
+        "statement": "Evidence safety decision test",
+        "problem_type": "TECHNICAL",
+        "created_by": coach,
+    })
+    return suffix, coach, problem
+
+
+def create_evidence(suffix, coach, problem, status, level="E2"):
+    return post("/api/v1/evidence", {
+        "evidence_id": f"P4-GUARD-{suffix}-{status}-{level}",
+        "subject_type": "problem",
+        "subject_id": problem["problem_id"],
+        "evidence_level": level,
+        "status": status,
+        "source_ref": f"P4-SOURCE-{suffix}",
+        "claim": "Evidence status guard test",
+        "observed_value": {"score": 4},
+        "verified_by": coach,
+    })
+
+
+def diagnose(problem, evidence_id, coach):
+    return client.post(f"/api/v1/problem-statements/{problem['problem_id']}/diagnosis", json={
+        "problem_id": problem["problem_id"],
+        "evidence_ids": [evidence_id],
+        "diagnosis": "Decision-driving diagnosis",
+        "diagnosed_by": coach,
+    })
+
+
+def test_phase4_unverified_stale_conflicted_or_rejected_evidence_is_blocked():
+    for status in ("UNVERIFIED", "STALE", "CONFLICTED", "REJECTED", "REVIEW_REQUIRED"):
+        suffix, coach, problem = context()
+        evidence = create_evidence(suffix, coach, problem, status)
+        response = diagnose(problem, evidence["evidence_id"], coach)
+        assert response.status_code == 409, (status, response.status_code, response.text)
+        assert "not verified" in response.text
+
+
+def test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified():
+    suffix, coach, problem = context()
+    evidence = create_evidence(suffix, coach, problem, "verified", level="E0")
+    response = diagnose(problem, evidence["evidence_id"], coach)
+    assert response.status_code == 409, response.text
+    assert "E0 evidence cannot drive a diagnosis" in response.text
+
+
+def test_phase4_unknown_evidence_status_is_rejected_at_ingestion():
+    suffix, coach, problem = context()
+    response = client.post("/api/v1/evidence", json={
+        "evidence_id": f"P4-INVALID-STATUS-{suffix}",
+        "subject_type": "problem",
+        "subject_id": problem["problem_id"],
+        "evidence_level": "E2",
+        "status": "TRUST_ME",
+        "source_ref": "P4-INVALID-SOURCE",
+        "claim": "Unknown status must fail closed",
+        "observed_value": {"score": 4},
+        "verified_by": coach,
+    })
+    assert response.status_code == 400, response.text
+    assert "invalid_evidence_status" in response.text
+
+
+if __name__ == "__main__":
+    test_phase4_unverified_stale_conflicted_or_rejected_evidence_is_blocked()
+    test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified()
+    test_phase4_unknown_evidence_status_is_rejected_at_ingestion()
+    print("Phase 4 evidence fail-closed acceptance passed")
