@@ -1,12 +1,12 @@
 from backend.progression_rules import ProgressionRegressionRule, validate_rule
 
 def test_progression_and_regression_rules():
-    progress = ProgressionRegressionRule("R-029-P","quality progress","technical_quality","GTE",8,"PROGRESS",2,"coach")
+    progress = ProgressionRegressionRule("R-029-P","quality progress","technical_quality","GTE",8,"PROGRESS",2,"coach","1.0.0","APPROVED")
     validate_rule(progress)
     assert progress.evaluate(8)["action"] == "PROGRESS"
     assert progress.evaluate(7)["action"] == "HOLD"
 
-    regression = ProgressionRegressionRule("R-029-R","quality regression","technical_quality","LT",6,"REGRESS",1,"coach")
+    regression = ProgressionRegressionRule("R-029-R","quality regression","technical_quality","LT",6,"REGRESS",1,"coach","1.0.0","APPROVED")
     validate_rule(regression)
     result = regression.evaluate(5)
     assert result["action"] == "REGRESS"
