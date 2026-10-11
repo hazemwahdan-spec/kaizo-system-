@@ -44,7 +44,7 @@ def get_item(k):
     return MEMORY_ITEMS.get(k)
 
 class ProvenanceRequest(BaseModel):
-    knowledge_id:str; source_type:str; source_ref:str; provenance_note:str
+    knowledge_id:str; source_type:str; source_ref:str; source_version:str; evidence_status:str; provenance_note:str
     evidence_refs:List[str]=Field(default_factory=list); changed_by:str
     coach_final_authority:bool=True
 
@@ -62,10 +62,14 @@ class LinkRequest(BaseModel):
 @router.post("/feat-047/provenance",status_code=201)
 def provenance(req:ProvenanceRequest):
     authority(req.coach_final_authority)
-    if not req.knowledge_id.strip() or not req.source_type.strip() or not req.source_ref.strip() or not req.provenance_note.strip() or not req.changed_by.strip():
-        raise HTTPException(400,"knowledge_id, source_type, source_ref, provenance_note and changed_by are required")
+    if not req.knowledge_id.strip() or not req.source_type.strip() or not req.source_ref.strip() or not req.source_version.strip() or not req.provenance_note.strip() or not req.changed_by.strip():
+        raise HTTPException(400,"knowledge_id, source_type, source_ref, source_version, provenance_note and changed_by are required")
+    allowed_evidence_statuses={"UNVERIFIED","VERIFIED","REVIEW_REQUIRED","STALE","CONFLICTED","REJECTED"}
+    if req.evidence_status not in allowed_evidence_statuses:
+        raise HTTPException(400,{"evidence_status":"invalid","allowed":sorted(allowed_evidence_statuses)})
     if not req.evidence_refs: raise HTTPException(400,"at least one evidence reference is required")
     r={"knowledge_id":req.knowledge_id,"source_type":req.source_type,"source_ref":req.source_ref,
+       "source_version":req.source_version,"evidence_status":req.evidence_status,
        "provenance_note":req.provenance_note,"evidence_refs":req.evidence_refs,"lifecycle_status":"DRAFT",
        "changed_by":req.changed_by,"created_at":now(),"updated_at":now(),"coach_final_authority":True,"execution_authorized":False}
     save_item(r); return {"feature_id":"FEAT-047","record":r}
