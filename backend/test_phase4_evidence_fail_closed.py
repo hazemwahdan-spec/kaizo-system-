@@ -163,10 +163,36 @@ def test_phase4_missing_evidence_returns_explicit_hold_reason():
     assert rationale.status_code == 400
     assert rationale.json()["detail"]["decision_state"] == "HOLD"
 
+
+def test_phase4_candidate_generation_revalidates_legacy_or_changed_evidence():
+    for changed_field, changed_value, expected_reason in (
+        ("status", "STALE", "evidence is not verified"),
+        ("evidence_level", "E0", "E0 evidence cannot drive decision candidates"),
+    ):
+        suffix, coach, problem = context()
+        evidence = create_evidence(suffix, coach, problem, "VERIFIED", level="E2")
+        diagnosis = post(f"/api/v1/problem-statements/{problem['problem_id']}/diagnosis", {
+            "problem_id": problem["problem_id"],
+            "evidence_ids": [evidence["evidence_id"]],
+            "diagnosis": "Initially verified diagnosis",
+            "diagnosed_by": coach,
+        })
+        evidence[changed_field] = changed_value
+        persistence.upsert_evidence(evidence)
+
+        response = client.post(
+            f"/api/v1/diagnoses/{diagnosis['diagnosis_id']}/decision-candidates",
+            json={"diagnosis_id": diagnosis["diagnosis_id"], "requested_by": coach},
+        )
+        assert response.status_code == 409, response.text
+        assert response.json()["detail"]["decision_state"] == "HOLD"
+        assert expected_reason in response.text
+
 if __name__ == "__main__":
     test_phase4_unverified_stale_conflicted_or_rejected_evidence_is_blocked()
     test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified()
     test_phase4_unknown_evidence_status_is_rejected_at_ingestion()
     test_phase4_unverified_and_e0_evidence_cannot_support_decision_rationale()
     test_phase4_missing_evidence_returns_explicit_hold_reason()
+    test_phase4_candidate_generation_revalidates_legacy_or_changed_evidence()
     print("Phase 4 evidence fail-closed acceptance passed")
