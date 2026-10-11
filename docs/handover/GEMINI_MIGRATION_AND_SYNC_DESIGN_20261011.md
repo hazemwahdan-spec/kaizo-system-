@@ -130,3 +130,17 @@ A repository administrator must configure Gemini authentication in GitHub Action
 - A canonical `GEMINI.md` and verified Gemini Actions workflow were not found in the inspected repository tree on 2026-10-11.
 - Gemini Apps import is not live sync.
 - End-to-end automatic update behavior is NOT YET TESTED.
+
+
+## 12. Repository workflow added in the audit branch
+
+A read-only GitHub Actions workflow has now been added at `.github/workflows/gemini-kaizo-context-refresh.yml` on branch `audit/kaizo-strategic-audit-gemini-sync-20261011`.
+
+Behavior:
+- Triggers on pushes to `main` affecting project context/code paths, and supports manual `workflow_dispatch`.
+- Checks out the exact triggering commit SHA.
+- Runs Gemini CLI using the existing `GEMINI_API_KEY` secret.
+- Requests a read-only context/status report; grants only `contents: read` to the workflow token.
+- Explicitly forbids file edits, branch/PR creation, merges, deployments, and unsupported completion claims.
+
+**Activation status:** not active on `main` yet because the workflow is part of draft PR #87. It cannot be considered tested until the PR is reviewed/merged and an actual workflow run succeeds. This workflow refreshes context during a GitHub Actions run; it does not push updates into an already-open Gemini Apps conversation or refresh a previously imported Gemini Apps snapshot.
