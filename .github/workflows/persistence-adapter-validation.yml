@@ -108,3 +108,6 @@ jobs:
 
       - name: Run Phase 4 evidence fail-closed acceptance tests
         run: PYTHONPATH=. python test_phase4_evidence_fail_closed.py
+
+      - name: Run Phase 4 audit and plan authority acceptance tests
+        run: PYTHONPATH=. python test_phase4_audit_authority.py
