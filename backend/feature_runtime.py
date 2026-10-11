@@ -53,7 +53,7 @@ class FeatureRecord(BaseModel):
 # Required fields are deliberately feature-specific. This prevents the common
 # failure mode where a single generic JSON envelope is mistaken for 47 features.
 CONTRACTS: Dict[str, Dict[str, Any]] = {
-    "FEAT-029": {"name":"Progression/regression rules","required":["metric","threshold","action","adjustment"],"evidence":False,"status":"ACTIVE"},
+    "FEAT-029": {"name":"Progression/regression rules","required":["metric","threshold","action","adjustment","rule_version","approval_status"],"evidence":True,"status":"ACTIVE"},
     "FEAT-030": {"name":"Session constraints and notes","required":["session_id","kind","content","priority"],"evidence":False,"status":"ACTIVE"},
     "FEAT-031": {"name":"Drill library","required":["drill_id","name","judo_area","technical_skill","problem_target","decision_target","age_suitability","skill_level","execution_pattern","kpi","safety_constraints"],"evidence":True,"status":"PUBLISHED"},
     "FEAT-032": {"name":"Problem-to-drill linkage","required":["problem_id","drill_id","link_rationale"],"evidence":True,"status":"ACTIVE"},
@@ -301,7 +301,7 @@ def _validate(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
                 rule_id=str(p.get("rule_id", req.subject_id)), name=str(p.get("name","progression rule")),
                 metric=str(p["metric"]), operator=str(p.get("operator","GTE")),
                 threshold=float(p["threshold"]), action=str(p["action"]),
-                adjustment=float(p["adjustment"]), created_by=req.actor_id))
+                adjustment=float(p["adjustment"]), created_by=req.actor_id,\n                rule_version=str(p["rule_version"]), approval_status=str(p["approval_status"]),\n                coach_final_authority=req.coach_final_authority, execution_authorized=req.execution_authorized))
         elif feature_id == "FEAT-030":
             p=req.payload
             validate_session_constraint(SessionConstraintNote(
