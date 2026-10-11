@@ -134,13 +134,16 @@ A repository administrator must configure Gemini authentication in GitHub Action
 
 ## 12. Repository workflow added in the audit branch
 
-A read-only GitHub Actions workflow has now been added at `.github/workflows/gemini-kaizo-context-refresh.yml` on branch `audit/kaizo-strategic-audit-gemini-sync-20261011`.
+Workflow path: `.github/workflows/gemini-kaizo-context-refresh.yml` on branch `audit/kaizo-strategic-audit-gemini-sync-20261011`.
 
-Behavior:
+Security review found that the third-party Gemini CLI action invokes the CLI with `--yolo`; a read-only prompt is not a technical permission boundary. The workflow was therefore hardened in commit `7a97b34356181489254a924809fe4c376aa1dca0` to use the Gemini generateContent API directly rather than launching an agent CLI.
+
+Current design:
 - Triggers on pushes to `main` affecting project context/code paths, and supports manual `workflow_dispatch`.
-- Checks out the exact triggering commit SHA.
-- Runs Gemini CLI using the existing `GEMINI_API_KEY` secret.
-- Requests a read-only context/status report; grants only `contents: read` to the workflow token.
-- Explicitly forbids file edits, branch/PR creation, merges, deployments, and unsupported completion claims.
+- Checks out the exact triggering commit using a pinned checkout action SHA.
+- Sends a bounded bundle of named repository files to Gemini API using the existing `GEMINI_API_KEY` secret.
+- Grants only `contents: read`; no agent shell/file tools, repository write token, branch creation, PR creation, merge, or deployment permissions are granted.
+- Omits error response bodies on failed API calls to reduce accidental secret/context leakage.
+- Produces a Markdown status summary in the GitHub Actions run summary; it does not write back to the repository.
 
-**Activation status:** not active on `main` yet because the workflow is part of draft PR #87. It cannot be considered tested until the PR is reviewed/merged and an actual workflow run succeeds. This workflow refreshes context during a GitHub Actions run; it does not push updates into an already-open Gemini Apps conversation or refresh a previously imported Gemini Apps snapshot.
+**Activation status:** not active on `main` yet because the workflow is part of draft PR #87. The YAML/API path has not yet been proven by a successful GitHub Actions run. The existing `GEMINI_API_KEY` secret was already confirmed by the project owner; do not ask to recreate it. This workflow refreshes context during a GitHub Actions run; it does not push updates into an already-open Gemini Apps conversation or refresh a previously imported Gemini Apps snapshot.
