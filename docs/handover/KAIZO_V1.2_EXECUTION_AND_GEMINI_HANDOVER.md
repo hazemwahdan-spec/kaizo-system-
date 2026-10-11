@@ -291,3 +291,12 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - The traceability matrix was updated to distinguish tested record lineage from proof that an intervention was actually executed or caused a KPI change.
 - **Current Phase 4 state:** owner gate PASS; rule/provenance/decision-cycle/outcome-lineage and evidence-safety increments are merged and CI-verified. Phase 4 exit remains NOT PASSED.
 - **Exact next batch:** finish PR #109 checks; then map identity/tenant/consent controls to Phase 4 endpoints where applicable; define explicit HOLD response semantics for missing/stale/conflicting input across the whole decision cycle; continue independent retest and live production target/audit proof as separate evidence tracks.
+
+
+## 28. Execution checkpoint — Phase 4 identity boundary dependency (2026-10-11)
+
+- Recorded `docs/audits/KAIZO_PHASE4_IDENTITY_BOUNDARY_GAP_20261011.md` after reviewing the Core API decision routes and the separate Phase 7 identity workflow.
+- P4-REQ-011 is explicitly **OPEN / NOT PROVEN**: Phase 7 productization identity tests do not establish that Core API diagnosis, coach-review, decision-record and plan handlers enforce request identity, role, tenant or applicable consent.
+- No parallel identity system or production identity configuration was introduced. Resolution must reuse the approved identity/RBAC contract and define the applicable tenant/consent boundary before endpoint enforcement is claimed.
+- **Exact next step:** continue the current Phase 4 HOLD-contract PR and tests; then reconcile the identity integration boundary and add missing/invalid identity, role and applicable tenant/consent negative paths. Keep production endpoint verification and independent retest separate.
+- **Phase status:** owner entry gate PASS; implementation in progress; Phase 4 exit remains NOT PASSED.
