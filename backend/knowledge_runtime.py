@@ -68,8 +68,22 @@ def provenance(req:ProvenanceRequest):
     if req.evidence_status not in allowed_evidence_statuses:
         raise HTTPException(400,{"evidence_status":"invalid","allowed":sorted(allowed_evidence_statuses)})
     if not req.evidence_refs: raise HTTPException(400,"at least one evidence reference is required")
+    existing_records=list(MEMORY_ITEMS.values())
+    if persistence.is_postgres_enabled():
+        for item in persistence.load_knowledge().values():
+            if not any(old.get("knowledge_id")==item.get("knowledge_id") for old in existing_records):
+                existing_records.append(item)
+    conflicts=[
+        item for item in existing_records
+        if item.get("source_type")==req.source_type
+        and item.get("source_ref")==req.source_ref
+        and item.get("source_version")!=req.source_version
+        and item.get("lifecycle_status") not in {"RETIRED","REJECTED"}
+    ]
+    effective_status="CONFLICTED" if conflicts else req.evidence_status
     r={"knowledge_id":req.knowledge_id,"source_type":req.source_type,"source_ref":req.source_ref,
-       "source_version":req.source_version,"evidence_status":req.evidence_status,
+       "source_version":req.source_version,"evidence_status":effective_status,
+       "version_conflict_refs":[item.get("knowledge_id") for item in conflicts],
        "provenance_note":req.provenance_note,"evidence_refs":req.evidence_refs,"lifecycle_status":"DRAFT",
        "changed_by":req.changed_by,"created_at":now(),"updated_at":now(),"coach_final_authority":True,"execution_authorized":False}
     save_item(r); return {"feature_id":"FEAT-047","record":r}
