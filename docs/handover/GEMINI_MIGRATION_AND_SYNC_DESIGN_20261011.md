@@ -141,7 +141,7 @@ Security review found that the third-party Gemini CLI action invokes the CLI wit
 Current design:
 - Triggers on pushes to `main` affecting project context/code paths, and supports manual `workflow_dispatch`.
 - Checks out the exact triggering commit using a pinned checkout action SHA.
-- Sends a bounded bundle of named repository files to Gemini API using the existing `GEMINI_API_KEY` secret.
+- Sends a bounded bundle of named repository files to the Gemini API using the existing `GEMINI_API_KEY` secret and the currently documented `gemini-3.8-flash` model; model access still requires a successful live run.
 - Grants only `contents: read`; no agent shell/file tools, repository write token, branch creation, PR creation, merge, or deployment permissions are granted.
 - Omits error response bodies on failed API calls to reduce accidental secret/context leakage.
 - Produces a Markdown status summary in the GitHub Actions run summary; it does not write back to the repository.
