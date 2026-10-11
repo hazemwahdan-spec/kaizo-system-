@@ -96,3 +96,6 @@ jobs:
 
       - name: Run Phase 4 Digital Brain integration acceptance tests
         run: PYTHONPATH=. python test_phase4_digital_brain_acceptance.py
+
+      - name: Run Phase 4 approved-rule governance acceptance tests
+        run: PYTHONPATH=. python test_phase4_approved_rule_governance.py
