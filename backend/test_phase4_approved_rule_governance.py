@@ -14,7 +14,7 @@ client = TestClient(main.app)
 RULE_URL = "/api/v1/features/feat-029/progression-regression-rules"
 
 
-def payload(**overrides):
+def payload(evidence_refs=None, **overrides):
     body = {
         "metric": "entry_timing_score",
         "threshold": 5,
@@ -29,13 +29,30 @@ def payload(**overrides):
         "subject_id": "P4-RULE-SUBJECT",
         "actor_id": "phase4-rule-test",
         "payload": body,
-        "evidence_refs": ["P4-RULE-SOURCE-001"],
+        "evidence_refs": evidence_refs if evidence_refs is not None else ["P4-RULE-SOURCE-001"],
         "coach_final_authority": True,
         "execution_authorized": False,
     }
 
 
+
+def create_rule_evidence(evidence_id, status="VERIFIED", level="E2"):
+    response = client.post("/api/v1/evidence", json={
+        "evidence_id": evidence_id,
+        "subject_type": "rule",
+        "subject_id": "P4-RULE-SUBJECT",
+        "evidence_level": level,
+        "status": status,
+        "source_ref": f"SOURCE-{evidence_id}",
+        "claim": "Rule evidence validation fixture",
+        "observed_value": {"threshold": 5},
+        "verified_by": "phase4-rule-test",
+    })
+    assert response.status_code == 201, response.text
+    return response.json()
+
 def test_approved_versioned_rule_is_recorded_without_authorizing_execution():
+    create_rule_evidence("P4-RULE-SOURCE-001")
     response = client.post(RULE_URL, json=payload())
     assert response.status_code == 201, response.text
     record = response.json()
@@ -101,10 +118,29 @@ def test_authority_and_execution_flags_cannot_be_bypassed():
     assert response.status_code == 409
 
 
+
+def test_rule_rejects_missing_unverified_or_e0_evidence():
+    missing = client.post(RULE_URL, json=payload(evidence_refs=["P4-RULE-MISSING-EVIDENCE"]))
+    assert missing.status_code == 404, missing.text
+    assert missing.json()["detail"]["decision_state"] == "HOLD"
+
+    create_rule_evidence("P4-RULE-UNVERIFIED", status="UNVERIFIED", level="E2")
+    unverified = client.post(RULE_URL, json=payload(evidence_refs=["P4-RULE-UNVERIFIED"]))
+    assert unverified.status_code == 409, unverified.text
+    assert unverified.json()["detail"]["decision_state"] == "HOLD"
+    assert "not verified" in unverified.text
+
+    create_rule_evidence("P4-RULE-E0", status="VERIFIED", level="E0")
+    e0 = client.post(RULE_URL, json=payload(evidence_refs=["P4-RULE-E0"]))
+    assert e0.status_code == 409, e0.text
+    assert e0.json()["detail"]["decision_state"] == "HOLD"
+    assert "E0 evidence cannot authorize a progression rule" in e0.text
+
 if __name__ == "__main__":
     test_approved_versioned_rule_is_recorded_without_authorizing_execution()
     test_unapproved_rule_is_rejected()
     test_missing_rule_version_and_missing_provenance_are_rejected()
     test_direct_rule_evaluation_cannot_bypass_approval()
     test_authority_and_execution_flags_cannot_be_bypassed()
+    test_rule_rejects_missing_unverified_or_e0_evidence()
     print("Phase 4 approved-rule governance acceptance passed")
