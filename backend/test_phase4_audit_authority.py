@@ -60,8 +60,8 @@ def test_phase4_audit_log_is_read_only_and_preserves_decision_events():
     assert len(routes) == 1
     assert routes[0].methods == {"GET"}
 
-    for method in (client.put, client.patch, client.delete):
-        response = method("/api/v1/audit/logs", json={"action": "tamper"})
+    for method in ("PUT", "PATCH", "DELETE"):
+        response = client.request(method, "/api/v1/audit/logs", json={"action": "tamper"})
         assert response.status_code in (404, 405), (response.status_code, response.text)
 
     response = client.get("/api/v1/audit/logs")
