@@ -5,7 +5,7 @@ from main import app
 client=TestClient(app)
 
 def prov(k="K-1"):
-    return client.post("/api/v1/knowledge-runtime/feat-047/provenance",json={"knowledge_id":k,"source_type":"IJF","source_ref":"REF-047","provenance_note":"verified technical source","evidence_refs":["E-047"],"changed_by":"coach-1","coach_final_authority":True})
+    return client.post("/api/v1/knowledge-runtime/feat-047/provenance",json={"knowledge_id":k,"source_type":"IJF","source_ref":"REF-047","source_version":"2026.1","evidence_status":"VERIFIED","provenance_note":"verified technical source","evidence_refs":["E-047"],"changed_by":"coach-1","coach_final_authority":True})
 
 def test_047_050_real_knowledge_cycle():
     r=prov(); assert r.status_code==201
@@ -21,4 +21,4 @@ def test_governance_and_quality_gates():
     r=client.post("/api/v1/knowledge-runtime/feat-048/lifecycle",json={"knowledge_id":"K-2","lifecycle_status":"APPROVED","changed_by":"coach-1","coach_final_authority":False}); assert r.status_code==409
     r=client.post("/api/v1/knowledge-runtime/feat-050/link",json={"knowledge_id":"K-2","unit_id":"UNIT-2","link_type":"SUPPORTS","evidence_refs":["E"],"linked_by":"coach-1","coach_final_authority":True}); assert r.status_code==409
     r=prov("K-3"); assert r.status_code==201
-    r=client.post("/api/v1/knowledge-runtime/feat-047/provenance",json={"knowledge_id":"K-4","source_type":"IJF","source_ref":"REF","provenance_note":"x","changed_by":"coach-1","coach_final_authority":True}); assert r.status_code==400
+    r=client.post("/api/v1/knowledge-runtime/feat-047/provenance",json={"knowledge_id":"K-4","source_type":"IJF","source_ref":"REF","source_version":"v1","evidence_status":"VERIFIED","provenance_note":"x","changed_by":"coach-1","coach_final_authority":True}); assert r.status_code==400

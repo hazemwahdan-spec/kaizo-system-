@@ -99,3 +99,6 @@ jobs:
 
       - name: Run Phase 4 approved-rule governance acceptance tests
         run: PYTHONPATH=. python test_phase4_approved_rule_governance.py
+
+      - name: Run Phase 4 provenance version and status acceptance tests
+        run: PYTHONPATH=. python test_phase4_provenance_acceptance.py

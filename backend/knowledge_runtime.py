@@ -44,7 +44,7 @@ def get_item(k):
     return MEMORY_ITEMS.get(k)
 
 class ProvenanceRequest(BaseModel):
-    knowledge_id:str; source_type:str; source_ref:str; provenance_note:str
+    knowledge_id:str; source_type:str; source_ref:str; source_version:str; evidence_status:str; provenance_note:str
     evidence_refs:List[str]=Field(default_factory=list); changed_by:str
     coach_final_authority:bool=True
 
@@ -62,10 +62,14 @@ class LinkRequest(BaseModel):
 @router.post("/feat-047/provenance",status_code=201)
 def provenance(req:ProvenanceRequest):
     authority(req.coach_final_authority)
-    if not req.knowledge_id.strip() or not req.source_type.strip() or not req.source_ref.strip() or not req.provenance_note.strip() or not req.changed_by.strip():
-        raise HTTPException(400,"knowledge_id, source_type, source_ref, provenance_note and changed_by are required")
+    if not req.knowledge_id.strip() or not req.source_type.strip() or not req.source_ref.strip() or not req.source_version.strip() or not req.provenance_note.strip() or not req.changed_by.strip():
+        raise HTTPException(400,"knowledge_id, source_type, source_ref, source_version, provenance_note and changed_by are required")
+    allowed_evidence_statuses={"UNVERIFIED","VERIFIED","REVIEW_REQUIRED","STALE","CONFLICTED","REJECTED"}
+    if req.evidence_status not in allowed_evidence_statuses:
+        raise HTTPException(400,{"evidence_status":"invalid","allowed":sorted(allowed_evidence_statuses)})
     if not req.evidence_refs: raise HTTPException(400,"at least one evidence reference is required")
     r={"knowledge_id":req.knowledge_id,"source_type":req.source_type,"source_ref":req.source_ref,
+       "source_version":req.source_version,"evidence_status":req.evidence_status,
        "provenance_note":req.provenance_note,"evidence_refs":req.evidence_refs,"lifecycle_status":"DRAFT",
        "changed_by":req.changed_by,"created_at":now(),"updated_at":now(),"coach_final_authority":True,"execution_authorized":False}
     save_item(r); return {"feature_id":"FEAT-047","record":r}
@@ -77,6 +81,9 @@ def lifecycle(req:LifecycleRequest):
     if req.lifecycle_status not in allowed: raise HTTPException(400,{"allowed":sorted(allowed)})
     r=get_item(req.knowledge_id)
     if not r: raise HTTPException(404,"knowledge item not found")
+    if req.lifecycle_status=="APPROVED" and r.get("evidence_status")!="VERIFIED":
+        raise HTTPException(409,"knowledge evidence_status must be VERIFIED before approval")
+    if not req.changed_by.strip(): raise HTTPException(400,"changed_by is required")
     old=r["lifecycle_status"]; r=dict(r); r["lifecycle_status"]=req.lifecycle_status; r["changed_by"]=req.changed_by; r["updated_at"]=now()
     save_item(r)
     return {"feature_id":"FEAT-048","previous_status":old,"record":r}
@@ -86,10 +93,10 @@ def retrieve(req:RetrievalRequest):
     authority(req.coach_final_authority)
     if not req.workflow_context.strip() or not req.query.strip() or not req.requested_by.strip(): raise HTTPException(400,"workflow_context, query and requested_by are required")
     q=req.query.lower()
-    candidates=[r for r in MEMORY_ITEMS.values() if r["lifecycle_status"]=="APPROVED" and (q in r["knowledge_id"].lower() or q in r["provenance_note"].lower() or q in r["source_ref"].lower())]
+    candidates=[r for r in MEMORY_ITEMS.values() if r["lifecycle_status"]=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r["knowledge_id"].lower() or q in r["provenance_note"].lower() or q in r["source_ref"].lower())]
     if persistence.is_postgres_enabled():
         for r in persistence.load_knowledge().values():
-            if r.get("lifecycle_status")=="APPROVED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower()):
+            if r.get("lifecycle_status")=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower()):
                 if not any(x.get("knowledge_id")==r.get("knowledge_id") for x in candidates): candidates.append(r)
     return {"feature_id":"FEAT-049","workflow_context":req.workflow_context,"query":req.query,"results":candidates,"retrieved_by":req.requested_by,"coach_final_authority":True,"execution_authorized":False}
 
