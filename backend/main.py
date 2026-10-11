@@ -397,6 +397,28 @@ def generate_decision_candidates(
         raise HTTPException(status_code=404, detail="diagnosis not found")
     diagnosis = diagnoses[0]
 
+    # Revalidate evidence at decision time as persisted diagnoses may predate
+    # the current fail-closed ingestion policy or their evidence may have changed.
+    for evidence_id in diagnosis.get("evidence_ids", []):
+        evidence = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
+        if evidence is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"decision_state": "HOLD", "blocked": f"evidence not found: {evidence_id}"},
+            )
+        evidence_status = str(evidence.get("status", "")).strip().upper()
+        evidence_level = str(evidence.get("evidence_level", "")).strip().upper()
+        if evidence_status != "VERIFIED":
+            raise HTTPException(
+                status_code=409,
+                detail={"decision_state": "HOLD", "blocked": "evidence is not verified", "evidence_id": evidence_id, "status": evidence_status},
+            )
+        if evidence_level == "E0":
+            raise HTTPException(
+                status_code=409,
+                detail={"decision_state": "HOLD", "blocked": "E0 evidence cannot drive decision candidates", "evidence_id": evidence_id, "evidence_level": evidence_level},
+            )
+
     import uuid
     now = datetime.utcnow().isoformat()
     candidate_specs = [
