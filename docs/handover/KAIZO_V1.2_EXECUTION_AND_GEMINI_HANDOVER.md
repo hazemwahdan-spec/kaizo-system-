@@ -162,3 +162,15 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - The persistent KAIZO Library search found the older approved baseline roadmap with five broad stages: Documentation Pack → Knowledge Governance Pack → Technical Intelligence Pack → Digital Brain → KAIZO Platform. It did **not** establish that these are the user's separate overall 17 Phases or identify the seven claimed closures. The canonical 17-phase plan remains unresolved; do not infer or assign a 7/17 completion percentage.
 - **Next execution:** (1) identify the authoritative overall 17-phase plan and seven closure records; (2) reconcile the old production-evidence workflow's Railway base URL against the currently used FastAPI Cloud deployment before relying on it; (3) capture a live production health/OIDC result from the correct deployment; (4) only then reconcile feature and commercial closure claims.
 - Commercial production activation remains **OPEN / NOT PROVEN** until current production health, live identity, authorization/tenant isolation, durable audit/persistence, consent where applicable, and independent end-to-end retest evidence are all recorded.
+
+
+## 15. Execution checkpoint — 2026-10-11 (17-Phase recovery audit started)
+
+- Created recovery branch audit/17-phase-recovery-checkpoint-20261011 and audit record docs/audits/KAIZO_17_PHASE_RECOVERY_AND_EXECUTION_CHECKPOINT_20261011.md.
+- Source recovery did not establish the user's original overall 17-Phase plan. The approved P01–P17 Productization portfolio is a distinct plan and is not substituted for it. The 7/17 completion claim remains unverified until the original seven closure records are linked.
+- Current GitHub state rechecked: PR #75 is MERGED at c275a4389b6b10460182b48492409a6c67958675; PR #81 is OPEN/DRAFT at head 4a003b7f3d2133236973a32f80d9be5db5db5dcf; PR #87 and #88 are merged. Older handover text calling PR #75 open is stale.
+- Current source backend/main.py imports and includes productization.product_api.router; the OIDC route is present in the source. However, the backend deploy root is backend/ and backend/pyproject.toml does not explicitly package the repository-root productization/ package. This is a packaging risk to verify with a real build/deployment, not a proven live failure.
+- The production evidence workflow still targets Railway while the recent user-provided deployment is FastAPI Cloud. Canonical production target must be confirmed before using or changing the workflow.
+- Production activation remains OPEN / NOT PROVEN. No current live health/OIDC response was established in this checkpoint.
+- Exact resume point: **17-Phase Recovery — Batch A, step 1: recover the original plan and seven closure records; then reconcile PR #81 and confirm the canonical production target.**
+- Saved audit: [KAIZO 17-Phase Recovery & Execution Checkpoint](../audits/KAIZO_17_PHASE_RECOVERY_AND_EXECUTION_CHECKPOINT_20261011.md).
