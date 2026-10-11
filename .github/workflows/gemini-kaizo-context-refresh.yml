@@ -17,13 +17,13 @@ permissions:
 
 concurrency:
   group: kaizo-gemini-context-refresh
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   refresh-context:
     name: Read current KAIZO state with Gemini API
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout exact triggering commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -42,13 +42,18 @@ jobs:
             for file in \
               GEMINI.md \
               docs/handover/KAIZO_V1.2_EXECUTION_AND_GEMINI_HANDOVER.md \
+              docs/roadmaps/KAIZO_MASTER_EXECUTION_ROADMAP_RECONCILED_20261011.md \
+              docs/roadmaps/KAIZO_PHASE4_DIGITAL_BRAIN_ENTRY_PACKAGE_DRAFT_20261011.md \
+              docs/audits/KAIZO_MASTER_BOARD_STEP6_PHASE4_ENTRY_GATE_AUDIT_20261011.md \
+              docs/audits/KAIZO_PHASE4_TRACEABILITY_AND_DESIGN_REDTEAM_20261011.md \
+              docs/governance/KAIZO_VERSION_AUTHORITY_REGISTER_AND_PHASE4_DESIGN_REDTEAM_20261011.md \
               docs/audits/KAIZO_STRATEGIC_AUDIT_20261011.md \
               docs/handover/GEMINI_MIGRATION_AND_SYNC_DESIGN_20261011.md \
               docs/product/KAIZO-MASTER-FEATURE-BACKLOG-V1-20261005.md \
               README.md; do
               if [[ -f "$file" ]]; then
                 printf '\n===== FILE: %s =====\n' "$file"
-                head -c 45000 "$file"
+                head -c 30000 "$file"
                 printf '\n'
               else
                 printf '\n===== FILE MISSING: %s =====\n' "$file"
@@ -75,19 +80,38 @@ jobs:
             '{contents:[{parts:[{text:($prompt + "\n\nREPOSITORY CONTEXT:\n" + $context)}]}],generationConfig:{temperature:0.1,maxOutputTokens:2500}}' \
             > "${RUNNER_TEMP}/gemini-request.json"
 
-          http_code=$(curl --silent --show-error \
-            --output "${RUNNER_TEMP}/gemini-response.json" \
-            --write-out '%{http_code}' \
-            --request POST \
-            --header 'Content-Type: application/json' \
-            --header "x-goog-api-key: ${GEMINI_API_KEY}" \
-            --data-binary @"${RUNNER_TEMP}/gemini-request.json" \
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent')
+          http_code="000"
+          for attempt in 1 2 3 4 5; do
+            if http_code=$(curl --silent --show-error \
+              --connect-timeout 15 --max-time 90 \
+              --output "${RUNNER_TEMP}/gemini-response.json" \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header 'Content-Type: application/json' \
+              --header "x-goog-api-key: ${GEMINI_API_KEY}" \
+              --data-binary @"${RUNNER_TEMP}/gemini-request.json" \
+              'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent'); then
+              :
+            else
+              http_code="000"
+            fi
 
-          if [[ "$http_code" != "200" ]]; then
-            echo "::error::Gemini API request failed with HTTP ${http_code}; response body omitted."
+            if [[ "$http_code" == "200" ]]; then
+              break
+            fi
+
+            if [[ "$http_code" == "000" || "$http_code" == "429" || "$http_code" =~ ^5[0-9][0-9]$ ]]; then
+              if (( attempt < 5 )); then
+                delay=$((2 ** attempt))
+                echo "Gemini returned transient HTTP ${http_code}; retry ${attempt}/5 after ${delay}s."
+                sleep "$delay"
+                continue
+              fi
+            fi
+
+            echo "::error::Gemini API request failed with HTTP ${http_code} after ${attempt} attempt(s); response body omitted."
             exit 1
-          fi
+          done
 
           jq -er '.candidates[0].content.parts | map(.text // "") | join("\n") | select(length > 0)' \
             "${RUNNER_TEMP}/gemini-response.json" > "${RUNNER_TEMP}/kaizo-report.md"
@@ -98,6 +122,7 @@ jobs:
             echo "- Repository: ${GITHUB_REPOSITORY}"
             echo "- Exact commit: ${GITHUB_SHA}"
             echo "- Method: Gemini API; bounded repository text; no agent CLI or shell tools"
+            echo "- Retry policy: up to 5 attempts for transient transport, HTTP 429, and HTTP 5xx errors"
             echo
             cat "${RUNNER_TEMP}/kaizo-report.md"
           } >> "$GITHUB_STEP_SUMMARY"
