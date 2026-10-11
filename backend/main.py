@@ -474,7 +474,7 @@ def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceR
     if not req.rationale.strip() or not req.recorded_by.strip():
         raise HTTPException(status_code=400, detail="rationale and recorded_by are required")
     if not req.evidence_ids:
-        raise HTTPException(status_code=400, detail="at least one evidence_id is required")
+        raise HTTPException(status_code=400, detail={"decision_state": "HOLD", "blocked": "at least one evidence_id is required"})
 
     candidate = (
         persistence.get_decision_candidate(candidate_id)
@@ -492,13 +492,13 @@ def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceR
             else EVIDENCE_RECORDS.get(evidence_id)
         )
         if evidence is None:
-            raise HTTPException(status_code=404, detail=f"evidence not found: {evidence_id}")
+            raise HTTPException(status_code=404, detail={"decision_state": "HOLD", "blocked": f"evidence not found: {evidence_id}"})
         evidence_status = str(evidence.get("status", "")).strip().upper()
         evidence_level = str(evidence.get("evidence_level", "")).strip().upper()
         if evidence_status != "VERIFIED":
             raise HTTPException(
                 status_code=409,
-                detail={"blocked": "evidence is not verified", "evidence_id": evidence_id, "status": evidence_status},
+                detail={"decision_state": "HOLD", "blocked": "evidence is not verified", "evidence_id": evidence_id, "status": evidence_status},
             )
         if evidence_level == "E0":
             raise HTTPException(
