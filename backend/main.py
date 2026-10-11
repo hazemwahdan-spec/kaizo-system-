@@ -23,7 +23,10 @@ from academy_ops_runtime import router as academy_ops_runtime_router
 app = FastAPI(
     title="KAIZO Core Engine API",
     version="2.0.0",
-    description="Enterprise AI-Native Coaching OS for Combat Sports"
+    description="Enterprise AI-Native Coaching OS for Combat Sports",
+    openapi_url="/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 app.include_router(feature_runtime_router)

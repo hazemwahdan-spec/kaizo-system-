@@ -48,6 +48,8 @@ jobs:
         run: PYTHONPATH=. python tests/test_persistence_integration.py
       - name: Import application with PostgreSQL mode
         run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
+      - name: Verify OpenAPI and documentation endpoint contract
+        run: PYTHONPATH=. python tests/test_openapi_contract.py
       - name: Run FEAT-001 athlete acceptance tests
         run: PYTHONPATH=. python test_feat_001_athletes.py
       - name: Run FEAT-011 measurement persistence acceptance tests
