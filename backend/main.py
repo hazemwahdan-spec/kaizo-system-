@@ -493,6 +493,18 @@ def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceR
         )
         if evidence is None:
             raise HTTPException(status_code=404, detail=f"evidence not found: {evidence_id}")
+        evidence_status = str(evidence.get("status", "")).strip().upper()
+        evidence_level = str(evidence.get("evidence_level", "")).strip().upper()
+        if evidence_status != "VERIFIED":
+            raise HTTPException(
+                status_code=409,
+                detail={"blocked": "evidence is not verified", "evidence_id": evidence_id, "status": evidence_status},
+            )
+        if evidence_level == "E0":
+            raise HTTPException(
+                status_code=409,
+                detail={"blocked": "E0 evidence cannot support a decision rationale", "evidence_id": evidence_id, "evidence_level": evidence_level},
+            )
         evidence_records.append(evidence)
 
     import uuid
