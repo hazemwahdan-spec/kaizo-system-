@@ -88,3 +88,18 @@ No defensible overall percentage is assigned by this initial audit. The 7/17 rat
 ## 8. Audit boundary
 
 This pass used the accessible public GitHub repository and observed workflow/PR metadata. It did not have authenticated access to FastAPI Cloud deployment internals, Auth0 secrets, production database contents, or original local KAIZO Library bytes. Claims depending on those resources remain pending direct evidence.
+
+
+## 9. Follow-up cross-check: earlier P01–P17 operating plan
+
+A follow-up search of the persistent KAIZO Library found `KAIZO_PRODUCTIZATION_EXPANSION_OPERATING_DECISION_v1.0(1).md`. It defines product surfaces P01–P17 and describes P01 as the first execution target; P17 is Integration & Production Hardening. The current GitHub repository, however, contains P01–P24 readiness/closure artifacts and project charters, including P18–P24.
+
+This is a **material scope/version expansion from a P01–P17 operating plan to P01–P24**, but the available evidence does not by itself establish whether the expansion was formally approved, whether these P-numbers are the same as the user's overall 17 Phases, or whether the claimed 7/17 completion refers to a different phase system. Treat this as a **scope reconciliation blocker**, not as proof of unauthorized change.
+
+Required next step:
+1. Locate the approved version/change-control record authorizing P18–P24, if one exists.
+2. Build a crosswalk between the original 17 execution phases, productization phases 1–7, and P01–P24 surfaces.
+3. Identify which seven phases the user intends as completed, and attach their actual exit evidence.
+4. If P18–P24 were not approved extensions, preserve them as existing work but do not silently fold them into the original 17-phase completion denominator.
+
+This follow-up strengthens the finding that the project needs scope/version reconciliation before a trustworthy overall progress percentage can be issued.
