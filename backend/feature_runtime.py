@@ -301,7 +301,9 @@ def _validate(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
                 rule_id=str(p.get("rule_id", req.subject_id)), name=str(p.get("name","progression rule")),
                 metric=str(p["metric"]), operator=str(p.get("operator","GTE")),
                 threshold=float(p["threshold"]), action=str(p["action"]),
-                adjustment=float(p["adjustment"]), created_by=req.actor_id,\n                rule_version=str(p["rule_version"]), approval_status=str(p["approval_status"]),\n                coach_final_authority=req.coach_final_authority, execution_authorized=req.execution_authorized))
+                adjustment=float(p["adjustment"]), created_by=req.actor_id,
+                rule_version=str(p["rule_version"]), approval_status=str(p["approval_status"]),
+                coach_final_authority=req.coach_final_authority, execution_authorized=req.execution_authorized))
         elif feature_id == "FEAT-030":
             p=req.payload
             validate_session_constraint(SessionConstraintNote(
