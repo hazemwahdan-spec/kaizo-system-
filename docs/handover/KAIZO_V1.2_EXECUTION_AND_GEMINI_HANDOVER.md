@@ -270,3 +270,14 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - Gemini retry/context hardening PR #101 was merged at `1814d9c9160a90f698ecff6fb4d48f3d84bef893`; the new Gemini refresh run on the latest main commit `a5878305088aa3973a82f962ba26df90a8875662` is pending at checkpoint time and must be checked before claiming sync success.
 - **Current Phase 4 status:** IMPLEMENTATION IN PROGRESS. Owner gate is PASS; phase exit is not yet passed.
 - **Exact resume point:** map P4-REQ-001–P4-REQ-012 to exact implementation paths/tests; implement the smallest remaining contract gaps for approved-rule/version handling and provenance fail-closed behavior; add negative-path coverage and independent retest. Track production target/runtime proof separately. Do not reopen frozen Core Reference or infer production readiness from CI.
+
+
+## 26. Execution checkpoint — Phase 4 rule governance and provenance acceptance (2026-10-11)
+
+- FEAT-029 approved/versioned rule enforcement merged via PR #104, merge commit `5d43eaac3959c03d483235735f9280e6ccb42106`. Its 11 checks passed, including the persistence validation workflow.
+- FEAT-047 provenance version/status fail-closed guards merged via PR #105, merge commit `d6ecb3b199cf494959f3d49b7033d4d2d90ab20b`. Its 10 checks passed, including all three Phase 4 acceptance test scripts in PostgreSQL CI. Workflow: https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38127785379
+- Knowledge ingestion now requires source version and an explicit evidence status. Knowledge cannot be promoted to APPROVED unless status is VERIFIED, and retrieval excludes non-verified stale/legacy records.
+- Current executed requirement matrix: `docs/audits/KAIZO_PHASE4_REQUIREMENT_TRACEABILITY_EXECUTED_20261011.md`.
+- **Current Phase 4 state:** owner entry gate PASS; three implementation increments merged and CI-verified; Phase 4 exit NOT PASSED.
+- **Exact next batch:** missing/stale/conflicting evidence HOLD tests at decision-cycle boundaries; coach override-history/audit-linkage test; one decision → plan/intervention → KPI → retest lineage test; applicable identity/tenant/consent mapping; independent retest. Live production endpoint/audit verification remains separate.
+- **Evidence boundary:** workflow 38127785379 passed all three Phase 4-specific scripts (decision-to-plan, approved-rule governance, provenance version/status) under PostgreSQL CI. It does not prove live production health or external independent red-team sign-off.
