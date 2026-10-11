@@ -26,7 +26,7 @@
 | P4-REQ-006 — decisions/overrides auditable | `backend/test_phase4_override_outcome_lineage.py`; `backend/test_phase4_audit_authority.py`; FEAT-046 and PostgreSQL audit workflow | PARTIAL PASS | API audit log is read-only and key decision/coach events are linked; PR #109 PostgreSQL CI acceptance passed. Database-administrator tamper resistance, external alerting and production audit durability are not proven. |
 | P4-REQ-007 — plan remains proposal pending coach action | Phase 4 integration test; FEAT-026 acceptance suite | PASS for tested creation/read-back path | Add explicit unauthorized plan-approval/activation negative path; no automatic execution remains mandatory. |
 | P4-REQ-008 — intervention/KPI/retest baseline lineage | `backend/test_phase4_override_outcome_lineage.py`; FEAT-011..015 and FEAT-036..040 suites; PostgreSQL run 38127975262 | PARTIAL PASS | Record lineage is tested from decision → draft plan → KPI baseline capture → retest → before/after comparison, and baseline remains unchanged. Plan remains a DRAFT; this is not proof an intervention was executed or caused the change. |
-| P4-REQ-009 — validation and safety fail closed | `backend/test_phase4_evidence_fail_closed.py`; `backend/test_phase4_approved_rule_governance.py`; `backend/test_phase4_provenance_acceptance.py`; FEAT-056 suite | PARTIAL PASS | Ingestion, diagnosis and rationale now reject unverified/stale/conflicting/rejected/review-required evidence and E0 decision evidence. Add a dedicated decision-cycle HOLD reason contract and stale-version conflict tests. |
+| P4-REQ-009 — validation and safety fail closed | `backend/main.py`; `backend/test_phase4_evidence_fail_closed.py`; PostgreSQL run 38128645212 | PARTIAL PASS | Ingestion, diagnosis and rationale reject unknown/non-VERIFIED/stale/conflicting/rejected/review-required and E0 decision evidence; missing/unsafe evidence returns `decision_state: HOLD` with a blocking reason. Stale/conflicting source-version reconciliation tests remain. |
 | P4-REQ-010 — durable persistence and audit linkage | PostgreSQL workflow run 38127785379; read-back in Phase 4 provenance test | PASS for tested CI persistence scope only | Live production target proof and production audit read-back are separate, unresolved evidence requirements. |
 | P4-REQ-011 — role/tenant/consent | `docs/audits/KAIZO_PHASE4_IDENTITY_BOUNDARY_GAP_20261011.md`; `.github/workflows/phase-7-identity-rbac-boundary.yml` | OPEN / NOT PROVEN | Phase 7 productization tests do not prove Core API decision-route authentication, role, tenant or consent enforcement. Reconcile the approved identity contract, then test applicable core endpoints. Phase 4 exit remains blocked on disposition. |
 | P4-REQ-012 — no autonomous bypass of Coach Final Authority | `backend/test_phase4_digital_brain_acceptance.py`; `backend/test_phase4_approved_rule_governance.py`; `backend/test_phase4_override_outcome_lineage.py`; `backend/test_phase4_audit_authority.py` | PARTIAL PASS | Tested decision/rule/plan paths preserve coach authority and execution=false, including attempted execution override. Map any remaining intervention activation endpoints and complete independent retest. |
@@ -41,11 +41,10 @@
 
 ## 4. Exact next execution batch
 
-1. Add a negative-path suite for missing, stale, conflicting and unvalidated evidence reaching the decision cycle; assert explicit HOLD/deny reason.
-2. Add a coach override-history test and audit event linkage.
-3. Add one end-to-end decision → plan → KPI → retest lineage test preserving the baseline.
-4. Map identity/tenant/consent tests to Phase 4 only where applicable, and record non-applicable scope with rationale.
-5. Request/perform a genuinely independent retest; do not self-label the internal design review as independent.
-6. Keep live production endpoint and durable audit proof as a separate verification track; do not infer it from CI.
+1. Add stale/conflicting source-version reconciliation tests and extend explicit HOLD assertions to any remaining decision-cycle transitions.
+2. Reconcile P4-REQ-011 using the documented identity boundary gap; bind approved identity/RBAC context to applicable Core API endpoints without creating a parallel identity system.
+3. Complete independent red-team/negative-path retest by a reviewer independent of the implementation work; do not self-label internal review as independent.
+4. Verify the canonical live production API and durable audit/persistence path separately from CI; current live endpoint proof remains unresolved.
+5. After all applicable requirements have exact evidence and independent disposition, record a separate Phase 4 exit decision. Entry PASS does not equal exit PASS.
 
-**Resume state:** owner gate PASS; three implementation increments merged and CI-verified; Phase 4 exit remains NOT PASSED. Continue at the next negative-path + outcome-lineage batch above.
+**Resume state:** owner gate PASS; seven implementation increments merged and CI-verified, including the explicit HOLD contract; Phase 4 exit remains NOT PASSED. Continue at source-version conflict handling and the identity-boundary dependency.
