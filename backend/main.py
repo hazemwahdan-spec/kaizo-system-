@@ -335,6 +335,18 @@ def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnos
         evidence = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
         if evidence is None:
             raise HTTPException(status_code=404, detail=f"evidence not found: {evidence_id}")
+        evidence_status = str(evidence.get("status", "")).strip().upper()
+        evidence_level = str(evidence.get("evidence_level", "")).strip().upper()
+        if evidence_status != "VERIFIED":
+            raise HTTPException(
+                status_code=409,
+                detail={"blocked": "evidence is not verified", "evidence_id": evidence_id, "status": evidence_status},
+            )
+        if evidence_level == "E0":
+            raise HTTPException(
+                status_code=409,
+                detail={"blocked": "E0 evidence cannot drive a diagnosis", "evidence_id": evidence_id, "evidence_level": evidence_level},
+            )
     import uuid
     diagnosis = {"diagnosis_id": str(uuid.uuid4()), "problem_id": problem_id,
                  "athlete_id": problem["athlete_id"], "assessment_id": problem["assessment_id"],
@@ -1580,6 +1592,10 @@ def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
     allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
     if req.evidence_level not in allowed_levels:
         raise HTTPException(status_code=400, detail="invalid evidence level")
+    allowed_statuses = {"VERIFIED", "UNVERIFIED", "REVIEW_REQUIRED", "STALE", "CONFLICTED", "REJECTED"}
+    normalized_status = req.status.strip().upper()
+    if normalized_status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail={"invalid_evidence_status": normalized_status, "allowed": sorted(allowed_statuses)})
     if not req.evidence_id.strip() or not req.subject_id.strip() or not req.claim.strip():
         raise HTTPException(status_code=400, detail="evidence_id, subject_id and claim are required")
     if not req.verified_by.strip():
@@ -1590,7 +1606,7 @@ def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
         "subject_type": req.subject_type,
         "subject_id": req.subject_id,
         "evidence_level": req.evidence_level,
-        "status": req.status,
+        "status": normalized_status,
         "source_ref": req.source_ref,
         "claim": req.claim,
         "observed_value": req.observed_value,
