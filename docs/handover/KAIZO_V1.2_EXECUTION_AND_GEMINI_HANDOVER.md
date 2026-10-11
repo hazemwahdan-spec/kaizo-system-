@@ -318,3 +318,12 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - FEAT-047 marks a conflicting source version as `CONFLICTED`, retains conflict references, and blocks approval until governed version retirement/review.
 - Eight implementation increments are merged and CI-verified. Phase 4 exit remains NOT PASSED.
 - Next: broader decision-cycle HOLD coverage, Core API identity/RBAC boundary resolution, independent retest, and separate live-production/audit verification.
+
+
+## 31. Execution checkpoint — rule evidence references and candidate revalidation (2026-10-11)
+
+- PR #116 merged at `84fda7524015e96cda8d520db48cdcbc89635acd`; all 18 checks passed, including PostgreSQL run https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38129098774. Candidate generation now revalidates evidence at decision time and returns HOLD if a persisted diagnosis references missing, stale/non-VERIFIED or E0 evidence.
+- PR #117 merged at `c27e6cdd1696cd475321f5c2edf88ad30d2c9299`; all 18 checks passed, including PostgreSQL run https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38129209004. FEAT-029 now resolves actual evidence references and blocks missing, unverified or E0 evidence from authorizing a progression rule.
+- A shared evidence registry/lookup is used by Core API and governed feature contracts; tests no longer rely on placeholder references for the FEAT-029 success path.
+- **Current Phase 4 state:** owner entry gate PASS; ten implementation increments merged and CI-verified; phase exit NOT PASSED.
+- **Exact next work:** broader decision-cycle HOLD coverage; reconcile P4-REQ-011 Core API identity/RBAC/tenant/consent boundary; complete independent negative-path retest and verify live production API/audit persistence separately. Do not infer production readiness from CI.
