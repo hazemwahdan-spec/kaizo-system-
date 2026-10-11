@@ -327,3 +327,12 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - A shared evidence registry/lookup is used by Core API and governed feature contracts; tests no longer rely on placeholder references for the FEAT-029 success path.
 - **Current Phase 4 state:** owner entry gate PASS; ten implementation increments merged and CI-verified; phase exit NOT PASSED.
 - **Exact next work:** broader decision-cycle HOLD coverage; reconcile P4-REQ-011 Core API identity/RBAC/tenant/consent boundary; complete independent negative-path retest and verify live production API/audit persistence separately. Do not infer production readiness from CI.
+
+
+## 32. Production evidence boundary checkpoint (2026-10-11)
+
+- On source commit `c27e6cdd1696cd475321f5c2edf88ad30d2c9299`, the FastAPI Cloud deployment check completed successfully: https://dashboard.fastapicloud.com/hazemwahdan-fae4ba3f/apps/kaizo-system/deployments/a7e2615a-b6a2-48a3-887d-574d96b84141
+- Railway production workflow [38129283208](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38129283208) passed PACK-C numeric-claim HOLD checks and PACK-B digital-twin write/read-back, version-conflict, missing-input, Coach Final Authority and audit-log checks. It saved `docs/governance/DB-04-PRODUCTION-PERSISTENCE-PASS-38129283208.md`.
+- GAP-03 adaptation runtime evidence and independent red-team workflow [38129283243](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38129283243) also passed against the Railway runtime.
+- **Scope limit:** those production tests target the Railway runtime and GAP-03/PACK-B/PACK-C routes. They do not verify the newly changed Phase 4 routes on FastAPI Cloud. The direct `https://kaizo-system.fastapicloud.dev/openapi.json` fetch was unavailable to the verification client; therefore live OpenAPI/Phase 4 endpoint proof remains NOT VERIFIED.
+- **Current state:** ten Phase 4 implementation increments are merged and CI-verified; production evidence is PASS only for the exact Railway scopes above. P4-REQ-011 identity/RBAC boundary and Phase 4 exit remain open.
