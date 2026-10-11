@@ -310,3 +310,11 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - The Phase 4 identity gap is documented at `docs/audits/KAIZO_PHASE4_IDENTITY_BOUNDARY_GAP_20261011.md`; P4-REQ-011 remains OPEN / NOT PROVEN because Phase 7 productization identity tests do not prove Core API request authentication/tenant/consent enforcement.
 - **Current Phase 4 state:** owner entry gate PASS; seven implementation increments merged and CI-verified; phase exit NOT PASSED.
 - **Exact next work:** test stale/conflicting source-version reconciliation; reconcile and implement the approved identity/RBAC boundary for applicable Core API routes; obtain a genuinely independent negative-path retest; verify live production API and durable audit/persistence separately. Do not declare Phase 4 exit from CI alone.
+
+
+## 30. Phase 4 source-version conflict checkpoint — 2026-10-11
+
+- PR #114 merged at `2ecae0d3716fb0be0ecf6242e6f74a57874f0ef8`; PostgreSQL run [38128802991](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38128802991) passed all Phase 4 acceptance steps.
+- FEAT-047 marks a conflicting source version as `CONFLICTED`, retains conflict references, and blocks approval until governed version retirement/review.
+- Eight implementation increments are merged and CI-verified. Phase 4 exit remains NOT PASSED.
+- Next: broader decision-cycle HOLD coverage, Core API identity/RBAC boundary resolution, independent retest, and separate live-production/audit verification.
