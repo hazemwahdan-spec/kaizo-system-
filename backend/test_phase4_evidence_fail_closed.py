@@ -69,6 +69,7 @@ def test_phase4_unverified_stale_conflicted_or_rejected_evidence_is_blocked():
         response = diagnose(problem, evidence["evidence_id"], coach)
         assert response.status_code == 409, (status, response.status_code, response.text)
         assert "not verified" in response.text
+        assert response.json()["detail"]["decision_state"] == "HOLD"
 
 
 def test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified():
@@ -77,6 +78,7 @@ def test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified():
     response = diagnose(problem, evidence["evidence_id"], coach)
     assert response.status_code == 409, response.text
     assert "E0 evidence cannot drive a diagnosis" in response.text
+    assert response.json()["detail"]["decision_state"] == "HOLD"
 
 
 def test_phase4_unknown_evidence_status_is_rejected_at_ingestion():
@@ -124,6 +126,7 @@ def test_phase4_unverified_and_e0_evidence_cannot_support_decision_rationale():
     })
     assert response.status_code == 409, response.text
     assert "evidence is not verified" in response.text
+    assert response.json()["detail"]["decision_state"] == "HOLD"
 
     suffix, coach, problem, candidate = candidate_context()
     e0 = create_evidence(suffix, coach, problem, "VERIFIED", level="E0")
@@ -135,10 +138,35 @@ def test_phase4_unverified_and_e0_evidence_cannot_support_decision_rationale():
     })
     assert response.status_code == 409, response.text
     assert "E0 evidence cannot support a decision rationale" in response.text
+    assert response.json()["detail"]["decision_state"] == "HOLD"
+
+
+def test_phase4_missing_evidence_returns_explicit_hold_reason():
+    suffix, coach, problem = context()
+    response = client.post(f"/api/v1/problem-statements/{problem['problem_id']}/diagnosis", json={
+        "problem_id": problem["problem_id"],
+        "evidence_ids": [],
+        "diagnosis": "Missing evidence must hold",
+        "diagnosed_by": coach,
+    })
+    assert response.status_code == 400
+    assert response.json()["detail"]["decision_state"] == "HOLD"
+    assert "at least one evidence_id is required" in response.text
+
+    suffix, coach, problem, candidate = candidate_context()
+    rationale = client.post(f"/api/v1/decision-candidates/{candidate['candidate_id']}/rationale", json={
+        "candidate_id": candidate["candidate_id"],
+        "rationale": "Missing evidence must hold",
+        "evidence_ids": [],
+        "recorded_by": coach,
+    })
+    assert rationale.status_code == 400
+    assert rationale.json()["detail"]["decision_state"] == "HOLD"
 
 if __name__ == "__main__":
     test_phase4_unverified_stale_conflicted_or_rejected_evidence_is_blocked()
     test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified()
     test_phase4_unknown_evidence_status_is_rejected_at_ingestion()
     test_phase4_unverified_and_e0_evidence_cannot_support_decision_rationale()
+    test_phase4_missing_evidence_returns_explicit_hold_reason()
     print("Phase 4 evidence fail-closed acceptance passed")
