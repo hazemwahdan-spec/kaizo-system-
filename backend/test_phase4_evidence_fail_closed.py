@@ -96,8 +96,49 @@ def test_phase4_unknown_evidence_status_is_rejected_at_ingestion():
     assert "invalid_evidence_status" in response.text
 
 
+
+def candidate_context():
+    suffix, coach, problem = context()
+    evidence = create_evidence(suffix, coach, problem, "VERIFIED", level="E2")
+    diagnosis = post(f"/api/v1/problem-statements/{problem['problem_id']}/diagnosis", {
+        "problem_id": problem["problem_id"],
+        "evidence_ids": [evidence["evidence_id"]],
+        "diagnosis": "Verified control diagnosis",
+        "diagnosed_by": coach,
+    })
+    candidate = post(f"/api/v1/diagnoses/{diagnosis['diagnosis_id']}/decision-candidates", {
+        "diagnosis_id": diagnosis["diagnosis_id"],
+        "requested_by": coach,
+    })["candidates"][0]
+    return suffix, coach, problem, candidate
+
+
+def test_phase4_unverified_and_e0_evidence_cannot_support_decision_rationale():
+    suffix, coach, problem, candidate = candidate_context()
+    unverified = create_evidence(suffix, coach, problem, "UNVERIFIED", level="E2")
+    response = client.post(f"/api/v1/decision-candidates/{candidate['candidate_id']}/rationale", json={
+        "candidate_id": candidate["candidate_id"],
+        "rationale": "Must not cite unverified evidence",
+        "evidence_ids": [unverified["evidence_id"]],
+        "recorded_by": coach,
+    })
+    assert response.status_code == 409, response.text
+    assert "evidence is not verified" in response.text
+
+    suffix, coach, problem, candidate = candidate_context()
+    e0 = create_evidence(suffix, coach, problem, "VERIFIED", level="E0")
+    response = client.post(f"/api/v1/decision-candidates/{candidate['candidate_id']}/rationale", json={
+        "candidate_id": candidate["candidate_id"],
+        "rationale": "Must not cite E0 as decision support",
+        "evidence_ids": [e0["evidence_id"]],
+        "recorded_by": coach,
+    })
+    assert response.status_code == 409, response.text
+    assert "E0 evidence cannot support a decision rationale" in response.text
+
 if __name__ == "__main__":
     test_phase4_unverified_stale_conflicted_or_rejected_evidence_is_blocked()
     test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified()
     test_phase4_unknown_evidence_status_is_rejected_at_ingestion()
+    test_phase4_unverified_and_e0_evidence_cannot_support_decision_rationale()
     print("Phase 4 evidence fail-closed acceptance passed")
