@@ -60,7 +60,6 @@ def test_missing_rule_version_and_missing_provenance_are_rejected():
     assert missing_version.status_code == 400
     assert "rule_version" in missing_version.text
 
-    no_provenance = client.post(RULE_URL, json=payload())
     # FEAT-029 requires evidence refs at the contract boundary.
     no_provenance_payload = payload()
     no_provenance_payload["evidence_refs"] = []
