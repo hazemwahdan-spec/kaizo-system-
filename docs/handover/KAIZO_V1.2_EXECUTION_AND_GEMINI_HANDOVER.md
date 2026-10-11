@@ -336,3 +336,14 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - GAP-03 adaptation runtime evidence and independent red-team workflow [38129283243](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38129283243) also passed against the Railway runtime.
 - **Scope limit:** those production tests target the Railway runtime and GAP-03/PACK-B/PACK-C routes. They do not verify the newly changed Phase 4 routes on FastAPI Cloud. The direct `https://kaizo-system.fastapicloud.dev/openapi.json` fetch was unavailable to the verification client; therefore live OpenAPI/Phase 4 endpoint proof remains NOT VERIFIED.
 - **Current state:** ten Phase 4 implementation increments are merged and CI-verified; production evidence is PASS only for the exact Railway scopes above. P4-REQ-011 identity/RBAC boundary and Phase 4 exit remain open.
+
+
+## 33. Live FastAPI Cloud OpenAPI/health smoke verified (2026-10-11)
+
+- PR #119 merged at `71ec94b43e127a19cc5c56636a51fe6e6845988e`; the live smoke workflow is now part of the repository.
+- Live smoke run [38129555297](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38129555297) passed against `https://kaizo-system.fastapicloud.dev` before merge:
+  - `/openapi.json`: HTTP 200; title/version matched; 178 paths present; required Phase 4 evidence, diagnosis, candidate, rationale, FEAT-029, provenance and audit paths were present.
+  - `/api/v1/health`: HTTP 200 with `status: Online`.
+- This resolves the prior live schema/health visibility gap. It does **not** prove the behavior of every POST route, production writes for the new Phase 4 contracts, or durable production audit linkage for those routes. Railway DB-04/PACK-B/PACK-C proof remains limited to its documented scope.
+- **Current Phase 4 state:** ten implementation increments merged and CI-verified; live OpenAPI/health smoke PASS; P4-REQ-011 identity/RBAC/tenant/consent boundary OPEN / NOT PROVEN; Phase 4 exit NOT PASSED.
+- **Next:** reconcile the approved identity boundary, perform authorized live functional checks for Phase 4 routes without weakening production controls, obtain independent negative-path retest, then separately decide the Phase 4 exit gate.
