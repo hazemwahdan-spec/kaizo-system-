@@ -82,7 +82,7 @@ jobs:
             --header 'Content-Type: application/json' \
             --header "x-goog-api-key: ${GEMINI_API_KEY}" \
             --data-binary @"${RUNNER_TEMP}/gemini-request.json" \
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent')
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent')
 
           if [[ "$http_code" != "200" ]]; then
             echo "::error::Gemini API request failed with HTTP ${http_code}; response body omitted."
