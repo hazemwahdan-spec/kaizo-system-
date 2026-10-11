@@ -213,3 +213,10 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - Productization Gate 4 is separate from the master board's Phase 4 Digital Brain entry gate; runtime Phase 7 OIDC is separate from master board Step 7.
 - Direct owner decision needed before production verification: choose the canonical target between FastAPI Cloud (https://kaizo-system.fastapicloud.dev) and Railway (https://kaizo-core-engine-production.up.railway.app). Do not run production evidence against a guessed target.
 - Exact next resume point: **Step 5 — Produce Canonical Roadmap**, with the target decision explicitly bounded until confirmed.
+
+
+## 20. Execution checkpoint — Step 5 canonical roadmap (2026-10-11)
+
+- Produced the reconciled master execution roadmap at docs/roadmaps/KAIZO_MASTER_EXECUTION_ROADMAP_RECONCILED_20261011.md.
+- Step 5 exit criteria are recorded as satisfied: one board sequence and strategic baseline, separate taxonomies, dependencies and explicit unresolved items are documented. The roadmap is approved for controlled execution under the user's instruction; this does not open Phase 4 or approve production activation.
+- Exact next resume point: **Step 6 — Phase 4 Entry Gate Audit**. Assemble and verify the entry-gate package and keep the gate NOT OPEN until all required evidence and explicit PASS decision exist.
