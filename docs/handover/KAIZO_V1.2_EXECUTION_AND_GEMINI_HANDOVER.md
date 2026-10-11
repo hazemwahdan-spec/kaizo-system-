@@ -185,3 +185,13 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - PR #89 merged at da633de627c7e0bef70ee3308eab9f5e640ef930. All eight PR-triggered checks passed on exact head SHA ece07fe3c5eb1d181ce9c9d8b0fbf98b83e79ffb; links are in the audit checkpoint.
 - Exact next resume point: **Step 2 — Audit previous phases**, reconciling prior closure evidence, Phase 4 entry-gate status, and scope conflicts before opening Phase 4 work.
 - Commercial activation remains OPEN / NOT PROVEN until current live production and end-to-end security evidence is captured.
+
+
+## 17. Execution checkpoint — Step 2 previous-phase audit (2026-10-11)
+
+- Step 2 of the recovered Phase 4 → Project Completion board is recorded as **CLOSED WITH DOCUMENTED LIMITATIONS** in docs/audits/KAIZO_MASTER_BOARD_STEP2_PREVIOUS_PHASE_AUDIT_20261011.md.
+- Strategic Phase 1 Documentation Pack: baseline closed/frozen within scope; complete library archive transfer remains partial.
+- Strategic Phase 2 Knowledge Governance Pack: frozen Core/K14–K17 closure preserved; broader V1.1 Knowledge Foundation package remains open for authoritative global vocabulary SSOT. These are distinct scopes.
+- Strategic Phase 3 Technical Intelligence Pack: verified technical reference scope closed/frozen; runtime evidence is not proof of production deployment or full archive transfer.
+- Productization Phases, P01–P17/P24, FEAT-001–075, and governance gates remain separate taxonomies unless an explicit source mapping exists.
+- Exact next resume point: **Step 3 — Reconcile Roadmaps**, building a source-linked crosswalk before the master Phase 4 entry gate is considered.
