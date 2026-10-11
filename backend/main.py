@@ -321,7 +321,7 @@ def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnos
     if not req.diagnosis.strip() or not req.diagnosed_by.strip():
         raise HTTPException(status_code=400, detail="diagnosis and diagnosed_by are required")
     if not req.evidence_ids:
-        raise HTTPException(status_code=400, detail="at least one evidence_id is required")
+        raise HTTPException(status_code=400, detail={"decision_state": "HOLD", "blocked": "at least one evidence_id is required"})
     allowed_confidence = {"LOW", "MEDIUM", "HIGH"}
     if req.confidence is not None and req.confidence.upper() not in allowed_confidence:
         raise HTTPException(status_code=400, detail="confidence must be LOW, MEDIUM, or HIGH")
@@ -334,18 +334,18 @@ def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnos
     for evidence_id in req.evidence_ids:
         evidence = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
         if evidence is None:
-            raise HTTPException(status_code=404, detail=f"evidence not found: {evidence_id}")
+            raise HTTPException(status_code=404, detail={"decision_state": "HOLD", "blocked": f"evidence not found: {evidence_id}"})
         evidence_status = str(evidence.get("status", "")).strip().upper()
         evidence_level = str(evidence.get("evidence_level", "")).strip().upper()
         if evidence_status != "VERIFIED":
             raise HTTPException(
                 status_code=409,
-                detail={"blocked": "evidence is not verified", "evidence_id": evidence_id, "status": evidence_status},
+                detail={"decision_state": "HOLD", "blocked": "evidence is not verified", "evidence_id": evidence_id, "status": evidence_status},
             )
         if evidence_level == "E0":
             raise HTTPException(
                 status_code=409,
-                detail={"blocked": "E0 evidence cannot drive a diagnosis", "evidence_id": evidence_id, "evidence_level": evidence_level},
+                detail={"decision_state": "HOLD", "blocked": "E0 evidence cannot drive a diagnosis", "evidence_id": evidence_id, "evidence_level": evidence_level},
             )
     import uuid
     diagnosis = {"diagnosis_id": str(uuid.uuid4()), "problem_id": problem_id,
@@ -503,7 +503,7 @@ def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceR
         if evidence_level == "E0":
             raise HTTPException(
                 status_code=409,
-                detail={"blocked": "E0 evidence cannot support a decision rationale", "evidence_id": evidence_id, "evidence_level": evidence_level},
+                detail={"decision_state": "HOLD", "blocked": "E0 evidence cannot support a decision rationale", "evidence_id": evidence_id, "evidence_level": evidence_level},
             )
         evidence_records.append(evidence)
 
