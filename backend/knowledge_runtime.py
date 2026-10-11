@@ -81,6 +81,9 @@ def lifecycle(req:LifecycleRequest):
     if req.lifecycle_status not in allowed: raise HTTPException(400,{"allowed":sorted(allowed)})
     r=get_item(req.knowledge_id)
     if not r: raise HTTPException(404,"knowledge item not found")
+    if req.lifecycle_status=="APPROVED" and r.get("evidence_status")!="VERIFIED":
+        raise HTTPException(409,"knowledge evidence_status must be VERIFIED before approval")
+    if not req.changed_by.strip(): raise HTTPException(400,"changed_by is required")
     old=r["lifecycle_status"]; r=dict(r); r["lifecycle_status"]=req.lifecycle_status; r["changed_by"]=req.changed_by; r["updated_at"]=now()
     save_item(r)
     return {"feature_id":"FEAT-048","previous_status":old,"record":r}
@@ -90,10 +93,10 @@ def retrieve(req:RetrievalRequest):
     authority(req.coach_final_authority)
     if not req.workflow_context.strip() or not req.query.strip() or not req.requested_by.strip(): raise HTTPException(400,"workflow_context, query and requested_by are required")
     q=req.query.lower()
-    candidates=[r for r in MEMORY_ITEMS.values() if r["lifecycle_status"]=="APPROVED" and (q in r["knowledge_id"].lower() or q in r["provenance_note"].lower() or q in r["source_ref"].lower())]
+    candidates=[r for r in MEMORY_ITEMS.values() if r["lifecycle_status"]=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r["knowledge_id"].lower() or q in r["provenance_note"].lower() or q in r["source_ref"].lower())]
     if persistence.is_postgres_enabled():
         for r in persistence.load_knowledge().values():
-            if r.get("lifecycle_status")=="APPROVED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower()):
+            if r.get("lifecycle_status")=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower()):
                 if not any(x.get("knowledge_id")==r.get("knowledge_id") for x in candidates): candidates.append(r)
     return {"feature_id":"FEAT-049","workflow_context":req.workflow_context,"query":req.query,"results":candidates,"retrieved_by":req.requested_by,"coach_final_authority":True,"execution_authorized":False}
 
