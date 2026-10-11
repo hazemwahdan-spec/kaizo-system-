@@ -1,0 +1,53 @@
+name: KAIZO Gemini Context Refresh
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'GEMINI.md'
+      - 'docs/**'
+      - 'backend/**'
+      - 'src/**'
+      - 'app/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kaizo-gemini-context-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh-context:
+    name: Read current KAIZO state with Gemini
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Run read-only KAIZO context review
+        uses: google-github-actions/run-gemini-cli@v0
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          prompt: |
+            Perform a READ-ONLY KAIZO context refresh for the exact checked-out commit ${{ github.sha }}.
+            Read GEMINI.md and the current handover, audit, backlog, architecture, and closure evidence available in this repository.
+            Return a concise status report containing:
+            1. Repository and exact commit SHA inspected.
+            2. Canonical source-of-truth files actually found.
+            3. Current phase/feature status only where supported by evidence.
+            4. Open blockers and conflicting status claims.
+            5. The single best next action.
+            6. Explicit unknowns and inaccessible evidence.
+            Do not edit files, create branches, open or merge pull requests, deploy, access external secrets, or claim production verification from CI alone.
+            Do not invent the overall 17-phase plan or infer its completion from P01-P24.
