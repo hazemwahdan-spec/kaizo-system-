@@ -300,3 +300,13 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - No parallel identity system or production identity configuration was introduced. Resolution must reuse the approved identity/RBAC contract and define the applicable tenant/consent boundary before endpoint enforcement is claimed.
 - **Exact next step:** continue the current Phase 4 HOLD-contract PR and tests; then reconcile the identity integration boundary and add missing/invalid identity, role and applicable tenant/consent negative paths. Keep production endpoint verification and independent retest separate.
 - **Phase status:** owner entry gate PASS; implementation in progress; Phase 4 exit remains NOT PASSED.
+
+
+## 29. Execution checkpoint — explicit HOLD contract merged (2026-10-11)
+
+- PR #111 merged at `841ae5e8cd055c40973d5e1f3750c1ec1934a86b`; all 18 checks passed, including PostgreSQL run https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38128645212.
+- Missing, absent, unverified, stale/conflicting, rejected, review-required and E0 evidence paths now return an explicit `decision_state: HOLD` with a blocking reason in diagnosis/rationale paths. Unknown evidence status is rejected at ingestion.
+- The executed traceability matrix now records this result at `docs/audits/KAIZO_PHASE4_REQUIREMENT_TRACEABILITY_EXECUTED_20261011.md`.
+- The Phase 4 identity gap is documented at `docs/audits/KAIZO_PHASE4_IDENTITY_BOUNDARY_GAP_20261011.md`; P4-REQ-011 remains OPEN / NOT PROVEN because Phase 7 productization identity tests do not prove Core API request authentication/tenant/consent enforcement.
+- **Current Phase 4 state:** owner entry gate PASS; seven implementation increments merged and CI-verified; phase exit NOT PASSED.
+- **Exact next work:** test stale/conflicting source-version reconciliation; reconcile and implement the approved identity/RBAC boundary for applicable Core API routes; obtain a genuinely independent negative-path retest; verify live production API and durable audit/persistence separately. Do not declare Phase 4 exit from CI alone.
