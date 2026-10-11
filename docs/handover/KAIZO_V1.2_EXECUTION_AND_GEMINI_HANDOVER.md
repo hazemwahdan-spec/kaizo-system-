@@ -203,3 +203,13 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - The five-stage strategic roadmap, recovered 17-step completion board, productization Phases 4–7, P01–P17/P18–P24, FEAT-001–075 and K/PACK/GAP/runtime tracks are explicitly separated. Unknown mappings remain OPEN rather than inferred.
 - Productization Phase 4 Domain Design (GATE 4), Phase 5A Epic Design (GATE 5A), Phase 5B Backlog (GATE 5B), and Phase 6 Acceptance/Sequencing (GATE 6) are closed within their own scopes; Phase 7 Release Plan is BASELINE / READY FOR BUILD. These are not closure evidence for the master board's Phase 4 Digital Brain gate.
 - Exact next resume point: **Step 4 — Close/Classify Conflicts**, focusing on PACK-A production-health status, canonical production target, P18–P24 crosswalk/change control, and master Phase 4 entry criteria.
+
+
+## 19. Execution checkpoint — Step 4 conflict classification (2026-10-11)
+
+- Step 4 is recorded as **CLOSED WITH ONE OWNER-DECISION BLOCKER** in docs/audits/KAIZO_MASTER_BOARD_STEP4_CONFLICT_CLASSIFICATION_20261011.md.
+- Core Reference conflicts CV-004/CV-006/CV-007 remain resolved within the frozen Core scope; the broader V1.1 vocabulary SSOT package remains open without reopening frozen Core.
+- PACK-A historical closure is preserved, while current live production health remains unverified until fresh evidence exists for the canonical target.
+- Productization Gate 4 is separate from the master board's Phase 4 Digital Brain entry gate; runtime Phase 7 OIDC is separate from master board Step 7.
+- Direct owner decision needed before production verification: choose the canonical target between FastAPI Cloud (https://kaizo-system.fastapicloud.dev) and Railway (https://kaizo-core-engine-production.up.railway.app). Do not run production evidence against a guessed target.
+- Exact next resume point: **Step 5 — Produce Canonical Roadmap**, with the target decision explicitly bounded until confirmed.
