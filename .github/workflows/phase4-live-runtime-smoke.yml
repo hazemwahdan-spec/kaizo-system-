@@ -1,0 +1,78 @@
+name: Phase 4 Live Runtime Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/phase4-live-runtime-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://kaizo-system.fastapicloud.dev
+    steps:
+      - name: Fetch deployed OpenAPI contract with bounded retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/kaizo-openapi.json"
+          status="000"
+          for attempt in 1 2 3 4 5 6; do
+            status="$(curl -sS --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/openapi.json" || true)"
+            if [[ "$status" == "200" ]]; then
+              break
+            fi
+            echo "OpenAPI attempt $attempt returned HTTP $status"
+            sleep 5
+          done
+          if [[ "$status" != "200" ]]; then
+            echo "LIVE_OPENAPI_FAILED: $BASE_URL/openapi.json returned HTTP $status after bounded retries"
+            exit 1
+          fi
+          python - "$output" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              schema = json.load(f)
+          assert schema.get("info", {}).get("title") == "KAIZO Core Engine API", schema.get("info")
+          assert schema.get("info", {}).get("version") == "2.0.0", schema.get("info")
+          paths = schema.get("paths", {})
+          required = {
+              "/api/v1/health",
+              "/api/v1/evidence",
+              "/api/v1/problem-statements/{problem_id}/diagnosis",
+              "/api/v1/diagnoses/{diagnosis_id}/decision-candidates",
+              "/api/v1/decision-candidates/{candidate_id}/rationale",
+              "/api/v1/features/feat-029/progression-regression-rules",
+              "/api/v1/knowledge-runtime/feat-047/provenance",
+              "/api/v1/audit/logs",
+          }
+          missing = sorted(required - set(paths))
+          if missing:
+              raise SystemExit(f"LIVE_OPENAPI_MISSING_PHASE4_PATHS: {missing}")
+          print(f"LIVE_OPENAPI_PASS: {len(paths)} paths; required Phase 4 paths present")
+          PY
+
+      - name: Verify deployed health endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/kaizo-health.json"
+          status="$(curl -sS --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/health" || true)"
+          if [[ "$status" != "200" ]]; then
+            echo "LIVE_HEALTH_FAILED: $BASE_URL/api/v1/health returned HTTP $status"
+            cat "$output" 2>/dev/null || true
+            exit 1
+          fi
+          python - "$output" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              body = json.load(f)
+          print("LIVE_HEALTH_PASS:", json.dumps(body, sort_keys=True))
+          PY
