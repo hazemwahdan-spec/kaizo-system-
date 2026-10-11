@@ -69,8 +69,9 @@ def test_feature_list_and_get():
 def test_canonical_domain_validation_is_enforced():
     r=client.post("/api/v1/features/feat-029/progression-regression-rules",json={
         "subject_id":"athlete-1","actor_id":"coach-1",
-        "payload":{"metric":"technical_quality","threshold":8,"action":"PROGRESS","adjustment":1},
-        "coach_final_authority":True,"execution_authorized":False})
+        "payload":{"metric":"technical_quality","threshold":8,"action":"PROGRESS","adjustment":1,
+                   "rule_version":"1.0.0","approval_status":"APPROVED"},
+        "evidence_refs":["RULE-SOURCE-029"],"coach_final_authority":True,"execution_authorized":False})
     assert r.status_code==201
 
     r=client.post("/api/v1/features/feat-031/drill-library",json={
