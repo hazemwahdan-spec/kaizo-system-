@@ -255,3 +255,18 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - Phase 4 entry package now has the roadmap, authority register, scoped vocabulary boundary, CV-001–CV-007 closure, proposed dependency matrix, requirement-to-test traceability and design-level red-team review.
 - **Master Phase 4 gate status: READY FOR OWNER DECISION, NOT OPEN.** No Phase 4 implementation is authorized until an explicit gate PASS is recorded. Later runtime testing, production proof and final freeze remain separate.
 - Exact resume point: **Step 6 — owner gate decision; PASS proceeds to Step 7 under scope, otherwise remain blocked.**
+
+
+## 25. Execution checkpoint — Phase 4 owner PASS and first implementation increment (2026-10-11)
+
+- **Owner gate decision:** PASS explicitly authorized by the project owner in the active conversation on 2026-10-11. Canonical decision record: `docs/governance/KAIZO_PHASE4_OWNER_GATE_PASS_20261011.md`.
+- This decision supersedes earlier “owner decision pending / gate not open” status text above for implementation authorization only. Earlier records are preserved as historical evidence; they are not silently rewritten.
+- **Implementation PR #102 merged:** https://github.com/hazemwahdan-spec/kaizo-system-/pull/102
+- Merge commit: `a5878305088aa3973a82f962ba26df90a8875662`.
+- First Phase 4 acceptance test added at `backend/test_phase4_digital_brain_acceptance.py` and wired into `.github/workflows/persistence-adapter-validation.yml`.
+- The acceptance test exercises evidence-linked diagnosis → decision candidates → rationale → explicit coach confirmation → decision record → draft training plan. It asserts Coach Final Authority and that `execution_authorized` remains false; a negative test checks evidence-safety rejects a request without coach authority.
+- **PR checks:** all 9 checks passed on the implementation PR, including the PostgreSQL Persistence Adapter Validation job and the new “Run Phase 4 Digital Brain integration acceptance tests” step. Workflow run: https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38127302906
+- This is CI acceptance evidence only. It does not establish production readiness, independent red-team sign-off, live identity-provider health, or Phase 4 completion.
+- Gemini retry/context hardening PR #101 was merged at `1814d9c9160a90f698ecff6fb4d48f3d84bef893`; the new Gemini refresh run on the latest main commit `a5878305088aa3973a82f962ba26df90a8875662` is pending at checkpoint time and must be checked before claiming sync success.
+- **Current Phase 4 status:** IMPLEMENTATION IN PROGRESS. Owner gate is PASS; phase exit is not yet passed.
+- **Exact resume point:** map P4-REQ-001–P4-REQ-012 to exact implementation paths/tests; implement the smallest remaining contract gaps for approved-rule/version handling and provenance fail-closed behavior; add negative-path coverage and independent retest. Track production target/runtime proof separately. Do not reopen frozen Core Reference or infer production readiness from CI.
