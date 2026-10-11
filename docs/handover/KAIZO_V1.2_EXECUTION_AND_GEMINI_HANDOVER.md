@@ -281,3 +281,13 @@ The next action is concrete: **reconcile and execute PR #75's live production-ev
 - **Current Phase 4 state:** owner entry gate PASS; three implementation increments merged and CI-verified; Phase 4 exit NOT PASSED.
 - **Exact next batch:** missing/stale/conflicting evidence HOLD tests at decision-cycle boundaries; coach override-history/audit-linkage test; one decision → plan/intervention → KPI → retest lineage test; applicable identity/tenant/consent mapping; independent retest. Live production endpoint/audit verification remains separate.
 - **Evidence boundary:** workflow 38127785379 passed all three Phase 4-specific scripts (decision-to-plan, approved-rule governance, provenance version/status) under PostgreSQL CI. It does not prove live production health or external independent red-team sign-off.
+
+
+## 27. Execution checkpoint — Phase 4 evidence fail-closed and authority tests (2026-10-11)
+
+- PR #108 merged at `ff60bf59285634fb7fc46f3e16cf710473e725ed`. It normalizes evidence status at ingestion and blocks non-VERIFIED or E0 evidence from decision diagnoses and decision rationales. Its 18 checks passed, including PostgreSQL Persistence Adapter Validation; run: https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38128192404
+- New negative tests cover UNVERIFIED, STALE, CONFLICTED, REJECTED, REVIEW_REQUIRED, E0 and unknown evidence statuses. The tests ran successfully in the merged PR.
+- PR #109 adds API-level read-only audit verification, coach-event linkage, cross-athlete plan denial, and an assertion that an attempted `execution_authorized=true` cannot change a plan from DRAFT. Its checks are in progress at checkpoint time: https://github.com/hazemwahdan-spec/kaizo-system-/pull/109
+- The traceability matrix was updated to distinguish tested record lineage from proof that an intervention was actually executed or caused a KPI change.
+- **Current Phase 4 state:** owner gate PASS; rule/provenance/decision-cycle/outcome-lineage and evidence-safety increments are merged and CI-verified. Phase 4 exit remains NOT PASSED.
+- **Exact next batch:** finish PR #109 checks; then map identity/tenant/consent controls to Phase 4 endpoints where applicable; define explicit HOLD response semantics for missing/stale/conflicting input across the whole decision cycle; continue independent retest and live production target/audit proof as separate evidence tracks.
