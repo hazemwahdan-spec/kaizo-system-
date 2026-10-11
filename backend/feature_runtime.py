@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 import persistence
+from evidence_store import get_evidence_record
 from progression_rules import ProgressionRegressionRule, validate_rule as validate_progression_rule
 from session_constraints_notes import SessionConstraintNote, validate_item as validate_session_constraint
 from drill_library import Drill, validate_drill
@@ -330,6 +331,26 @@ def _validate(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail={"feature_id":feature_id,"domain_validation":str(exc)})
     if contract["evidence"] and not req.evidence_refs:
         raise HTTPException(status_code=400, detail="evidence_refs are required for this feature")
+    if feature_id == "FEAT-029":
+        for evidence_id in req.evidence_refs:
+            evidence = get_evidence_record(evidence_id)
+            if evidence is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"decision_state": "HOLD", "blocked": "rule evidence not found", "evidence_id": evidence_id},
+                )
+            evidence_status = str(evidence.get("status", "")).strip().upper()
+            evidence_level = str(evidence.get("evidence_level", "")).strip().upper()
+            if evidence_status != "VERIFIED":
+                raise HTTPException(
+                    status_code=409,
+                    detail={"decision_state": "HOLD", "blocked": "rule evidence is not verified", "evidence_id": evidence_id, "status": evidence_status},
+                )
+            if evidence_level == "E0":
+                raise HTTPException(
+                    status_code=409,
+                    detail={"decision_state": "HOLD", "blocked": "E0 evidence cannot authorize a progression rule", "evidence_id": evidence_id, "evidence_level": evidence_level},
+                )
     return contract
 
 

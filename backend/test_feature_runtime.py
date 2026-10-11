@@ -67,6 +67,12 @@ def test_feature_list_and_get():
     assert any(x["record_id"]==rid for x in l.json()["records"])
 
 def test_canonical_domain_validation_is_enforced():
+    evidence = client.post("/api/v1/evidence", json={
+        "evidence_id":"RULE-SOURCE-029","subject_type":"rule","subject_id":"athlete-1",
+        "evidence_level":"E2","status":"VERIFIED","source_ref":"RULE-REF-029",
+        "claim":"Verified progression-rule source","observed_value":{"threshold":8},
+        "verified_by":"coach-1"})
+    assert evidence.status_code == 201, evidence.text
     r=client.post("/api/v1/features/feat-029/progression-regression-rules",json={
         "subject_id":"athlete-1","actor_id":"coach-1",
         "payload":{"metric":"technical_quality","threshold":8,"action":"PROGRESS","adjustment":1,

@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
+from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
 from knowledge_runtime import router as knowledge_runtime_router
@@ -1616,9 +1617,6 @@ class EvidenceCreateRequest(BaseModel):
     observed_value: Optional[Dict[str, Any]] = None
     verified_by: str
     notes: Optional[str] = None
-
-
-EVIDENCE_RECORDS: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/evidence", status_code=status.HTTP_201_CREATED)
