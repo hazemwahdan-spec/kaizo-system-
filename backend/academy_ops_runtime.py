@@ -199,6 +199,8 @@ def create_academy(
         tenant_id = phase4.get("tenant_id")
         if not actor_subject or not tenant_id:
             raise HTTPException(status_code=503, detail="Verified tenant context is required to persist an academy")
+        if req.owner_id.strip() != actor_subject:
+            raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "academy_owner_identity_mismatch"})
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
