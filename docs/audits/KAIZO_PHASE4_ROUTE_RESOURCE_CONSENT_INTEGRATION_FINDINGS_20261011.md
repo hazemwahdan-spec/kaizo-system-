@@ -90,3 +90,13 @@ FastAPI Cloud is the selected target for current PACK-A/Phase 4 verification. It
 
 Current status remains: Gate A partially resolved (hosting target only); Gate B isolated persistence primitives have CI evidence; route-level enforcement NOT PROVEN; P4-REQ-011 OPEN / NOT PROVEN; Phase 4 EXIT BLOCKED.
 
+
+
+## Actual-app route inventory test added — 2026-10-12
+
+- Added `backend/test_phase4_actual_app_route_inventory.py` on the PR #122 branch.
+- The test imports the real `backend.main:app`, traverses registered `APIRoute` dependency trees, and checks that representative Core routes plus dynamically mounted feature/state routes are actually present.
+- It deliberately records the known absence of `require_phase4_principal` on the representative athlete/assessment routes. This is a diagnostic baseline, **not** a passing security acceptance claim; the assertion must be inverted when approved route enforcement is wired.
+- It does not send HTTP requests to production, mutate records, change environment variables, or apply migrations.
+- Remaining blocker: a route inventory is not authorization. Correct wiring still depends on authoritative persisted tenant/resource ownership, verified guardian relationships, durable scoped consent, and the OIDC issuer/audience/JWKS/claim contract.
+- CI must run on the new commit before the test is considered verified. Phase 4 exit remains blocked and P4-REQ-011 remains OPEN / NOT PROVEN.
