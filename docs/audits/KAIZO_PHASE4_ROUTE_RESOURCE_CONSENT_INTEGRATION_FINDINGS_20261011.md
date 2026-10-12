@@ -60,3 +60,33 @@ This is a design mapping for implementation; it is not a claim that these checks
 ## Current disposition
 
 P4-REQ-011 remains OPEN / NOT PROVEN. PR #122 remains an implementation candidate. No production configuration, Auth0 settings, secrets, or live records were changed. Phase 4 exit remains blocked.
+
+## Expanded source route inventory — 2026-10-12
+
+This is a static inventory of route declarations in the current Phase 4 candidate branch, not a runtime route probe. It is intentionally a coverage baseline, not proof that every possible route has been enumerated or secured.
+
+### Top-level Core handlers inspected
+
+- `backend/main.py`: athlete create/read/update; assessment create/read; assessment evidence attach/list; plus further problem, diagnosis, decision and evidence handlers in the same module.
+- Representative exposed signatures confirmed by source inspection: `POST /api/v1/athletes`, `GET /api/v1/athletes/{athlete_id}`, `PATCH /api/v1/athletes/{athlete_id}`, `POST /api/v1/assessments`, `GET /api/v1/assessments/{assessment_id}`. They do not declare `Depends(require_phase4_principal)` or another verified-principal dependency. Client-supplied actor labels do not substitute for authenticated identity.
+
+### Included router modules and statically declared paths
+
+- `backend/training_workflow.py`: `POST /feat-033/decision-drill`, `POST /feat-034/drill-prescription`, `POST /feat-035/execution-cues`, `POST /feat-036/training-response`, `POST /feat-037/retest`, `POST /feat-038/before-after`, `POST /feat-039/progress-state`, `POST /feat-040/next-decision-trigger`, `GET /athletes/{athlete_id}`.
+- `backend/knowledge_runtime.py`: `POST /feat-047/provenance`, `POST /feat-048/lifecycle`, `POST /feat-049/retrieve`, `POST /feat-050/link`.
+- `backend/audit_trace_runtime.py`: `POST /feat-052/trace`, `POST /feat-053/governance`, `POST /feat-054/review`, `POST /feat-055/trace`.
+- `backend/evidence_safety_runtime.py`: `POST /feat-057/evidence-quality`, `POST /feat-058/provenance`, `POST /feat-059/block`, `POST /feat-060/escalate`.
+- `backend/state_cycle.py`: `POST /feat-042/digital-twin-state`, `GET /feat-042/digital-twin-state/{entity_id}`, `GET /feat-043/state-history/{entity_id}`, `POST /feat-044/decision-state-link`, `GET /feat-044/decision-state-link/{decision_id}`, `POST /feat-045/next-state`.
+- `backend/reporting_runtime.py`: `POST /progress`, `POST /kpi-trend`, `POST /coach-summary`, `POST /academy-dashboard`, `POST /export`, `GET /export/{report_id}`.
+- `backend/competition_runtime.py`: `POST /events`, `GET /events/{event_id}`, `POST /readiness`, `GET /readiness/{athlete_id}/{event_id}`, `POST /performance`, `GET /trend/{athlete_id}`, `POST /next-decision`.
+- `backend/academy_ops_runtime.py`: `POST /academies`, `GET /academies/{academy_id}`, `POST /memberships`, `POST /groups`, `POST /assignments`, `GET /academies/{academy_id}/dashboard`.
+- `backend/feature_runtime.py` generates feature routes dynamically via `router.add_api_route`; a decorator-only grep misses these. The router has prefix `/api/v1/features` and registers create, get, and list endpoints per frozen feature ID/slug. All generated routes must be enumerated from the actual FastAPI app/OpenAPI at the exact deployed commit and then checked for dependencies and nested-resource scope.
+
+### Security disposition and next code gate
+
+The inventory confirms that identity enforcement cannot safely be declared complete by testing the standalone dependency in a synthetic `/protected` harness. The next acceptance change must add tests against the actual `backend.main:app` route objects and verify the real registered route dependency graph, then wire approved per-route authorization. Before that wiring can be correct, the contract must specify how tenant scope and resource ownership are derived from persisted records; do not infer academy ownership from request bodies or token claims alone.
+
+FastAPI Cloud is the selected target for current PACK-A/Phase 4 verification. Its attached database and authoritative OIDC issuer/audience/JWKS/claims configuration have not yet been independently verified. No production configuration, migration, or live record was changed by this source inventory.
+
+Current status remains: Gate A partially resolved (hosting target only); Gate B isolated persistence primitives have CI evidence; route-level enforcement NOT PROVEN; P4-REQ-011 OPEN / NOT PROVEN; Phase 4 EXIT BLOCKED.
+
