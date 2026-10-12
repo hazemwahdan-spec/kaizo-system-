@@ -1,5 +1,9 @@
 name: P14 Minor Consent Runtime Evidence
 on:
+  pull_request:
+    paths:
+      - 'consent/**'
+      - '.github/workflows/p14-consent-runtime.yml'
   push:
     paths:
       - 'consent/**'
