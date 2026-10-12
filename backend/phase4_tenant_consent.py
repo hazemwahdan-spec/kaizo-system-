@@ -83,6 +83,11 @@ def authorize_resource_access(
             "Durable Phase 4 authorization requires PostgreSQL mode"
         )
 
+    if isinstance(principal, Mapping):
+        caller_role = str(principal.get("role") or "")
+    else:
+        caller_role = str(getattr(principal, "role", "") or "")
+
     allowed = False
     reason = "membership_missing_or_inactive"
     guardian_subject: str | None = None
@@ -131,6 +136,7 @@ def authorize_resource_access(
                              )
                              AND c.resource_type=%s AND c.action=%s
                              AND c.recorded_by_subject=c.guardian_subject_id
+                             AND (%s <> 'parent' OR gr.guardian_subject_id=%s)
                              AND c.state='active'
                              AND (c.expires_at IS NULL OR c.expires_at > NOW())
                              AND NOT EXISTS (
@@ -143,7 +149,8 @@ def authorize_resource_access(
                                  AND newer.recorded_sequence > c.recorded_sequence
                              )
                            ORDER BY c.created_at DESC LIMIT 1""",
-                        (child_resource_id, tenant_id, resource_type, action),
+                        (child_resource_id, tenant_id, resource_type, action,
+                         caller_role, subject),
                     )
                     row = cur.fetchone()
                     if row is not None:
