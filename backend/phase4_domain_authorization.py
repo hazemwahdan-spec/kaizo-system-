@@ -17,12 +17,12 @@ from phase4_identity_boundary import Principal, require_phase4_principal
 from phase4_tenant_consent import Phase4AuthorizationUnavailable, authorize_resource_access
 
 _ACTOR_FIELDS = (
-    "actor_id", "created_by", "owner_id", "changed_by", "requested_by",
+    "actor_id", "created_by", "owner_id", "changed_by", "requested_by", "user_id",
     "recorded_by", "assessed_by", "decided_by", "reviewed_by", "traced_by",
     "linked_by", "assigned_by", "reported_by", "uploaded_by", "author_id",
 )
 _RESOURCE_FIELDS = {
-    "athlete_id": "athlete", "academy_id": "academy",
+    "athlete_id": "athlete", "academy_id": "academy", "item_id": "knowledge",
     "group_id": "academy_group", "knowledge_id": "knowledge",
     "event_id": "competition_event", "report_id": "report",
     "subject_id": None, "entity_id": "digital_twin",
@@ -129,8 +129,10 @@ async def require_phase4_domain_access(
     resources = _payload_resource_ids(request, payload)
     # A new knowledge ID may be bound only when neither a binding nor a legacy
     # record exists. Existing unbound records are not silently claimed.
-    if request.method.upper() == "POST" and request.url.path == "/api/v1/knowledge-runtime/feat-047/provenance":
-        knowledge_id = str(payload.get("knowledge_id") or "").strip()
+    if request.method.upper() == "POST" and request.url.path in {
+        "/api/v1/knowledge-runtime/feat-047/provenance", "/api/v1/knowledge/ingest"
+    }:
+        knowledge_id = str(payload.get("knowledge_id") or payload.get("item_id") or "").strip()
         if knowledge_id:
             with persistence.connection() as conn:
                 with conn.cursor() as cur:
@@ -155,6 +157,7 @@ async def require_phase4_domain_access(
             "/api/v1/academy/academies": "academy",
             "/api/v1/competition/events": "competition_event",
             "/api/v1/knowledge-runtime/feat-047/provenance": "knowledge",
+            "/api/v1/knowledge/ingest": "knowledge",
         }
         is_tenant_scoped_knowledge_retrieval = (
             request.method.upper() == "POST"
