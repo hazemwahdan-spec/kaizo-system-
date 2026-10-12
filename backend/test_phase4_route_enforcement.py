@@ -91,6 +91,14 @@ class Phase4AthleteRouteEnforcementTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         get_athlete.assert_not_called()
 
+    def test_parent_cannot_create_athlete_or_choose_tenant(self):
+        main.app.dependency_overrides[main.require_phase4_principal] = lambda: self.parent
+        response = self.client.post(
+            "/api/v1/athletes",
+            json={"display_name": "Forbidden child", "metadata": {"tenant_id": "attacker-choice"}},
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_parent_cannot_update_athlete_even_with_read_consent(self):
         main.app.dependency_overrides[main.require_phase4_principal] = lambda: self.parent
         with patch("phase4_route_guard.authorize_resource_access") as authorize, \
