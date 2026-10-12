@@ -10,6 +10,7 @@ import sys
 import main
 import persistence
 import phase4_route_guard
+import phase4_identity_boundary
 import backend.main as package_main
 from phase4_identity_boundary import Principal
 
@@ -42,6 +43,9 @@ main.app.dependency_overrides[phase4_route_guard.require_phase4_route_access] = 
         "athlete_id": None,
         "authorization": {"allowed": True, "test_only_override": True},
     }
+)
+main.app.dependency_overrides[phase4_identity_boundary.require_phase4_principal] = (
+    lambda: principal
 )
 
 # Some older acceptance modules import the app as backend.main rather than main.
