@@ -256,38 +256,26 @@ def test_academy_create_persists_binding_in_same_transaction():
         persistence.upsert_kpi_definition(
             foreign_kpi, tenant_id=foreign_tenant, bound_by_subject=foreign_subject,
         )
-        guardian_subject = "oidc|guardian-" + suffix
+        from pytest import raises
+        cross_tenant_capture_id = "capture-cross-tenant-" + suffix
+        with raises(persistence.PersistenceConfigurationError):
+            persistence.upsert_kpi_capture(
+                {
+                    "capture_id": cross_tenant_capture_id, "athlete_id": athlete_id,
+                    "kpi_id": foreign_kpi_id, "value": 5.2, "captured_by": subject,
+                    "assessment_id": None, "captured_at": "2026-10-13T00:00:00+00:00",
+                    "created_at": "2026-10-13T00:00:00+00:00",
+                },
+                tenant_id=tenant_id, bound_by_subject=subject, role="academy",
+                trace_id="cross-tenant-kpi-" + suffix,
+            )
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO kaizo_guardian_relationships
-                       (child_resource_id,guardian_subject_id,tenant_id,relationship_type,
-                        verification_status,verified_by_subject,verified_at)
-                       VALUES (%s,%s,%s,'parent','VERIFIED',%s,NOW())""",
-                    (athlete_id, guardian_subject, tenant_id, subject),
+                    "SELECT 1 FROM kaizo_kpi_captures WHERE capture_id=%s",
+                    (cross_tenant_capture_id,),
                 )
-                cur.execute(
-                    """INSERT INTO kaizo_p14_consents
-                       (child_resource_id,guardian_subject_id,tenant_id,resource_type,action,
-                        state,expires_at,recorded_by_subject,source_reference)
-                       VALUES (%s,%s,%s,'athlete','POST:/api/v1/kpis/captures',
-                               'active',NULL,%s,'phase4-kpi-cross-tenant-test')""",
-                    (athlete_id, guardian_subject, tenant_id, guardian_subject),
-                )
-            conn.commit()
-        with patch.object(phase4_route_guard, "require_phase4_principal", return_value=principal), \
-             patch.object(
-                 phase4_route_guard, "authorize_resource_access",
-                 return_value={"allowed": True, "reason_code": "active_membership_and_resource_binding", "trace_id": "P4-KPI-TEST"},
-             ):
-            cross_tenant_capture = client.post(
-                "/api/v1/kpis/captures",
-                json={"athlete_id": athlete_id, "kpi_id": foreign_kpi_id,
-                      "value": 5.2, "captured_by": subject},
-                headers={"X-Trace-Id": "cross-tenant-kpi-" + suffix},
-            )
-        assert cross_tenant_capture.status_code == 403, cross_tenant_capture.text
-        assert cross_tenant_capture.json()["detail"]["reason_code"] == "kpi_or_athlete_tenant_binding_missing"
+                assert cur.fetchone() is None
 
         foreign_knowledge_id = "foreign-knowledge-" + suffix
         foreign_payload = {
