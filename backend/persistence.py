@@ -107,6 +107,12 @@ CREATE TABLE IF NOT EXISTS kaizo_knowledge_repository (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_knowledge_ingest_records (
+    item_id TEXT PRIMARY KEY,
+    payload JSONB NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_state_snapshots (
     snapshot_id TEXT PRIMARY KEY,
     athlete_id TEXT NOT NULL,
@@ -569,6 +575,63 @@ def upsert_knowledge(
                     payload = EXCLUDED.payload,
                     updated_at = EXCLUDED.updated_at
                 """,
+                (item_id, json.dumps(payload), updated_at),
+            )
+        conn.commit()
+
+
+def upsert_ingested_knowledge(
+    item_id: str, payload: Dict[str, Any], updated_at: str, *,
+    tenant_id: str, bound_by_subject: str,
+) -> None:
+    """Persist legacy Knowledge Engine ingestion in its own tenant-scoped store."""
+    if not is_postgres_enabled():
+        return
+    if not tenant_id or not bound_by_subject:
+        raise PersistenceConfigurationError(
+            "Tenant-scoped ingestion requires tenant_id and bound_by_subject"
+        )
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                   WHERE resource_type='knowledge_ingest' AND resource_id=%s FOR UPDATE""",
+                (item_id,),
+            )
+            binding = cur.fetchone()
+            if binding is not None and binding[0] != tenant_id:
+                raise PersistenceConfigurationError(
+                    "Ingested knowledge is already bound to another tenant"
+                )
+            if binding is None:
+                cur.execute(
+                    "SELECT 1 FROM kaizo_knowledge_ingest_records WHERE item_id=%s",
+                    (item_id,),
+                )
+                if cur.fetchone() is not None:
+                    raise PersistenceConfigurationError(
+                        "Refusing to auto-bind an existing unowned ingestion record"
+                    )
+                cur.execute(
+                    """INSERT INTO kaizo_resource_tenant_bindings
+                       (resource_type,resource_id,tenant_id,bound_by_subject)
+                       SELECT 'knowledge_ingest',%s,t.tenant_id,%s
+                       FROM kaizo_tenants t
+                       JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                       WHERE t.tenant_id=%s AND t.status='ACTIVE'
+                         AND m.subject_id=%s AND m.status='ACTIVE'
+                       LIMIT 1""",
+                    (item_id, bound_by_subject, tenant_id, bound_by_subject),
+                )
+                if cur.rowcount != 1:
+                    raise PersistenceConfigurationError(
+                        "Active tenant membership is required to bind ingested knowledge"
+                    )
+            cur.execute(
+                """INSERT INTO kaizo_knowledge_ingest_records(item_id,payload,updated_at)
+                   VALUES (%s,%s::jsonb,%s)
+                   ON CONFLICT (item_id) DO UPDATE SET
+                     payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at""",
                 (item_id, json.dumps(payload), updated_at),
             )
         conn.commit()
