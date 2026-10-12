@@ -6,11 +6,30 @@ os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
 
 from fastapi.testclient import TestClient
+import pytest
 import main
 import persistence
+from phase4_domain_authorization import require_phase4_domain_access
 
 persistence.initialize()
 client = TestClient(main.app)
+
+
+@pytest.fixture(autouse=True)
+def isolate_outcome_lineage_business_tests_from_tenant_guard():
+    # These tests assert override/audit lineage; actual tenant and actor
+    # spoofing behavior is verified in dedicated Phase 4 authorization tests.
+    previous = main.app.dependency_overrides.get(require_phase4_domain_access)
+    main.app.dependency_overrides[require_phase4_domain_access] = lambda: {
+        "principal": "phase4-outcome-test", "tenant_id": "phase4-outcome-test-tenant"
+    }
+    try:
+        yield
+    finally:
+        if previous is None:
+            main.app.dependency_overrides.pop(require_phase4_domain_access, None)
+        else:
+            main.app.dependency_overrides[require_phase4_domain_access] = previous
 
 
 def post(path, payload, expected=(200, 201)):
