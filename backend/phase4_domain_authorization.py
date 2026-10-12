@@ -26,7 +26,7 @@ _ACTOR_FIELDS = (
 )
 _RESOURCE_FIELDS = {
     "athlete_id": "athlete", "academy_id": "academy", "item_id": "knowledge",
-    "kpi_id": "kpi_definition",
+    "kpi_id": "kpi_definition", "session_id": "training_session",
     "group_id": "academy_group", "knowledge_id": "knowledge",
     "event_id": "competition_event", "report_id": "report",
     "subject_id": None, "entity_id": "digital_twin",
