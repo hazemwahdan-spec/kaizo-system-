@@ -219,7 +219,7 @@ def get_academy(academy_id: str) -> Dict[str, Any]:
 
 
 @router.post("/memberships", status_code=201)
-def add_membership(req: MembershipCreate) -> Dict[str, Any]:
+def add_membership(req: MembershipCreate, phase4: Dict[str, Any] = Depends(require_phase4_domain_access)) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("academy_id", req.academy_id), ("coach_id", req.coach_id), ("role", req.role))
     _academy(req.academy_id)
@@ -251,13 +251,17 @@ def add_membership(req: MembershipCreate) -> Dict[str, Any]:
                     (item["membership_id"], item["academy_id"], item["coach_id"], item["role"],
                      item["status"], now, now),
                 )
+                bind_resource_to_tenant_cursor(
+                    cur, resource_type="academy_membership", resource_id=item["membership_id"],
+                    tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
+                )
             conn.commit()
     _audit(req.coach_id, "ACADEMY_COACH_MEMBERSHIP_CREATED", item)
     return item
 
 
 @router.post("/groups", status_code=201)
-def create_group(req: GroupCreate) -> Dict[str, Any]:
+def create_group(req: GroupCreate, phase4: Dict[str, Any] = Depends(require_phase4_domain_access)) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("academy_id", req.academy_id), ("name", req.name))
     _academy(req.academy_id)
@@ -289,13 +293,17 @@ def create_group(req: GroupCreate) -> Dict[str, Any]:
                     VALUES (%s,%s,%s,%s,%s,%s)""",
                     (item["group_id"], item["academy_id"], item["name"], item["status"], now, now),
                 )
+                bind_resource_to_tenant_cursor(
+                    cur, resource_type="academy_group", resource_id=item["group_id"],
+                    tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
+                )
             conn.commit()
     _audit("system", "ACADEMY_GROUP_CREATED", item)
     return item
 
 
 @router.post("/assignments", status_code=201)
-def assign_athlete(req: AssignmentCreate) -> Dict[str, Any]:
+def assign_athlete(req: AssignmentCreate, phase4: Dict[str, Any] = Depends(require_phase4_domain_access)) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("academy_id", req.academy_id), ("athlete_id", req.athlete_id))
     _academy(req.academy_id)
@@ -338,6 +346,10 @@ def assign_athlete(req: AssignmentCreate) -> Dict[str, Any]:
                     VALUES (%s,%s,%s,%s::jsonb,%s,%s,%s)""",
                     (item["assignment_id"], item["academy_id"], item["athlete_id"],
                      json.dumps(coach_ids), item["status"], now, now),
+                )
+                bind_resource_to_tenant_cursor(
+                    cur, resource_type="academy_assignment", resource_id=item["assignment_id"],
+                    tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
     _audit("system", "ATHLETE_MULTI_COACH_ASSIGNED", item)
