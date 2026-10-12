@@ -1,9 +1,8 @@
 """Fail-closed repository for Phase 4 tenant, resource and P14 consent checks.
 
-This module is intentionally not wired to API routes yet. Callers must pass a
-principal created by the verified OIDC resolver; request-body actor IDs are not
-identity. Missing PostgreSQL configuration denies access. Consent decisions and
-their audit event are written in the same transaction.
+Core API route dependencies call this repository after verified OIDC resolution.
+Request-body actor IDs are never identity. Missing PostgreSQL configuration
+denies access. Consent decisions and their audit event share one transaction.
 """
 from __future__ import annotations
 
