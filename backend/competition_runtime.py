@@ -5,10 +5,11 @@ Readiness and trend indicators are derived, never silently converted into
 autonomous decisions. Coach Final Authority remains mandatory.
 """
 from datetime import datetime, timezone
+import json
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends
-from phase4_domain_authorization import require_phase4_domain_access
+from phase4_domain_authorization import bind_resource_to_tenant_cursor, require_phase4_domain_access
 from pydantic import BaseModel, Field
 import persistence
 
@@ -22,6 +23,27 @@ DECISIONS: Dict[str, Dict[str, Any]] = {}
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _ensure_schema() -> None:
+    if not persistence.is_postgres_enabled():
+        return
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """CREATE TABLE IF NOT EXISTS kaizo_competition_events (
+                    event_id TEXT PRIMARY KEY,
+                    event_name TEXT NOT NULL,
+                    event_date TEXT NOT NULL,
+                    context JSONB NOT NULL,
+                    created_by TEXT NOT NULL,
+                    evidence_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    created_at TEXT NOT NULL,
+                    coach_final_authority BOOLEAN NOT NULL DEFAULT TRUE,
+                    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE
+                )"""
+            )
+        conn.commit()
 
 
 def audit(actor: str, action: str, payload: Dict[str, Any]) -> None:
@@ -85,6 +107,24 @@ class DecisionCreate(BaseModel):
 
 
 def _event(event_id: str) -> Dict[str, Any]:
+    if persistence.is_postgres_enabled():
+        _ensure_schema()
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT event_id,event_name,event_date,context,created_by,
+                              evidence_refs,created_at,coach_final_authority,execution_authorized
+                       FROM kaizo_competition_events WHERE event_id=%s""",
+                    (event_id,),
+                )
+                row = cur.fetchone()
+        if row is not None:
+            return {
+                "event_id": row[0], "event_name": row[1], "date": row[2],
+                "context": row[3], "created_by": row[4], "evidence_refs": row[5],
+                "created_at": row[6], "coach_final_authority": row[7],
+                "execution_authorized": row[8],
+            }
     item = EVENTS.get(event_id)
     if item is None:
         raise HTTPException(status_code=404, detail="competition event not found")
@@ -92,7 +132,10 @@ def _event(event_id: str) -> Dict[str, Any]:
 
 
 @router.post("/events", status_code=201)
-def create_event(req: EventCreate) -> Dict[str, Any]:
+def create_event(
+    req: EventCreate,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+) -> Dict[str, Any]:
     authority(req.coach_final_authority)
     text_required(event_name=req.event_name, date=req.date, created_by=req.created_by)
     if not req.context:
@@ -103,6 +146,29 @@ def create_event(req: EventCreate) -> Dict[str, Any]:
         "evidence_refs": req.evidence_refs, "created_at": now(),
         "coach_final_authority": True, "execution_authorized": False,
     }
+    if persistence.is_postgres_enabled():
+        _ensure_schema()
+        principal = phase4.get("principal")
+        actor_subject = getattr(principal, "actor_id", None)
+        tenant_id = phase4.get("tenant_id")
+        if not actor_subject or not tenant_id:
+            raise HTTPException(status_code=503, detail="Verified tenant context is required to persist a competition event")
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO kaizo_competition_events
+                       (event_id,event_name,event_date,context,created_by,evidence_refs,
+                        created_at,coach_final_authority,execution_authorized)
+                       VALUES (%s,%s,%s,%s::jsonb,%s,%s::jsonb,%s,%s,%s)""",
+                    (item["event_id"], item["event_name"], item["date"],
+                     json.dumps(item["context"]), item["created_by"],
+                     json.dumps(item["evidence_refs"]), item["created_at"], True, False),
+                )
+                bind_resource_to_tenant_cursor(
+                    cur, resource_type="competition_event", resource_id=item["event_id"],
+                    tenant_id=tenant_id, bound_by_subject=actor_subject,
+                )
+            conn.commit()
     EVENTS[item["event_id"]] = item
     audit(req.created_by, "COMPETITION_EVENT_CREATED", item)
     return item
