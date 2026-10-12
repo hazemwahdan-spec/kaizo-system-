@@ -107,7 +107,7 @@ jobs:
         run: PYTHONPATH=. python test_legacy_acceptance_runner.py test_feat_056_safety_guardrails.py
 
       - name: Run Phase 4 Digital Brain integration acceptance tests
-        run: PYTHONPATH=. python test_phase4_digital_brain_acceptance.py
+        run: PYTHONPATH=. python test_legacy_acceptance_runner.py --pytest -q test_phase4_digital_brain_acceptance.py
 
       - name: Run Phase 4 approved-rule governance acceptance tests
         run: PYTHONPATH=. python test_phase4_approved_rule_governance.py
