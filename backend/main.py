@@ -10,7 +10,11 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
-from phase4_core_resource_authorization import (\n    require_core_actor, assert_resource_tenant, assert_assessment_tenant, bind_new_resource,\n)\nfrom productization.identity import Principal\nfrom evidence_store import EVIDENCE_RECORDS
+from phase4_core_resource_authorization import (
+    require_core_actor, assert_resource_tenant, assert_assessment_tenant, bind_new_resource,
+)
+from productization.identity import Principal
+from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
 from knowledge_runtime import router as knowledge_runtime_router
