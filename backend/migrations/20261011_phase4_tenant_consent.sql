@@ -47,6 +47,7 @@ CREATE INDEX IF NOT EXISTS idx_kaizo_resource_tenant
 
 CREATE TABLE IF NOT EXISTS kaizo_guardian_relationships (
     relationship_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recorded_sequence BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
     child_resource_id TEXT NOT NULL,
     guardian_subject_id TEXT NOT NULL,
     tenant_id TEXT NOT NULL REFERENCES kaizo_tenants(tenant_id),
@@ -73,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_kaizo_guardian_subject
 -- scoped record and deny absent, pending, revoked, expired, or mismatched consent.
 CREATE TABLE IF NOT EXISTS kaizo_p14_consents (
     consent_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recorded_sequence BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
     child_resource_id TEXT NOT NULL,
     guardian_subject_id TEXT NOT NULL,
     tenant_id TEXT NOT NULL REFERENCES kaizo_tenants(tenant_id),
