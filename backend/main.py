@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
-from phase4_route_guard import require_phase4_route_access
+from phase4_route_guard import require_phase4_route_access, require_phase4_tenant_member
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
@@ -65,7 +65,7 @@ class AthleteUpdateRequest(BaseModel):
 
 
 @app.post("/api/v1/athletes", status_code=status.HTTP_201_CREATED)
-def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
+def create_athlete(req: AthleteCreateRequest, phase4_access: Dict[str, Any] = Depends(require_phase4_tenant_member)) -> Dict[str, Any]:
     display_name = req.display_name.strip()
     if not display_name:
         raise HTTPException(status_code=400, detail="display_name is required")
@@ -81,6 +81,16 @@ def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
     }
     ATHLETE_RECORDS[athlete["athlete_id"]] = athlete
     persistence.upsert_athlete(athlete)
+    # Persist academy ownership from the verified principal, never from the request body.
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_resource_tenant_bindings
+                   (resource_type, resource_id, tenant_id, bound_by_subject)
+                   VALUES ('athlete', %s, %s, %s)
+                   ON CONFLICT (resource_type, resource_id) DO NOTHING""",
+                (athlete["athlete_id"], phase4_access["tenant_id"], phase4_access["principal"].actor_id),
+            )
     log_action(
         "system",
         "ATHLETE_CREATED",
@@ -91,7 +101,7 @@ def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
     return athlete
 
 
-@app.get("/api/v1/athletes/{athlete_id}")
+@app.get("/api/v1/athletes/{athlete_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_athlete(athlete_id: str) -> Dict[str, Any]:
     athlete = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if athlete is None:
@@ -99,7 +109,7 @@ def get_athlete(athlete_id: str) -> Dict[str, Any]:
     return athlete
 
 
-@app.patch("/api/v1/athletes/{athlete_id}")
+@app.patch("/api/v1/athletes/{athlete_id}", dependencies=[Depends(require_phase4_route_access)])
 def update_athlete(athlete_id: str, req: AthleteUpdateRequest) -> Dict[str, Any]:
     current = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if current is None:
