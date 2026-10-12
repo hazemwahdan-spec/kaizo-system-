@@ -25,6 +25,7 @@ class Phase4TenantConsentPostgresTests(unittest.TestCase):
         self.athlete = "athlete-" + suffix
         self.coach = "auth0|coach-" + suffix
         self.guardian = "auth0|guardian-" + suffix
+        self.other_guardian = "auth0|other-guardian-" + suffix
         self.trace = "trace-" + suffix
 
         with persistence.connection() as conn:
@@ -36,8 +37,9 @@ class Phase4TenantConsentPostgresTests(unittest.TestCase):
                 cur.execute(
                     """INSERT INTO kaizo_tenant_memberships
                        (tenant_id,subject_id,role,status)
-                       VALUES (%s,%s,'parent','ACTIVE'),(%s,%s,'parent','ACTIVE')""",
-                    (self.tenant, self.guardian, self.other_tenant, self.guardian),
+                       VALUES (%s,%s,'parent','ACTIVE'),(%s,%s,'parent','ACTIVE'),(%s,%s,'parent','ACTIVE')""",
+                    (self.tenant, self.guardian, self.other_tenant, self.guardian,
+                     self.tenant, self.other_guardian),
                 )
                 cur.execute(
                     """INSERT INTO kaizo_resource_tenant_bindings
@@ -106,6 +108,14 @@ class Phase4TenantConsentPostgresTests(unittest.TestCase):
     def test_revoked_consent_supersedes_older_active_consent(self):
         self.insert_consent("active", "clock_timestamp() - INTERVAL '1 minute'")
         self.insert_consent("revoked", "clock_timestamp()")
+        result = self.authorize()
+        self.assertFalse(result["allowed"])
+        self.assertEqual(result["reason_code"], "verified_guardian_or_active_consent_missing")
+        self.assertTrue(result["audit_persisted"])
+
+    def test_another_parent_cannot_reuse_guardian_consent(self):
+        self.insert_consent("active")
+        self.principal["actor_id"] = self.other_guardian
         result = self.authorize()
         self.assertFalse(result["allowed"])
         self.assertEqual(result["reason_code"], "verified_guardian_or_active_consent_missing")
