@@ -1,7 +1,10 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from main import app, ATHLETE_RECORDS, ASSESSMENT_RECORDS, AUDIT_LOGS
+from phase4_core_resource_authorization import require_core_actor
+from productization.identity import Principal
 
 
 class FEAT012RecordAthleteAssessmentTests(unittest.TestCase):
@@ -9,7 +12,25 @@ class FEAT012RecordAthleteAssessmentTests(unittest.TestCase):
         ATHLETE_RECORDS.clear()
         ASSESSMENT_RECORDS.clear()
         AUDIT_LOGS.clear()
+        self.principal = Principal(
+            actor_id="unit-test-coach", role="coach", tenant_id="unit-test-academy",
+            resource_owner_id=None, verified=True, source="test_override",
+        )
+        app.dependency_overrides[require_core_actor] = lambda: self.principal
+        self._auth_patches = [
+            patch("main.bind_new_resource"),
+            patch("main.assert_resource_tenant"),
+            patch("main.assert_assessment_tenant"),
+        ]
+        for item in self._auth_patches:
+            item.start()
+        self.addCleanup(self._cleanup_auth)
         self.client = TestClient(app)
+
+    def _cleanup_auth(self):
+        app.dependency_overrides.pop(require_core_actor, None)
+        for item in reversed(self._auth_patches):
+            item.stop()
 
     def _athlete(self):
         response = self.client.post(
