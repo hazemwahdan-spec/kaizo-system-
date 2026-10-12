@@ -12,8 +12,11 @@ import persistence
 import phase4_route_guard
 from phase4_identity_boundary import Principal
 
-if len(sys.argv) != 2:
-    raise SystemExit("usage: python test_legacy_acceptance_runner.py test_feat_XXX.py")
+if len(sys.argv) < 2:
+    raise SystemExit(
+        "usage: python test_legacy_acceptance_runner.py test_feat_XXX.py | "
+        "--unittest module.TestCase | --pytest pytest-args..."
+    )
 
 tenant_id = "ci-legacy-acceptance"
 principal = Principal(
@@ -50,6 +53,22 @@ if persistence.is_postgres_enabled():
             )
         conn.commit()
 
-target = sys.argv[1]
-sys.argv = [target]
-runpy.run_path(target, run_name="__main__")
+mode = sys.argv[1]
+if mode == "--unittest":
+    import unittest
+    names = sys.argv[2:]
+    if not names:
+        raise SystemExit("at least one unittest target is required")
+    suite = unittest.TestSuite()
+    for name in names:
+        suite.addTests(unittest.defaultTestLoader.loadTestsFromName(name))
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    raise SystemExit(0 if result.wasSuccessful() else 1)
+elif mode == "--pytest":
+    import pytest
+    raise SystemExit(pytest.main(sys.argv[2:]))
+else:
+    if len(sys.argv) != 2:
+        raise SystemExit("pass exactly one legacy test filename")
+    sys.argv = [mode]
+    runpy.run_path(mode, run_name="__main__")
