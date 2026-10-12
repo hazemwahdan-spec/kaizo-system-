@@ -62,6 +62,26 @@ def _is_minor_or_unknown(athlete: dict[str, Any]) -> bool:
     return _requires_guardian_consent(athlete)
 
 
+def bind_resource_to_tenant_cursor(
+    cursor: Any, *, resource_type: str, resource_id: str,
+    tenant_id: str, bound_by_subject: str,
+) -> None:
+    """Persist a resource binding in the caller's transaction with its domain row."""
+    cursor.execute(
+        """INSERT INTO kaizo_resource_tenant_bindings
+           (resource_type, resource_id, tenant_id, bound_by_subject)
+           SELECT %s, %s, t.tenant_id, %s
+           FROM kaizo_tenants t
+           JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+           WHERE t.tenant_id=%s AND t.status='ACTIVE'
+             AND m.subject_id=%s AND m.status='ACTIVE'
+           LIMIT 1""",
+        (resource_type, resource_id, bound_by_subject, tenant_id, bound_by_subject),
+    )
+    if getattr(cursor, "rowcount", 1) != 1:
+        raise HTTPException(status_code=403, detail="Active tenant membership is required to bind a resource")
+
+
 def _allowed_domain_roles(path: str, method: str) -> set[str]:
     """Least-privilege role matrix for domain routes; never infer role from body."""
     method = method.upper()
@@ -107,7 +127,37 @@ async def require_phase4_domain_access(
 
     resources = _payload_resource_ids(request, payload)
     if not resources:
-        raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "resource_binding_required"})
+        # The first academy record has no parent resource to bind yet. It may
+        # be created only by an active academy member; the handler must insert
+        # its canonical binding in the same transaction as the academy row.
+        if request.method.upper() != "POST" or request.url.path != "/api/v1/academy/academies":
+            raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "resource_binding_required"})
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1 FROM kaizo_tenants t
+                       JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                       WHERE t.tenant_id=%s AND t.status='ACTIVE'
+                         AND m.subject_id=%s AND m.role=%s AND m.status='ACTIVE'
+                       LIMIT 1""",
+                    (principal.tenant_id, principal.actor_id, principal.role),
+                )
+                allowed = cur.fetchone() is not None
+                cur.execute(
+                    """INSERT INTO kaizo_p14_audit_events
+                       (actor_subject_id,event_type,tenant_id,resource_type,action,
+                        allowed,reason_code,trace_id,metadata)
+                       VALUES (%s,'authorization_decision',%s,'academy',%s,%s,%s,%s,%s::jsonb)""",
+                    (principal.actor_id, principal.tenant_id,
+                     f"{request.method.upper()}:{request.url.path}", allowed,
+                     "active_membership_create_authorized" if allowed else "active_tenant_membership_missing",
+                     request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+                     '{"source":"phase4_domain_authorization","operation":"create_academy"}'),
+                )
+        if not allowed:
+            raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "active_tenant_membership_missing"})
+        return {"principal": principal, "tenant_id": principal.tenant_id,
+                "resources": [], "create_resource_type": "academy"}
     for resource_type, resource_id in resources:
         if resource_type == "athlete":
             athlete = persistence.get_athlete(resource_id)
