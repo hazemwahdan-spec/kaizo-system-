@@ -1,4 +1,11 @@
 """HTTP acceptance for Phase 4 protection on the actual Core FastAPI app."""
+import sys
+from pathlib import Path
+
+_BACKEND_DIR = str(Path(__file__).resolve().parent)
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
+
 from fastapi.testclient import TestClient
 
 from backend import main
