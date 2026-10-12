@@ -110,9 +110,9 @@ def test_academy_create_persists_binding_in_same_transaction():
             "/api/v1/features/feat-029/progression-regression-rules",
             json={
                 "subject_id": subject, "actor_id": subject,
-                "payload": {"metric": "entry_timing_score", "threshold": 7,
-                            "action": "adjust", "adjustment": 0.5,
-                            "rule_version": "v1", "approval_status": "DRAFT"},
+                "payload": {"metric": "technical_quality", "threshold": 8,
+                            "action": "PROGRESS", "adjustment": 1,
+                            "rule_version": "1.0.0", "approval_status": "APPROVED"},
                 "evidence_refs": ["P4-FEATURE-EVIDENCE"],
                 "coach_final_authority": True, "execution_authorized": False,
             },
