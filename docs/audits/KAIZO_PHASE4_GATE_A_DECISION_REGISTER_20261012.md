@@ -80,3 +80,14 @@ This proves the candidate schema/store behavior in CI only. It does **not** prov
 6. Independent retest must cite exact commit and workflow URLs before P4-REQ-011 can close.
 
 No production schema, configuration, secrets, or live records were changed by this checkpoint.
+
+
+## Static Core route exposure checkpoint — 2026-10-12
+
+Reviewed `backend/main.py` at source blob `1074d802e1643f303bcd84b48cc5018d19d00976` on the Phase 4 candidate branch. Representative handler signatures for `POST /api/v1/athletes`, `GET /api/v1/athletes/{athlete_id}`, `PATCH /api/v1/athletes/{athlete_id}`, `POST /api/v1/assessments`, and `GET /api/v1/assessments/{assessment_id}` do not declare a verified-principal dependency. `recorded_by` is caller-supplied attribution, not authenticated identity. This is static code review only; no live endpoint was probed.
+
+This confirms route-level enforcement is a substantive remaining gap, not merely missing production configuration. Full acceptance must include every included router and nested-resource chain, server-derived academy/resource ownership, deny-by-default consent checks where applicable, and durable authorization audit. Route tests must demonstrate deny/no mutation for missing/invalid identity, wrong role, wrong tenant/owner, missing/revoked/expired/mismatched consent, and audit persistence failure.
+
+Follow-up comments were posted on [PR #122](https://github.com/hazemwahdan-spec/kaizo-system-/pull/122) and [PR #123](https://github.com/hazemwahdan-spec/kaizo-system-/pull/123) to preserve the safety boundary and require schema reconciliation. Both remain draft candidates; neither should be independently merged or applied.
+
+**Disposition unchanged:** isolated CI = PASS; Gate A = OPEN; route-level enforcement = NOT PROVEN; production activation = NOT AUTHORIZED; P4-REQ-011 = OPEN / NOT PROVEN; Phase 4 exit = BLOCKED.
