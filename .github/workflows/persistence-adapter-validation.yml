@@ -114,3 +114,6 @@ jobs:
 
       - name: Run Phase 4 durable identity and consent store acceptance tests
         run: PYTHONPATH=. python test_phase4_identity_store.py
+
+      - name: Run Phase 4 canonical migration and identity-store integration acceptance tests
+        run: PYTHONPATH=. python test_phase4_canonical_identity_consent_integration.py
