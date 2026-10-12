@@ -343,6 +343,8 @@ def authorize(
             allowed, reason = valid(matches[-1], req)
 
     event = {
+        # Persist the verified subject, never a caller-supplied actor identity.
+        "actor_id": claims.get("sub", "development-unverified"),
         "child_id": req.child_id, "guardian_id": req.guardian_id, "academy_id": req.academy_id,
         "resource": req.resource, "action": req.action, "allowed": allowed, "reason": reason,
     }
