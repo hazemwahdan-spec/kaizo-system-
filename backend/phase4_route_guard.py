@@ -56,20 +56,29 @@ def _resolve_athlete_id(request: Request, payload: dict[str, Any]) -> str:
     path = request.path_params
     if path.get("athlete_id"):
         return str(path["athlete_id"])
-    if payload.get("athlete_id"):
-        return str(payload["athlete_id"])
 
+    # Resolve persisted child records before considering any body-supplied
+    # athlete_id, so a request cannot choose a different owner than its parent.
     if path.get("assessment_id") or payload.get("assessment_id"):
         assessment_id = str(path.get("assessment_id") or payload.get("assessment_id"))
         assessment = persistence.get_assessment(assessment_id)
         if assessment:
-            return str(assessment.get("athlete_id") or "")
+            persisted_athlete_id = str(assessment.get("athlete_id") or "")
+            if payload.get("athlete_id") and str(payload["athlete_id"]) != persisted_athlete_id:
+                raise HTTPException(status_code=403, detail="Assessment/athlete ownership mismatch")
+            return persisted_athlete_id
 
     if path.get("problem_id") or payload.get("problem_id"):
         problem_id = str(path.get("problem_id") or payload.get("problem_id"))
         problem = persistence.get_problem_statement(problem_id)
         if problem:
-            return str(problem.get("athlete_id") or "")
+            persisted_athlete_id = str(problem.get("athlete_id") or "")
+            if payload.get("athlete_id") and str(payload["athlete_id"]) != persisted_athlete_id:
+                raise HTTPException(status_code=403, detail="Problem/athlete ownership mismatch")
+            return persisted_athlete_id
+
+    if payload.get("athlete_id"):
+        return str(payload["athlete_id"])
 
     if path.get("diagnosis_id"):
         rows = persistence.list_evidence_linked_diagnoses_for_id(str(path["diagnosis_id"]))
@@ -132,3 +141,42 @@ async def require_phase4_route_access(request: Request) -> dict[str, Any]:
             },
         )
     return {"principal": principal, "athlete_id": athlete_id, "authorization": result}
+
+
+
+def require_phase4_tenant_member(request: Request) -> dict[str, Any]:
+    """Authorize onboarding under an existing verified tenant membership."""
+    principal = require_phase4_principal(request.headers.get("authorization"))
+    if principal.role not in {"coach", "academy"}:
+        raise HTTPException(status_code=403, detail="Role is not authorized for academy onboarding")
+    if not persistence.is_postgres_enabled():
+        raise HTTPException(status_code=503, detail="Durable Phase 4 authorization requires PostgreSQL")
+    route = request.scope.get("route")
+    route_template = getattr(route, "path", request.url.path)
+    action = f"{request.method.upper()}:{route_template}"
+    allowed = False
+    reason = "membership_missing_or_inactive"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT 1 FROM kaizo_tenant_memberships
+                   WHERE tenant_id=%s AND subject_id=%s AND role=%s
+                     AND status='ACTIVE' LIMIT 1""",
+                (principal.tenant_id, principal.actor_id, principal.role),
+            )
+            allowed = cur.fetchone() is not None
+            reason = "active_tenant_membership" if allowed else "membership_missing_or_inactive"
+            cur.execute(
+                """INSERT INTO kaizo_p14_audit_events
+                   (actor_subject_id,event_type,tenant_id,resource_type,action,
+                    allowed,reason_code,trace_id,metadata)
+                   VALUES (%s,'authorization_decision',%s,'athlete',%s,%s,%s,%s,%s::jsonb)""",
+                (
+                    principal.actor_id, principal.tenant_id, action, allowed, reason,
+                    request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+                    '{"source":"phase4_route_guard","operation":"tenant_onboarding"}',
+                ),
+            )
+    if not allowed:
+        raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": reason})
+    return {"principal": principal, "tenant_id": principal.tenant_id}
