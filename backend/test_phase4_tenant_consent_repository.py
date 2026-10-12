@@ -39,7 +39,7 @@ class FakeConnection:
 
 class Phase4TenantConsentRepositoryTests(unittest.TestCase):
     def setUp(self):
-        self.principal = {"identity_source": "oidc_jwt", "sub": "auth0|coach-1"}
+        self.principal = {"verified": True, "source": "oidc_jwt", "actor_id": "auth0|coach-1"}
         self.scope = {
             "principal": self.principal,
             "tenant_id": "academy-1",
