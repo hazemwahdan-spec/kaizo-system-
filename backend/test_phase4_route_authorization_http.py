@@ -61,14 +61,14 @@ class Phase4RouteAuthorizationHTTPTests(unittest.TestCase):
             "athlete_id": "athlete-1",
             "template_id": "baseline",
             "measurements": {"seoi_nage_entry": 4},
-            "recorded_by": "untrusted-body-actor",
+            "recorded_by": "auth0|coach-1",
         }
         self.athlete = {
             "athlete_id": "athlete-1",
             "metadata": {"is_minor": True},
         }
 
-    def _post(self, rows):
+    def _post(self, rows, payload=None):
         connection = FakeConnection(rows)
         with patch.object(phase4_route_guard, "require_phase4_principal",
                           return_value=self.principal), \
@@ -80,10 +80,21 @@ class Phase4RouteAuthorizationHTTPTests(unittest.TestCase):
                           return_value=self.athlete):
             response = self.client.post(
                 "/api/v1/assessments",
-                json=self.payload,
+                json=payload or self.payload,
                 headers={"Authorization": "Bearer test-token", "X-Trace-Id": "trace-route-test"},
             )
         return response, connection.cursor_value
+
+    def test_caller_supplied_actor_id_is_rejected_before_database_access(self):
+        payload = dict(self.payload)
+        payload["recorded_by"] = "untrusted-body-actor"
+        response, cursor = self._post([], payload=payload)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()["detail"]["reason_code"],
+            "actor_identity_mismatch",
+        )
+        self.assertEqual(cursor.statements, [])
 
     def test_cross_tenant_resource_binding_is_denied_by_real_route(self):
         response, cursor = self._post([(1,), None])
