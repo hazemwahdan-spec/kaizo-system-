@@ -2,6 +2,7 @@
 
 **Date:** 2026-10-12  
 **Branch:** `feat/phase4-identity-tenant-consent-db`  
+**Integration base:** `feat/phase4-durable-tenant-consent-repository` (PR #126 retargeted to validate the combined candidate)  
 **Pull request:** #126 — draft, not merged  
 **Status:** implementation under CI validation; production activation remains gated. Canonical schema is owned by PR #124; this PR must not introduce parallel authorization or consent tables.
 
