@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
-from phase4_route_guard import enforce_athlete_read, require_phase4_principal
+from phase4_route_guard import enforce_athlete_access, require_phase4_principal
 from productization.identity import Principal
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
@@ -98,7 +98,7 @@ def get_athlete(
     principal: Principal = Depends(require_phase4_principal),
 ) -> Dict[str, Any]:
     # Authorization is checked before loading/returning the protected resource.
-    enforce_athlete_read(principal, athlete_id)
+    enforce_athlete_access(principal, athlete_id, action="read")
     athlete = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -106,7 +106,13 @@ def get_athlete(
 
 
 @app.patch("/api/v1/athletes/{athlete_id}")
-def update_athlete(athlete_id: str, req: AthleteUpdateRequest) -> Dict[str, Any]:
+def update_athlete(
+    athlete_id: str,
+    req: AthleteUpdateRequest,
+    principal: Principal = Depends(require_phase4_principal),
+) -> Dict[str, Any]:
+    # Mutations are limited to coach/academy roles with persisted tenant scope.
+    enforce_athlete_access(principal, athlete_id, action="update")
     current = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if current is None:
         raise HTTPException(status_code=404, detail="athlete not found")
