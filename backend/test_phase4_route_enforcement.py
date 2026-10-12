@@ -91,6 +91,17 @@ class Phase4AthleteRouteEnforcementTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         get_athlete.assert_not_called()
 
+    def test_parent_cannot_update_athlete_even_with_read_consent(self):
+        main.app.dependency_overrides[main.require_phase4_principal] = lambda: self.parent
+        with patch("phase4_route_guard.authorize_resource_access") as authorize, \
+             patch("main.persistence.get_athlete") as get_athlete:
+            response = self.client.patch(
+                "/api/v1/athletes/child-1", json={"status": "INACTIVE"}
+            )
+        self.assertEqual(response.status_code, 403)
+        authorize.assert_not_called()
+        get_athlete.assert_not_called()
+
     def test_authorization_backend_failure_fails_closed(self):
         with patch(
             "phase4_route_guard.authorize_resource_access",
