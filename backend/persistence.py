@@ -1363,6 +1363,7 @@ def get_kpi_definition(kpi_id: str) -> Optional[Dict[str, Any]]:
 def upsert_kpi_capture(
     capture: Dict[str, Any], *, tenant_id: str | None = None,
     bound_by_subject: str | None = None, role: str | None = None,
+    trace_id: str | None = None, action: str = "POST:/api/v1/kpis/captures",
 ) -> None:
     if not is_postgres_enabled():
         return
@@ -1388,7 +1389,17 @@ def upsert_kpi_capture(
                            LIMIT 1""",
                         (resource_type, resource_id, tenant_id, bound_by_subject, role),
                     )
-                    if cur.fetchone() is None:
+                    allowed = cur.fetchone() is not None
+                    cur.execute(
+                        """INSERT INTO kaizo_p14_audit_events
+                           (actor_subject_id,event_type,tenant_id,resource_type,action,
+                            allowed,reason_code,trace_id,metadata)
+                           VALUES (%s,'authorization_decision',%s,%s,%s,%s,%s,%s,%s::jsonb)""",
+                        (bound_by_subject, tenant_id, resource_type, action, allowed,
+                         "active_membership_and_resource_binding" if allowed else "kpi_or_athlete_tenant_binding_missing",
+                         trace_id, json.dumps({"source": "kpi_capture", "resource_id": resource_id})),
+                    )
+                    if not allowed:
                         raise PersistenceConfigurationError(
                             f"{resource_type} is not owned by the active caller tenant"
                         )
