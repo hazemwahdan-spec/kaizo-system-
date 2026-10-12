@@ -7,6 +7,7 @@ their audit event are written in the same transaction.
 """
 from __future__ import annotations
 
+import json
 from typing import Any, Mapping, Sequence
 
 import persistence
@@ -163,7 +164,10 @@ def authorize_resource_access(
                 (
                     subject, child_resource_id, guardian_subject, tenant_id,
                     resource_type, action, allowed, reason, trace_id,
-                    '{"source":"phase4_tenant_consent_repository"}',
+                    json.dumps({
+                        "source": "phase4_tenant_consent_repository",
+                        "resource_id": resource_id,
+                    }),
                 ),
             )
     return {
