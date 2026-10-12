@@ -9,8 +9,8 @@ if _BACKEND_DIR not in sys.path:
 from fastapi.testclient import TestClient
 
 from backend import main
-from backend import phase4_identity_boundary as boundary
-from backend import phase4_core_resource_authorization as authz
+import phase4_identity_boundary as boundary
+import phase4_core_resource_authorization as authz
 from productization.identity import IdentityNotConfiguredError, Principal
 
 
