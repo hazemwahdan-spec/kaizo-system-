@@ -124,6 +124,8 @@ def progress(
 ):
     try:
         principal = ctx(actor_id, role, tenant_id, owner, authorization)
+        if principal.tenant_id != resource_tenant_id:
+            raise HTTPException(status_code=403, detail="cross-tenant access denied")
         if principal.role == "athlete" and principal.resource_owner_id != athlete_id:
             raise HTTPException(status_code=403, detail="athlete self-scope required")
         require_athlete_academy(athlete_id, resource_tenant_id)
@@ -148,6 +150,10 @@ def parent_progress(
 ):
     try:
         principal = ctx(actor_id, role, tenant_id, owner, authorization)
+        if principal.tenant_id != resource_tenant_id:
+            raise HTTPException(status_code=403, detail="cross-tenant access denied")
+        if principal.role != "parent" or principal.resource_owner_id != athlete_id:
+            raise HTTPException(status_code=403, detail="verified parent-to-athlete linkage is required")
         require_athlete_academy(athlete_id, resource_tenant_id)
         require_parent_consent(
             guardian_id=principal.actor_id,
