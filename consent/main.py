@@ -226,10 +226,10 @@ def upsert_consent(
                          consent.expires_at, claims.get("sub", change.actor_id)),
                     )
                     cur.execute(
-                        "INSERT INTO kaizo_p14_audit_events
+                        """INSERT INTO kaizo_p14_audit_events
                            (actor_subject_id,event_type,child_resource_id,guardian_subject_id,
                             tenant_id,resource_type,action,allowed,reason_code,metadata)
-                           VALUES (%s,'consent_change',%s,%s,%s,%s,%s,NULL,'consent_changed',%s::jsonb)",
+                           VALUES (%s,'consent_change',%s,%s,%s,%s,%s,NULL,'consent_changed',%s::jsonb)""",
                         (claims.get("sub", change.actor_id), consent.child_id, consent.guardian_id,
                          consent.academy_id, consent.resource, consent.action,
                          psycopg.types.json.Jsonb({
