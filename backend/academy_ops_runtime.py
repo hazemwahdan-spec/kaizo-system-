@@ -243,7 +243,6 @@ def add_membership(req: MembershipCreate, phase4: Dict[str, Any] = Depends(requi
         "coach_final_authority": True,
         "execution_authorized": False,
     }
-    MEMBERSHIPS[item["membership_id"]] = item
     if _pg_enabled():
         _ensure_schema()
         with persistence.connection() as conn:
@@ -260,6 +259,7 @@ def add_membership(req: MembershipCreate, phase4: Dict[str, Any] = Depends(requi
                     tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
+    MEMBERSHIPS[item["membership_id"]] = item
     _audit(_phase4_actor(phase4, req.coach_id), "ACADEMY_COACH_MEMBERSHIP_CREATED", item)
     return item
 
@@ -286,7 +286,6 @@ def create_group(req: GroupCreate, phase4: Dict[str, Any] = Depends(require_phas
         "coach_final_authority": True,
         "execution_authorized": False,
     }
-    GROUPS[item["group_id"]] = item
     if _pg_enabled():
         _ensure_schema()
         with persistence.connection() as conn:
@@ -302,6 +301,7 @@ def create_group(req: GroupCreate, phase4: Dict[str, Any] = Depends(require_phas
                     tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
+    GROUPS[item["group_id"]] = item
     _audit(_phase4_actor(phase4), "ACADEMY_GROUP_CREATED", item)
     return item
 
@@ -338,7 +338,6 @@ def assign_athlete(req: AssignmentCreate, phase4: Dict[str, Any] = Depends(requi
         "coach_final_authority": True,
         "execution_authorized": False,
     }
-    ASSIGNMENTS[item["assignment_id"]] = item
     if _pg_enabled():
         _ensure_schema()
         import json
@@ -356,6 +355,7 @@ def assign_athlete(req: AssignmentCreate, phase4: Dict[str, Any] = Depends(requi
                     tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
+    ASSIGNMENTS[item["assignment_id"]] = item
     _audit(_phase4_actor(phase4), "ATHLETE_MULTI_COACH_ASSIGNED", item)
     return item
 
