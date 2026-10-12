@@ -131,9 +131,9 @@ def test_phase4_decision_to_plan_preserves_evidence_and_coach_authority():
     assert readback.json()["plan_id"] == plan["plan_id"]
     assert readback.json()["execution_authorized"] is False
 
-    audit = client.get("/api/v1/audit/logs")
-    assert audit.status_code == 200
-    actions = [item.get("action") for item in audit.json().get("logs", [])]
+    # Business-event history is asserted at its event sink; the global HTTP
+    # audit endpoint is now reserved for the tenant-filtered P14 ledger.
+    actions = [item.get("action") for item in main.AUDIT_LOGS]
     assert "DECISION_CANDIDATES_GENERATED" in actions
     assert any("DECISION" in (action or "") for action in actions)
 
