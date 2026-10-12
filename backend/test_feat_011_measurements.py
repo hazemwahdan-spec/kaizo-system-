@@ -1,14 +1,40 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from main import app, ATHLETE_RECORDS, ASSESSMENT_RECORDS
+from phase4_core_resource_authorization import require_core_actor
+from productization.identity import Principal
 
 
-class FEAT011MeasurementPersistenceTests(unittest.TestCase):
+class TestOnlyCoreAuthOverrides:
+    def _install_core_auth_overrides(self):
+        self.principal = Principal(
+            actor_id="unit-test-coach", role="coach", tenant_id="unit-test-academy",
+            resource_owner_id=None, verified=True, source="test_override",
+        )
+        app.dependency_overrides[require_core_actor] = lambda: self.principal
+        self._auth_patches = [
+            patch("main.bind_new_resource"),
+            patch("main.assert_resource_tenant"),
+            patch("main.assert_assessment_tenant"),
+        ]
+        for item in self._auth_patches:
+            item.start()
+
+    def _remove_core_auth_overrides(self):
+        app.dependency_overrides.pop(require_core_actor, None)
+        for item in reversed(getattr(self, "_auth_patches", [])):
+            item.stop()
+
+
+class FEAT011MeasurementPersistenceTests(TestOnlyCoreAuthOverrides, unittest.TestCase):
     def setUp(self):
         ATHLETE_RECORDS.clear()
         ASSESSMENT_RECORDS.clear()
+        self._install_core_auth_overrides()
+        self.addCleanup(self._remove_core_auth_overrides)
         self.client = TestClient(app)
 
     def test_assessment_is_created_and_read_with_owner_and_timestamps(self):
@@ -78,7 +104,11 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class FEAT046AuditSpineTests(unittest.TestCase):
+class FEAT046AuditSpineTests(TestOnlyCoreAuthOverrides, unittest.TestCase):
+    def setUp(self):
+        self._install_core_auth_overrides()
+        self.addCleanup(self._remove_core_auth_overrides)
+
     def test_assessment_action_is_written_to_audit_spine(self):
         ATHLETE_RECORDS.clear()
         ASSESSMENT_RECORDS.clear()
