@@ -4,9 +4,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from training_workflow import router
+from phase4_route_guard import require_phase4_route_access
 
 app = FastAPI()
 app.include_router(router)
+# Business-contract tests intentionally isolate from real auth; dedicated
+# Phase 4 integration tests exercise the real route guard without overrides.
+app.dependency_overrides[require_phase4_route_access] = lambda: {"test_only": True}
 client = TestClient(app)
 
 
