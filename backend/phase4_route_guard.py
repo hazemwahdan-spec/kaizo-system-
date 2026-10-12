@@ -13,13 +13,19 @@ from phase4_tenant_consent import (
 )
 
 
-def enforce_athlete_read(principal: Any, athlete_id: str) -> None:
+def enforce_athlete_access(principal: Any, athlete_id: str, action: str) -> None:
     """Enforce actual route access using verified principal + DB-owned scope."""
-    if principal.role not in {"coach", "academy", "parent"}:
+    if action == "read":
+        allowed_roles = {"coach", "academy", "parent"}
+    elif action == "update":
+        allowed_roles = {"coach", "academy"}
+    else:
+        raise HTTPException(status_code=403, detail="Action is not authorized")
+    if principal.role not in allowed_roles:
         raise HTTPException(status_code=403, detail="Role is not authorized")
 
-    # Parent access requires the exact, current guardian relationship and consent.
-    requires_consent = principal.role == "parent"
+    # Parent reads require the exact, current guardian relationship and consent.
+    requires_consent = action == "read" and principal.role == "parent"
     try:
         result = authorize_resource_access(
             principal=principal,
@@ -27,7 +33,7 @@ def enforce_athlete_read(principal: Any, athlete_id: str) -> None:
             resource_type="athlete",
             resource_id=athlete_id,
             allowed_roles=[principal.role],
-            action="read",
+            action=action,
             trace_id=str(uuid4()),
             child_resource_id=athlete_id if requires_consent else None,
             requires_guardian_consent=requires_consent,
@@ -55,4 +61,4 @@ def enforce_athlete_read(principal: Any, athlete_id: str) -> None:
         )
 
 
-__all__ = ["require_phase4_principal", "enforce_athlete_read"]
+__all__ = ["require_phase4_principal", "enforce_athlete_access"]
