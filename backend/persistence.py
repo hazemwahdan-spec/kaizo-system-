@@ -1360,11 +1360,38 @@ def get_kpi_definition(kpi_id: str) -> Optional[Dict[str, Any]]:
     return {"kpi_id":row[0],"name":row[1],"metric_name":row[2],"unit":row[3],"target":row[4],"direction":row[5],"defined_by":row[6],"status":row[7],"created_at":row[8],"updated_at":row[9]}
 
 
-def upsert_kpi_capture(capture: Dict[str, Any]) -> None:
+def upsert_kpi_capture(
+    capture: Dict[str, Any], *, tenant_id: str | None = None,
+    bound_by_subject: str | None = None, role: str | None = None,
+) -> None:
     if not is_postgres_enabled():
         return
     with connection() as conn:
         with conn.cursor() as cur:
+            if tenant_id is not None or bound_by_subject is not None or role is not None:
+                if not tenant_id or not bound_by_subject or not role:
+                    raise PersistenceConfigurationError(
+                        "Tenant-scoped KPI capture writes require tenant, actor and role"
+                    )
+                for resource_type, resource_id in (
+                    ("athlete", capture["athlete_id"]),
+                    ("kpi_definition", capture["kpi_id"]),
+                ):
+                    cur.execute(
+                        """SELECT 1
+                           FROM kaizo_resource_tenant_bindings b
+                           JOIN kaizo_tenants t ON t.tenant_id=b.tenant_id
+                           JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                           WHERE b.resource_type=%s AND b.resource_id=%s
+                             AND b.tenant_id=%s AND t.status='ACTIVE'
+                             AND m.subject_id=%s AND m.role=%s AND m.status='ACTIVE'
+                           LIMIT 1""",
+                        (resource_type, resource_id, tenant_id, bound_by_subject, role),
+                    )
+                    if cur.fetchone() is None:
+                        raise PersistenceConfigurationError(
+                            f"{resource_type} is not owned by the active caller tenant"
+                        )
             cur.execute("""
                 INSERT INTO kaizo_kpi_captures
                     (capture_id,athlete_id,kpi_id,value,captured_by,assessment_id,captured_at,created_at)
