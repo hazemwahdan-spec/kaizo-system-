@@ -62,9 +62,9 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
                 )
             conn.commit()
 
-    def _request(self, trace_suffix):
+    def _request(self, trace_suffix, principal=None):
         with patch.object(phase4_route_guard, "require_phase4_principal",
-                          return_value=self.principal), \
+                          return_value=principal or self.principal), \
              patch.object(phase4_route_guard.persistence, "get_athlete",
                           return_value=self.athlete):
             return self.client.get(
@@ -129,6 +129,30 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
             "verified_guardian_or_active_consent_missing",
         )
         self._assert_audit(self.trace_id + "-revoked", False)
+
+    def test_parent_cannot_use_another_guardians_active_consent(self):
+        self._insert_consent("active")
+        other_parent = "auth0|other-parent-" + uuid4().hex
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO kaizo_tenant_memberships(tenant_id,subject_id,role,status)
+                       VALUES (%s,%s,'parent','ACTIVE')""",
+                    (self.tenant_a, other_parent),
+                )
+            conn.commit()
+        parent_principal = Principal(
+            actor_id=other_parent, role="parent", tenant_id=self.tenant_a,
+            resource_owner_id=None, verified=True, source="oidc_jwt",
+        )
+        trace = self.trace_id + "-other-parent"
+        response = self._request("-other-parent", principal=parent_principal)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()["detail"]["reason_code"],
+            "verified_guardian_or_active_consent_missing",
+        )
+        self._assert_audit(trace, False)
 
     def _assert_audit(self, trace_id, allowed):
         with persistence.connection() as conn:
