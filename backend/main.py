@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+import json
 
 import persistence
 from phase4_route_guard import require_phase4_route_access, require_phase4_tenant_member
