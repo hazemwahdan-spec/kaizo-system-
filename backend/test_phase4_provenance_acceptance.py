@@ -21,9 +21,28 @@ BASE = "/api/v1/knowledge-runtime"
 def isolate_provenance_contract_tests_from_live_tenant_guard():
     # Version/status/retrieval contracts are tested here. Tenant binding and
     # spoofing are independently exercised against PostgreSQL in Phase 4 tests.
+    from phase4_identity_boundary import Principal
+    tenant_id = "provenance-contract-" + uuid.uuid4().hex
+    actor = "phase4-provenance-test"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO kaizo_tenants(tenant_id,display_name) VALUES (%s,%s)",
+                (tenant_id, tenant_id),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_tenant_memberships(tenant_id,subject_id,role,status)
+                   VALUES (%s,%s,'coach','ACTIVE')""",
+                (tenant_id, actor),
+            )
+        conn.commit()
+    principal = Principal(
+        actor_id=actor, role="coach", tenant_id=tenant_id,
+        resource_owner_id=None, verified=True, source="oidc_jwt",
+    )
     previous = app.dependency_overrides.get(require_phase4_domain_access)
     app.dependency_overrides[require_phase4_domain_access] = lambda: {
-        "principal": "phase4-provenance-test", "tenant_id": "phase4-provenance-test-tenant"
+        "principal": principal, "tenant_id": tenant_id
     }
     try:
         yield
