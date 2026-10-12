@@ -153,6 +153,44 @@ def test_academy_create_persists_binding_in_same_transaction():
                     (legacy_id,),
                 )
                 assert cur.fetchone() is None
+
+        foreign_tenant = "foreign-knowledge-tenant-" + suffix
+        foreign_subject = "oidc|foreign-academy-" + suffix
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO kaizo_tenants(tenant_id,display_name) VALUES (%s,%s)",
+                    (foreign_tenant, foreign_tenant),
+                )
+                cur.execute(
+                    """INSERT INTO kaizo_tenant_memberships(tenant_id,subject_id,role,status)
+                       VALUES (%s,%s,'academy','ACTIVE')""",
+                    (foreign_tenant, foreign_subject),
+                )
+            conn.commit()
+        foreign_knowledge_id = "foreign-knowledge-" + suffix
+        foreign_payload = {
+            "knowledge_id": foreign_knowledge_id, "source_type": "IJF",
+            "source_ref": "FOREIGN-TENANT-ONLY-SOURCE",
+            "source_version": "v1", "evidence_status": "VERIFIED",
+            "provenance_note": "FOREIGN-TENANT-ONLY-TOKEN",
+            "lifecycle_status": "APPROVED", "changed_by": foreign_subject,
+            "created_at": "2026-10-13T00:00:00+00:00",
+            "updated_at": "2026-10-13T00:00:00+00:00",
+        }
+        persistence.upsert_knowledge(
+            foreign_knowledge_id, foreign_payload, foreign_payload["updated_at"],
+            tenant_id=foreign_tenant, bound_by_subject=foreign_subject,
+        )
+        retrieval = client.post(
+            "/api/v1/knowledge-runtime/feat-049/retrieve",
+            json={"workflow_context": "tenant isolation regression",
+                  "query": "FOREIGN-TENANT-ONLY-TOKEN", "requested_by": subject,
+                  "coach_final_authority": True},
+            headers={"X-Trace-Id": "tenant-retrieval-" + suffix},
+        )
+        assert retrieval.status_code == 200, retrieval.text
+        assert retrieval.json()["results"] == []
     finally:
         if previous_principal is None:
             main.app.dependency_overrides.pop(require_phase4_principal, None)
