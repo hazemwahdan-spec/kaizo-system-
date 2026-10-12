@@ -66,7 +66,10 @@ def test_phase4_audit_log_is_read_only_and_preserves_decision_events():
 
     response = client.get("/api/v1/audit/logs")
     assert response.status_code == 200
-    logs = response.json()["logs"]
+    # The tenant-scoped endpoint exposes the P14 authorization ledger, not the
+    # legacy global business-event log. Validate decision business events from
+    # the event sink; tenant-filter behavior has dedicated Phase 4 endpoint tests.
+    logs = main.AUDIT_LOGS
     override_or_confirm = [
         item for item in logs
         if item.get("action") == "DECISION_CANDIDATE_CONFIRMED"
