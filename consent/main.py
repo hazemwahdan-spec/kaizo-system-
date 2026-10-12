@@ -308,7 +308,7 @@ def authorize(
                 consent = Consent(
                     child_id=req.child_id, guardian_id=req.guardian_id, academy_id=req.academy_id,
                     resource=req.resource, action=req.action, state=ConsentState(str(state).lower()),
-                    expires_at=expires_at,
+                    expires_at=(expires_at.isoformat() if hasattr(expires_at, "isoformat") else expires_at),
                 )
             except (ValueError, TypeError):
                 # Corrupt or unknown persisted state must never authorize access.
