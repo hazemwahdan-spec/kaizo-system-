@@ -256,7 +256,7 @@ def add_membership(req: MembershipCreate, phase4: Dict[str, Any] = Depends(requi
                     tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
-    _audit(req.coach_id, "ACADEMY_COACH_MEMBERSHIP_CREATED", item)
+    _audit(phase4["principal"].actor_id, "ACADEMY_COACH_MEMBERSHIP_CREATED", item)
     return item
 
 
@@ -298,7 +298,7 @@ def create_group(req: GroupCreate, phase4: Dict[str, Any] = Depends(require_phas
                     tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
-    _audit("system", "ACADEMY_GROUP_CREATED", item)
+    _audit(phase4["principal"].actor_id, "ACADEMY_GROUP_CREATED", item)
     return item
 
 
@@ -352,7 +352,7 @@ def assign_athlete(req: AssignmentCreate, phase4: Dict[str, Any] = Depends(requi
                     tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
-    _audit("system", "ATHLETE_MULTI_COACH_ASSIGNED", item)
+    _audit(phase4["principal"].actor_id, "ATHLETE_MULTI_COACH_ASSIGNED", item)
     return item
 
 
