@@ -6,11 +6,26 @@ from typing import Iterable
 
 from fastapi import Header, HTTPException
 
-from productization.identity import (
-    IdentityNotConfiguredError,
-    Principal,
-    resolve_bearer_principal,
-)
+try:
+    from productization.identity import (
+        IdentityNotConfiguredError,
+        Principal,
+        resolve_bearer_principal,
+    )
+except ModuleNotFoundError:
+    # Some deployment/test entrypoints set the working directory to backend/.
+    # Add the repository root so the canonical identity module remains SSOT.
+    import sys
+    from pathlib import Path
+
+    repository_root = str(Path(__file__).resolve().parents[1])
+    if repository_root not in sys.path:
+        sys.path.insert(0, repository_root)
+    from productization.identity import (
+        IdentityNotConfiguredError,
+        Principal,
+        resolve_bearer_principal,
+    )
 
 
 def require_phase4_principal(
