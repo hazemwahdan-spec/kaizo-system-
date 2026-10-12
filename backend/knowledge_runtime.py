@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends
-from phase4_identity_boundary import require_phase4_principal
+from phase4_domain_authorization import require_phase4_domain_access
 from pydantic import BaseModel, Field
 import persistence
 
-router=APIRouter(prefix="/api/v1/knowledge-runtime",tags=["Knowledge Runtime"], dependencies=[Depends(require_phase4_principal)])
+router=APIRouter(prefix="/api/v1/knowledge-runtime",tags=["Knowledge Runtime"], dependencies=[Depends(require_phase4_domain_access)])
 MEMORY_ITEMS:Dict[str,Dict[str,Any]]={}
 MEMORY_LINKS:List[Dict[str,Any]]=[]
 
