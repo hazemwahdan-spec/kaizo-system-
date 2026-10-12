@@ -94,6 +94,35 @@ def test_academy_create_persists_binding_in_same_transaction():
                 )
                 knowledge_binding = cur.fetchone()
         assert knowledge_binding == (tenant_id, subject)
+
+        legacy_id = "legacy-knowledge-" + suffix
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO kaizo_knowledge_repository(item_id,payload,updated_at)
+                       VALUES (%s,%s::jsonb,%s)""",
+                    (legacy_id, '{"knowledge_id":"'+legacy_id+'","lifecycle_status":"DRAFT"}', "2026-10-13T00:00:00+00:00"),
+                )
+            conn.commit()
+        legacy_response = client.post(
+            "/api/v1/knowledge-runtime/feat-047/provenance",
+            json={"knowledge_id": legacy_id, "source_type": "IJF",
+                  "source_ref": "P4-LEGACY-UNBOUND", "source_version": "v1",
+                  "evidence_status": "VERIFIED", "provenance_note": "Must not be auto-claimed",
+                  "evidence_refs": ["P4-LEGACY"], "changed_by": subject,
+                  "coach_final_authority": True},
+            headers={"X-Trace-Id": "legacy-knowledge-" + suffix},
+        )
+        assert legacy_response.status_code == 403
+        assert legacy_response.json()["detail"]["reason_code"] == "resource_tenant_binding_missing_or_mismatched"
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1 FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='knowledge' AND resource_id=%s""",
+                    (legacy_id,),
+                )
+                assert cur.fetchone() is None
     finally:
         if previous_principal is None:
             main.app.dependency_overrides.pop(require_phase4_principal, None)
