@@ -6,6 +6,12 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, verify_bearer_token
+from .resource_authorization import (
+    ResourceAuthorizationError,
+    ResourceAuthorizationUnavailable,
+    require_athlete_academy,
+    require_parent_consent,
+)
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -116,12 +122,20 @@ def progress(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
-    if role == "athlete" and owner != athlete_id:
-        raise HTTPException(status_code=403, detail="athlete self-scope required")
     try:
-        return get_surface().athlete_progress(ctx(actor_id, role, tenant_id, owner, authorization), resource_tenant_id, athlete_id, [])
+        principal = ctx(actor_id, role, tenant_id, owner, authorization)
+        if principal.tenant_id != resource_tenant_id:
+            raise HTTPException(status_code=403, detail="cross-tenant access denied")
+        if principal.role == "athlete" and principal.resource_owner_id != athlete_id:
+            raise HTTPException(status_code=403, detail="athlete self-scope required")
+        require_athlete_academy(athlete_id, resource_tenant_id)
+        return get_surface().athlete_progress(principal, resource_tenant_id, athlete_id, [])
     except RuntimeAuthorizationError as exc:
         deny(exc)
+    except ResourceAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ResourceAuthorizationUnavailable as exc:
+        raise HTTPException(status_code=503, detail="durable resource authorization is unavailable")
 
 
 @router.get("/parents/linked/{athlete_id}/progress")
@@ -135,6 +149,23 @@ def parent_progress(
     authorization: str | None = Header(None, alias="Authorization"),
 ):
     try:
-        return get_surface().parent_progress(ctx(actor_id, role, tenant_id, owner), resource_tenant_id, athlete_id, [])
+        principal = ctx(actor_id, role, tenant_id, owner, authorization)
+        if principal.tenant_id != resource_tenant_id:
+            raise HTTPException(status_code=403, detail="cross-tenant access denied")
+        if principal.role != "parent" or principal.resource_owner_id != athlete_id:
+            raise HTTPException(status_code=403, detail="verified parent-to-athlete linkage is required")
+        require_athlete_academy(athlete_id, resource_tenant_id)
+        require_parent_consent(
+            guardian_id=principal.actor_id,
+            athlete_id=athlete_id,
+            academy_id=resource_tenant_id,
+            resource="athlete_progress",
+            action="read",
+        )
+        return get_surface().parent_progress(principal, resource_tenant_id, athlete_id, [])
     except RuntimeAuthorizationError as exc:
         deny(exc)
+    except ResourceAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ResourceAuthorizationUnavailable as exc:
+        raise HTTPException(status_code=503, detail="durable resource authorization is unavailable")
