@@ -211,6 +211,13 @@ def upsert_consent(
                              AND verified_by_subject IS NOT NULL
                              AND verified_by_subject <> guardian_subject_id
                              AND verified_at IS NOT NULL
+                             AND NOT EXISTS (
+                               SELECT 1 FROM kaizo_guardian_relationships newer
+                               WHERE newer.child_resource_id=kaizo_guardian_relationships.child_resource_id
+                                 AND newer.guardian_subject_id=kaizo_guardian_relationships.guardian_subject_id
+                                 AND newer.tenant_id=kaizo_guardian_relationships.tenant_id
+                                 AND newer.recorded_sequence > kaizo_guardian_relationships.recorded_sequence
+                             )
                            LIMIT 1""",
                         (consent.guardian_id, consent.child_id, consent.academy_id),
                     )
@@ -284,6 +291,13 @@ def authorize(
                              AND verified_by_subject IS NOT NULL
                              AND verified_by_subject <> guardian_subject_id
                              AND verified_at IS NOT NULL
+                             AND NOT EXISTS (
+                               SELECT 1 FROM kaizo_guardian_relationships newer
+                               WHERE newer.child_resource_id=kaizo_guardian_relationships.child_resource_id
+                                 AND newer.guardian_subject_id=kaizo_guardian_relationships.guardian_subject_id
+                                 AND newer.tenant_id=kaizo_guardian_relationships.tenant_id
+                                 AND newer.recorded_sequence > kaizo_guardian_relationships.recorded_sequence
+                             )
                            LIMIT 1""",
                         (req.guardian_id, req.child_id, req.academy_id),
                     )
