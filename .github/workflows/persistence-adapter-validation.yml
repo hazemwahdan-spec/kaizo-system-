@@ -45,78 +45,78 @@ jobs:
       - name: Compile backend
         run: python -m compileall -q .
       - name: Run persistence integration test
-        run: PYTHONPATH=. python tests/test_persistence_integration.py
+        run: PYTHONPATH=..:. python tests/test_persistence_integration.py
       - name: Import application with PostgreSQL mode
         run: PYTHONPATH=..:. python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
       - name: Verify OpenAPI and documentation endpoint contract
-        run: PYTHONPATH=. python tests/test_openapi_contract.py
+        run: PYTHONPATH=..:. python tests/test_openapi_contract.py
       - name: Run FEAT-001 athlete acceptance tests
-        run: PYTHONPATH=. python test_feat_001_athletes.py
+        run: PYTHONPATH=..:. python test_feat_001_athletes.py
       - name: Run FEAT-011 measurement persistence acceptance tests
-        run: PYTHONPATH=. python test_feat_011_measurements.py
+        run: PYTHONPATH=..:. python test_feat_011_measurements.py
       - name: Run FEAT-012 athlete assessment acceptance tests
-        run: PYTHONPATH=. python test_feat_012_record_assessment.py
+        run: PYTHONPATH=..:. python test_feat_012_record_assessment.py
       - name: Run FEAT-013 KPI definition and capture acceptance tests
         working-directory: backend
-        run: PYTHONPATH=. python test_feat_013_kpi.py
+        run: PYTHONPATH=..:. python test_feat_013_kpi.py
       - name: Run FEAT-014 assessment evidence attachment acceptance tests
-        run: PYTHONPATH=. python test_feat_014_assessment_evidence.py
+        run: PYTHONPATH=..:. python test_feat_014_assessment_evidence.py
       - name: Run FEAT-015 baseline/current-state snapshot acceptance tests
-        run: PYTHONPATH=. python test_feat_015_state_snapshot.py
+        run: PYTHONPATH=..:. python test_feat_015_state_snapshot.py
       - name: Run FEAT-016 structured problem statement acceptance tests
-        run: PYTHONPATH=. python test_feat_016_problem_statement.py
+        run: PYTHONPATH=..:. python test_feat_016_problem_statement.py
       - name: Run FEAT-017 problem library selection acceptance tests
-        run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT017ProblemLibrarySelectionTests
+        run: PYTHONPATH=..:. python -m unittest test_feat_016_problem_statement.FEAT017ProblemLibrarySelectionTests
       - name: Run FEAT-019 evidence-linked diagnosis acceptance tests
-        run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT019EvidenceLinkedDiagnosisTests
+        run: PYTHONPATH=..:. python -m unittest test_feat_016_problem_statement.FEAT019EvidenceLinkedDiagnosisTests
       - name: Run FEAT-020 diagnosis confidence acceptance tests
-        run: PYTHONPATH=. python test_feat_020_diagnosis_confidence.py
+        run: PYTHONPATH=..:. python test_feat_020_diagnosis_confidence.py
       - name: Run FEAT-021 decision candidate generation acceptance tests
-        run: PYTHONPATH=. python test_feat_021_decision_candidates.py
+        run: PYTHONPATH=..:. python test_feat_021_decision_candidates.py
       - name: Run FEAT-022 decision rationale and evidence acceptance tests
-        run: PYTHONPATH=. python test_feat_022_decision_rationale.py
+        run: PYTHONPATH=..:. python test_feat_022_decision_rationale.py
       - name: Run FEAT-023 alternative decision comparison acceptance tests
-        run: PYTHONPATH=. python test_feat_023_decision_comparison.py
+        run: PYTHONPATH=..:. python test_feat_023_decision_comparison.py
       - name: Run FEAT-024 coach confirm and override acceptance tests
-        run: PYTHONPATH=. python test_feat_024_coach_review.py
+        run: PYTHONPATH=..:. python test_feat_024_coach_review.py
       - name: Run FEAT-025 decision record acceptance tests
-        run: PYTHONPATH=. python test_feat_025_decision_record.py
+        run: PYTHONPATH=..:. python test_feat_025_decision_record.py
       - name: Run FEAT-027 session structure and timing acceptance tests
-        run: PYTHONPATH=.. pytest -q test_feat_027_session_structure.py
+        run: PYTHONPATH=..:.. pytest -q test_feat_027_session_structure.py
       - name: Run FEAT-026 training plan acceptance tests
-        run: PYTHONPATH=. python test_feat_026_training_plan.py
+        run: PYTHONPATH=..:. python test_feat_026_training_plan.py
       - name: Run FEAT-046 audit spine acceptance tests
-        run: PYTHONPATH=. python -m unittest test_feat_011_measurements.FEAT046AuditSpineTests
+        run: PYTHONPATH=..:. python -m unittest test_feat_011_measurements.FEAT046AuditSpineTests
       - name: Run FEAT-051 evidence spine acceptance tests
-        run: PYTHONPATH=. python test_feat_051_evidence.py
+        run: PYTHONPATH=..:. python test_feat_051_evidence.py
       - name: Run FEAT-041 digital twin state acceptance tests
-        run: PYTHONPATH=. python test_feat_041_digital_twin.py
+        run: PYTHONPATH=..:. python test_feat_041_digital_twin.py
       - name: Run FEAT-056 safety/evidence guardrail acceptance tests
-        run: PYTHONPATH=. python test_feat_056_safety_guardrails.py
+        run: PYTHONPATH=..:. python test_feat_056_safety_guardrails.py
 
       - name: Run Phase 4 Digital Brain integration acceptance tests
-        run: PYTHONPATH=. python test_phase4_digital_brain_acceptance.py
+        run: PYTHONPATH=..:. python test_phase4_digital_brain_acceptance.py
 
       - name: Run Phase 4 approved-rule governance acceptance tests
-        run: PYTHONPATH=. python test_phase4_approved_rule_governance.py
+        run: PYTHONPATH=..:. python test_phase4_approved_rule_governance.py
 
       - name: Run Phase 4 provenance version and status acceptance tests
-        run: PYTHONPATH=. python test_phase4_provenance_acceptance.py
+        run: PYTHONPATH=..:. python test_phase4_provenance_acceptance.py
 
       - name: Run Phase 4 override history and outcome lineage acceptance tests
-        run: PYTHONPATH=. python test_phase4_override_outcome_lineage.py
+        run: PYTHONPATH=..:. python test_phase4_override_outcome_lineage.py
 
       - name: Run Phase 4 evidence fail-closed acceptance tests
-        run: PYTHONPATH=. python test_phase4_evidence_fail_closed.py
+        run: PYTHONPATH=..:. python test_phase4_evidence_fail_closed.py
 
       - name: Run Phase 4 audit and plan authority acceptance tests
-        run: PYTHONPATH=. python test_phase4_audit_authority.py
+        run: PYTHONPATH=..:. python test_phase4_audit_authority.py
 
       - name: Run Phase 4 durable identity and consent store acceptance tests
-        run: PYTHONPATH=. python test_phase4_identity_store.py
+        run: PYTHONPATH=..:. python test_phase4_identity_store.py
 
       - name: Run Phase 4 canonical migration and identity-store integration acceptance tests
-        run: PYTHONPATH=. python test_phase4_canonical_identity_consent_integration.py
+        run: PYTHONPATH=..:. python test_phase4_canonical_identity_consent_integration.py
 
       - name: Run Phase 4 actual Core resource authorization HTTP acceptance tests
         run: PYTHONPATH=..:. python -m pytest -q test_phase4_actual_app_route_inventory.py test_phase4_core_resource_authorization.py
