@@ -5,6 +5,34 @@ import uuid
 os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 
 from backend.main import app
+from backend import main as package_main
+from backend.phase4_identity_boundary import Principal
+from backend import phase4_route_guard
+
+# This is a legacy business-contract acceptance test, not authorization
+# evidence. The real route guards are covered by the dedicated Phase 4
+# identity/tenant/consent suites in persistence-adapter-validation.yml.
+# Keep the override local to this test process only; never application runtime.
+_ci_principal = Principal(
+    actor_id="ci|feat-028",
+    role="coach",
+    tenant_id="ci-feat-028",
+    resource_owner_id=None,
+    verified=True,
+    source="oidc_jwt",
+)
+app.dependency_overrides[phase4_route_guard.require_phase4_tenant_member] = (
+    lambda: {"principal": _ci_principal, "tenant_id": "ci-feat-028"}
+)
+app.dependency_overrides[phase4_route_guard.require_phase4_route_access] = (
+    lambda: {
+        "principal": _ci_principal,
+        "tenant_id": "ci-feat-028",
+        "athlete_id": None,
+        "authorization": {"allowed": True, "test_only_override": True},
+    }
+)
+package_main.app.dependency_overrides.update(app.dependency_overrides)
 
 
 def test_feat_028_dosage_reps_sets():
