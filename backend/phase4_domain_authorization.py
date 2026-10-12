@@ -96,6 +96,8 @@ def _allowed_domain_roles(path: str, method: str) -> set[str]:
         if "/export" in path or method not in {"GET", "HEAD"}:
             return {"academy", "coach"}
         return {"academy", "coach", "athlete", "parent"}
+    if path == "/api/v1/knowledge/ingest":
+        return {"academy", "coach"}
     if path.startswith(("/api/v1/features", "/api/v1/knowledge-runtime",
                         "/api/v1/audit-trace", "/api/v1/evidence-safety")):
         return {"academy", "coach"}
