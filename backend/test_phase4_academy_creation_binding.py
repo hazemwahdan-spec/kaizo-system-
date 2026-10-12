@@ -54,6 +54,36 @@ def test_academy_create_persists_binding_in_same_transaction():
                 binding = cur.fetchone()
         assert binding == (tenant_id, subject)
 
+        group_response = client.post(
+            "/api/v1/academy/groups",
+            json={"academy_id": academy_id, "name": "Group " + suffix,
+                  "coach_final_authority": True},
+            headers={"X-Trace-Id": "group-create-" + suffix},
+        )
+        assert group_response.status_code == 201, group_response.text
+        group_id = group_response.json()["group_id"]
+        membership_response = client.post(
+            "/api/v1/academy/memberships",
+            json={"academy_id": academy_id, "coach_id": "coach-target-" + suffix,
+                  "role": "COACH", "coach_final_authority": True},
+            headers={"X-Trace-Id": "membership-create-" + suffix},
+        )
+        assert membership_response.status_code == 201, membership_response.text
+        membership_id = membership_response.json()["membership_id"]
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT resource_type,tenant_id,bound_by_subject FROM kaizo_resource_tenant_bindings
+                       WHERE (resource_type,resource_id) IN (('academy_group',%s),('academy_membership',%s))
+                       ORDER BY resource_type""",
+                    (group_id, membership_id),
+                )
+                child_bindings = cur.fetchall()
+        assert child_bindings == [
+            ("academy_group", tenant_id, subject),
+            ("academy_membership", tenant_id, subject),
+        ]
+
         event_response = client.post(
             "/api/v1/competition/events",
             json={"event_name": "Event " + suffix, "date": "2026-11-12",
