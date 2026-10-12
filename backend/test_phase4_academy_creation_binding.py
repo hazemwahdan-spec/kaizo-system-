@@ -103,6 +103,31 @@ def test_academy_create_persists_binding_in_same_transaction():
                 event_binding = cur.fetchone()
         assert event_binding == (tenant_id, subject)
 
+        ingested_id = "PRB-TENANT-PRIVATE-" + suffix
+        ingest_response = client.post(
+            "/api/v1/knowledge/ingest",
+            json={"item_id": ingested_id, "domain": "problem",
+                  "title": "TENANT-PRIVATE-SECRET-" + suffix,
+                  "content": {"source": "tenant-private"}, "user_id": subject},
+            headers={"X-Trace-Id": "knowledge-ingest-" + suffix},
+        )
+        assert ingest_response.status_code == 201, ingest_response.text
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT tenant_id,bound_by_subject FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='knowledge' AND resource_id=%s""",
+                    (ingested_id,),
+                )
+                ingested_binding = cur.fetchone()
+        assert ingested_binding == (tenant_id, subject)
+        public_library = client.get(
+            "/api/v1/problem-library",
+            params={"query": "TENANT-PRIVATE-SECRET-" + suffix},
+        )
+        assert public_library.status_code == 200
+        assert public_library.json()["items"] == []
+
         knowledge_id = "knowledge-" + suffix
         knowledge_response = client.post(
             "/api/v1/knowledge-runtime/feat-047/provenance",
