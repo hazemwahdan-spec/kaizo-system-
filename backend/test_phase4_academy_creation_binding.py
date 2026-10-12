@@ -75,6 +75,28 @@ def test_academy_create_persists_binding_in_same_transaction():
                 athlete_binding = cur.fetchone()
         assert athlete_binding == (tenant_id, subject)
 
+        kpi_id = "KPI-TENANT-" + suffix
+        kpi_response = client.post(
+            "/api/v1/kpis",
+            json={"kpi_id": kpi_id, "name": "Tenant KPI " + suffix,
+                  "metric_name": "entry_timing_score", "unit": "score",
+                  "target": 7, "direction": "higher_is_better",
+                  "defined_by": subject},
+            headers={"X-Trace-Id": "kpi-create-" + suffix},
+        )
+        assert kpi_response.status_code == 201, kpi_response.text
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT tenant_id,bound_by_subject FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='kpi_definition' AND resource_id=%s""",
+                    (kpi_id,),
+                )
+                kpi_binding = cur.fetchone()
+        assert kpi_binding == (tenant_id, subject)
+        kpi_read = client.get(f"/api/v1/kpis/{kpi_id}")
+        assert kpi_read.status_code == 200, kpi_read.text
+
         group_response = client.post(
             "/api/v1/academy/groups",
             json={"academy_id": academy_id, "name": "Group " + suffix,
