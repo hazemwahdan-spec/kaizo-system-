@@ -52,6 +52,25 @@ def test_academy_create_persists_binding_in_same_transaction():
                 )
                 binding = cur.fetchone()
         assert binding == (tenant_id, subject)
+
+        event_response = client.post(
+            "/api/v1/competition/events",
+            json={"event_name": "Event " + suffix, "date": "2026-11-12",
+                  "context": {"level": "club"}, "created_by": subject,
+                  "evidence_refs": [], "coach_final_authority": True},
+            headers={"X-Trace-Id": "event-create-" + suffix},
+        )
+        assert event_response.status_code == 201, event_response.text
+        event_id = event_response.json()["event_id"]
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT tenant_id,bound_by_subject FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='competition_event' AND resource_id=%s""",
+                    (event_id,),
+                )
+                event_binding = cur.fetchone()
+        assert event_binding == (tenant_id, subject)
     finally:
         if previous_principal is None:
             main.app.dependency_overrides.pop(require_phase4_principal, None)
