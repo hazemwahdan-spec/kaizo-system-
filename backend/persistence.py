@@ -314,11 +314,53 @@ def initialize() -> None:
         conn.commit()
 
 
-def upsert_athlete(athlete: Dict[str, Any]) -> None:
+def upsert_athlete(
+    athlete: Dict[str, Any], *, tenant_id: str | None = None,
+    bound_by_subject: str | None = None,
+) -> None:
     if not is_postgres_enabled():
         return
     with connection() as conn:
         with conn.cursor() as cur:
+            if tenant_id is not None or bound_by_subject is not None:
+                if not tenant_id or not bound_by_subject:
+                    raise PersistenceConfigurationError(
+                        "Tenant-scoped athlete writes require tenant_id and bound_by_subject"
+                    )
+                cur.execute(
+                    """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='athlete' AND resource_id=%s FOR UPDATE""",
+                    (athlete["athlete_id"],),
+                )
+                binding = cur.fetchone()
+                if binding is not None and binding[0] != tenant_id:
+                    raise PersistenceConfigurationError(
+                        "Athlete resource is already bound to another tenant"
+                    )
+                if binding is None:
+                    cur.execute(
+                        "SELECT 1 FROM kaizo_athletes WHERE athlete_id=%s",
+                        (athlete["athlete_id"],),
+                    )
+                    if cur.fetchone() is not None:
+                        raise PersistenceConfigurationError(
+                            "Refusing to auto-bind an existing unowned athlete record"
+                        )
+                    cur.execute(
+                        """INSERT INTO kaizo_resource_tenant_bindings
+                           (resource_type,resource_id,tenant_id,bound_by_subject)
+                           SELECT 'athlete',%s,t.tenant_id,%s
+                           FROM kaizo_tenants t
+                           JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                           WHERE t.tenant_id=%s AND t.status='ACTIVE'
+                             AND m.subject_id=%s AND m.status='ACTIVE'
+                           LIMIT 1""",
+                        (athlete["athlete_id"], bound_by_subject, tenant_id, bound_by_subject),
+                    )
+                    if cur.rowcount != 1:
+                        raise PersistenceConfigurationError(
+                            "Active tenant membership is required to bind athlete"
+                        )
             cur.execute(
                 """
                 INSERT INTO kaizo_athletes
