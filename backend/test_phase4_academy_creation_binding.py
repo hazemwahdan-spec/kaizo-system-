@@ -38,6 +38,15 @@ def test_academy_create_persists_binding_in_same_transaction():
     main.app.dependency_overrides[require_phase4_principal] = lambda: principal
     client = TestClient(main.app)
     try:
+        forged_owner = client.post(
+            "/api/v1/academy/academies",
+            json={"name": "Forged Academy " + suffix, "owner_id": "untrusted-owner",
+                  "status": "ACTIVE", "coach_final_authority": True},
+            headers={"X-Trace-Id": "academy-owner-spoof-" + suffix},
+        )
+        assert forged_owner.status_code == 403
+        assert forged_owner.json()["detail"]["reason_code"] == "academy_owner_identity_mismatch"
+
         response = client.post(
             "/api/v1/academy/academies",
             json={"name": "Academy " + suffix, "owner_id": subject,
