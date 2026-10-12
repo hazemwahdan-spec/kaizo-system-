@@ -12,6 +12,7 @@ from datetime import datetime
 import persistence
 from phase4_route_guard import require_phase4_route_access, require_phase4_tenant_member
 from phase4_identity_boundary import require_phase4_principal
+from phase4_domain_authorization import require_phase4_domain_access
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
@@ -1421,7 +1422,6 @@ KNOWLEDGE_REPOSITORY: Dict[str, Any] = {
 
 if persistence.is_postgres_enabled():
     persistence.initialize()
-    KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
 
 class RuleEvaluationRequest(BaseModel):
     athlete_id: str
@@ -1589,33 +1589,43 @@ class KnowledgeIngestRequest(BaseModel):
     user_id: str
 
 @app.post("/api/v1/knowledge/ingest", status_code=status.HTTP_201_CREATED)
-def ingest_knowledge(req: KnowledgeIngestRequest):
+def ingest_knowledge(
+    req: KnowledgeIngestRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     pipeline_steps = ["Collect", "Verify", "Classify", "Link", "Approve", "Publish"]
+    principal = phase4.get("principal")
+    tenant_id = phase4.get("tenant_id")
+    actor_subject = getattr(principal, "actor_id", None)
+    if not actor_subject or not tenant_id:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required for knowledge ingestion")
 
-    KNOWLEDGE_REPOSITORY[req.item_id] = {
+    item = {
         "id": req.item_id,
         "domain": req.domain,
         "title": req.title,
         "status": "Published",
         "pipeline_completed": pipeline_steps,
-        "content": req.content
+        "content": req.content,
+        "tenant_id": tenant_id,
+        "created_by": actor_subject,
     }
-
-    persistence.upsert_knowledge(req.item_id, KNOWLEDGE_REPOSITORY[req.item_id], datetime.utcnow().isoformat())
-
+    persistence.upsert_knowledge(
+        req.item_id, item, datetime.utcnow().isoformat(),
+        tenant_id=tenant_id, bound_by_subject=actor_subject,
+    )
     log_action(
-        user_id=req.user_id,
+        user_id=actor_subject,
         action="INGEST_KNOWLEDGE",
         old_val=None,
         new_val=req.item_id,
-        reason="New entity successfully processed through Knowledge Engine pipeline."
+        reason="Knowledge ingested for the verified tenant; tenant binding and record are persisted atomically.",
     )
-
     return {
         "status": "Success",
         "message": "Item successfully published via Knowledge Engine pipeline.",
         "item_id": req.item_id,
-        "pipeline": pipeline_steps
+        "pipeline": pipeline_steps,
     }
 
 class EvidenceCreateRequest(BaseModel):
