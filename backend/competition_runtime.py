@@ -7,11 +7,12 @@ autonomous decisions. Coach Final Authority remains mandatory.
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from phase4_identity_boundary import require_phase4_principal
 from pydantic import BaseModel, Field
 import persistence
 
-router = APIRouter(prefix="/api/v1/competition", tags=["Competition Runtime"])
+router = APIRouter(prefix="/api/v1/competition", tags=["Competition Runtime"], dependencies=[Depends(require_phase4_principal)])
 
 EVENTS: Dict[str, Dict[str, Any]] = {}
 READINESS: Dict[str, Dict[str, Any]] = {}
