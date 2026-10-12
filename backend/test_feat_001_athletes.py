@@ -1,14 +1,37 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from main import app, ATHLETE_RECORDS
+from phase4_core_resource_authorization import (
+    require_core_actor,
+)
+from productization.identity import Principal
 
 
 class FEAT001AthleteRecordTests(unittest.TestCase):
     def setUp(self):
         ATHLETE_RECORDS.clear()
+        self.principal = Principal(
+            actor_id="unit-test-coach", role="coach", tenant_id="unit-test-academy",
+            resource_owner_id=None, verified=True, source="test_override",
+        )
+        app.dependency_overrides[require_core_actor] = lambda: self.principal
+        self._binding_patches = [
+            patch("main.bind_new_resource"),
+            patch("main.assert_resource_tenant"),
+            patch("main.assert_assessment_tenant"),
+        ]
+        for item in self._binding_patches:
+            item.start()
+        self.addCleanup(self._cleanup_authorization_patches)
         self.client = TestClient(app)
+
+    def _cleanup_authorization_patches(self):
+        app.dependency_overrides.pop(require_core_actor, None)
+        for item in reversed(self._binding_patches):
+            item.stop()
 
     def test_create_read_and_update_athlete(self):
         created = self.client.post(
