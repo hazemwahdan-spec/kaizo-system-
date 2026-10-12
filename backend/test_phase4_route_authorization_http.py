@@ -120,6 +120,16 @@ class Phase4RouteAuthorizationHTTPTests(unittest.TestCase):
         self.assertIn("NOT EXISTS", consent_sql)
         self.assertIn("newer.recorded_sequence > c.recorded_sequence", consent_sql)
 
+    def test_unbound_digital_twin_rejects_body_supplied_owner(self):
+        from fastapi import HTTPException
+        request = type("RequestStub", (), {"path_params": {"entity_id": "unbound-twin"}, "query_params": {}})()
+        with patch.object(phase4_route_guard.persistence, "get_athlete", return_value=None), \
+             patch.object(phase4_route_guard.persistence, "get_digital_twin", return_value=None):
+            with self.assertRaises(HTTPException) as raised:
+                phase4_route_guard._resolve_athlete_id(request, {"state": {"athlete_id": "athlete-1"}})
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertIn("persisted athlete ownership", raised.exception.detail)
+
     def test_unverified_principal_is_denied_before_database_access(self):
         connection = FakeConnection([])
         with patch.object(phase4_route_guard, "require_phase4_principal",
