@@ -10,6 +10,7 @@ import sys
 import main
 import persistence
 import phase4_route_guard
+import backend.main as package_main
 from phase4_identity_boundary import Principal
 
 if len(sys.argv) < 2:
@@ -42,6 +43,9 @@ main.app.dependency_overrides[phase4_route_guard.require_phase4_route_access] = 
         "authorization": {"allowed": True, "test_only_override": True},
     }
 )
+
+# Some older acceptance modules import the app as backend.main rather than main.
+package_main.app.dependency_overrides.update(main.app.dependency_overrides)
 
 if persistence.is_postgres_enabled():
     with persistence.connection() as conn:
