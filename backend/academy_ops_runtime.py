@@ -31,6 +31,10 @@ def _pg_enabled() -> bool:
     return persistence.is_postgres_enabled()
 
 
+def _phase4_actor(phase4: Dict[str, Any], fallback: str = "system") -> str:
+    return str(getattr(phase4.get("principal"), "actor_id", None) or fallback)
+
+
 def _ensure_schema() -> None:
     if not _pg_enabled():
         return
@@ -256,7 +260,7 @@ def add_membership(req: MembershipCreate, phase4: Dict[str, Any] = Depends(requi
                     tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
-    _audit(phase4["principal"].actor_id, "ACADEMY_COACH_MEMBERSHIP_CREATED", item)
+    _audit(_phase4_actor(phase4, req.coach_id), "ACADEMY_COACH_MEMBERSHIP_CREATED", item)
     return item
 
 
@@ -298,7 +302,7 @@ def create_group(req: GroupCreate, phase4: Dict[str, Any] = Depends(require_phas
                     tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
-    _audit(phase4["principal"].actor_id, "ACADEMY_GROUP_CREATED", item)
+    _audit(_phase4_actor(phase4), "ACADEMY_GROUP_CREATED", item)
     return item
 
 
@@ -352,7 +356,7 @@ def assign_athlete(req: AssignmentCreate, phase4: Dict[str, Any] = Depends(requi
                     tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
                 )
             conn.commit()
-    _audit(phase4["principal"].actor_id, "ATHLETE_MULTI_COACH_ASSIGNED", item)
+    _audit(_phase4_actor(phase4), "ATHLETE_MULTI_COACH_ASSIGNED", item)
     return item
 
 
