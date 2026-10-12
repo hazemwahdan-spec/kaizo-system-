@@ -47,7 +47,7 @@ jobs:
       - name: Run persistence integration test
         run: PYTHONPATH=. python tests/test_persistence_integration.py
       - name: Import application with PostgreSQL mode
-        run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
+        run: PYTHONPATH=..:. python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
       - name: Verify OpenAPI and documentation endpoint contract
         run: PYTHONPATH=. python tests/test_openapi_contract.py
       - name: Run FEAT-001 athlete acceptance tests
@@ -119,4 +119,4 @@ jobs:
         run: PYTHONPATH=. python test_phase4_canonical_identity_consent_integration.py
 
       - name: Run Phase 4 actual Core resource authorization HTTP acceptance tests
-        run: PYTHONPATH=. python -m pytest -q test_phase4_actual_app_route_inventory.py test_phase4_core_resource_authorization.py
+        run: PYTHONPATH=..:. python -m pytest -q test_phase4_actual_app_route_inventory.py test_phase4_core_resource_authorization.py
