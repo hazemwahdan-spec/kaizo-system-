@@ -26,13 +26,9 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 
 def _age_from_athlete(athlete: dict[str, Any]) -> int | None:
-    metadata = _as_dict(athlete.get("metadata"))
-    raw = (
-        athlete.get("date_of_birth")
-        or athlete.get("birth_date")
-        or metadata.get("date_of_birth")
-        or metadata.get("birth_date")
-    )
+    # Age must come from an authoritative top-level persisted field, never
+    # user-editable metadata. Unknown age remains consent-required.
+    raw = athlete.get("date_of_birth") or athlete.get("birth_date")
     if not isinstance(raw, str) or not raw.strip():
         return None
     try:
