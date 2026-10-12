@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import main
-from productization.identity import Principal
+from phase4_identity_boundary import Principal
 
 
 class Phase4AthleteRouteEnforcementTests(unittest.TestCase):
