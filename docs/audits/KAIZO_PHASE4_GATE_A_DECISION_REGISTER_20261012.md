@@ -7,11 +7,11 @@ Evidence rule: Evidence Before Claim
 
 ## Verified evidence at this checkpoint
 
-- PR #122 head: `7bcf574f7a3c1d23af6aa7f7444f80af97188285`.
-- Phase 4 Live Runtime Smoke run 38173595370: OpenAPI fetch and health check passed.
-- Identity RBAC Boundary run 38173595288: isolated dependency/HTTP contract tests passed.
-- Persistence Adapter Validation run 38173595395: ephemeral PostgreSQL and existing acceptance tests passed.
-- These checks do not prove actual Core route enforcement, durable guardian verification/consent, or production authorization audit.
+- PR #122 head at this register update: `c5ea798fab5bced7adbfde0324b63d306afbb2e6` (open, draft, mergeable; not merged).
+- Latest PR-triggered CI on `c5ea798fab5bced7adbfde0324b63d306afbb2e6` completed successfully for Persistence Adapter Validation run 38201139493, Phase 4 Live Runtime Smoke run 38201139495, Phase 7 Identity RBAC Boundary run 38201139525, and the listed Phase 7/product/security integration workflows.
+- The implementation commit `f6ba0a907e6fcbf94b5621b85788dfddfcf5884d` also passed Persistence Adapter Validation run 38201027285, including the new ephemeral-PostgreSQL identity/consent-store tests.
+- Smoke is limited to OpenAPI/health checks; identity and persistence tests are contract/store-level CI evidence.
+- These checks do not prove actual Core route enforcement, trusted membership provisioning, real guardian verification, production consent/audit persistence, or live tenant/resource isolation.
 
 ## Gate A decisions required before schema/repository implementation
 
@@ -48,7 +48,7 @@ A **non-production candidate implementation** has now been added to this draft P
 - `backend/test_phase4_identity_store.py`: ephemeral PostgreSQL lifecycle tests for membership revocation, guardian relationship revocation, consent scope/revocation/expiry, and deny-audit roundtrip.
 - `.github/workflows/persistence-adapter-validation.yml`: invokes the new acceptance test in CI.
 
-**Important limitation:** this candidate code does not establish the trusted origin of membership provisioning or guardian verification, is not wired to Core API routes, and has not been applied to any production database. The test fixture's verification actor is test-only. Gate A decisions remain OPEN; Gate B remains **pending CI evidence and contract review**. Do not merge or enable production enforcement based solely on this implementation.
+**Important limitation:** this candidate code does not establish the trusted origin of membership provisioning or guardian verification, is not wired to Core API routes, and has not been applied to any production database. The test fixture's verification actor is test-only. Gate A decisions remain OPEN; Gate B has passing isolated CI evidence but remains subject to contract review and integration acceptance. Do not merge or enable production enforcement based solely on this implementation.
 
 
 ## CI result — 2026-10-12
@@ -60,3 +60,23 @@ The candidate persistence implementation at commit `f6ba0a907e6fcbf94b5621b85788
 - Limited live smoke passed: [run 38201027300](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38201027300).
 
 This proves the candidate schema/store behavior in CI only. It does **not** prove trusted membership provisioning, real guardian verification, route-level enforcement in `backend.main:app`, production persistence, or live tenant/resource isolation. Therefore Gate B has test evidence for its isolated primitives but remains subject to contract review; Gate A and P4-REQ-011 remain OPEN.
+
+
+## Gate evidence refresh — latest checkpoint
+
+- PR #122 latest head `c5ea798fab5bced7adbfde0324b63d306afbb2e6`: all returned PR-triggered workflow runs completed with `success`, including Persistence Adapter Validation `38201139493`, Phase 4 Live Runtime Smoke `38201139495`, and Phase 7 Identity RBAC Boundary `38201139525`.
+- Direct run links: [Persistence Adapter Validation](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38201139493), [Phase 4 Live Runtime Smoke](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38201139495), [Phase 7 Identity RBAC Boundary](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38201139525).
+- PR #123 is also open as a separate draft schema candidate (`feat/phase4-tenant-consent-schema`, head `fb13a3d3212ef6dc940445489e7e26182d241a47`). It overlaps Phase 4 data-model scope with PR #122. Neither draft is merged; they must not be independently merged or applied until the canonical migration/repository path is reconciled, to avoid duplicate/conflicting schemas.
+- User's instruction to satisfy gates is treated as authorization to continue evidence-based non-production work, not as approval of unspecified identity, guardian, retention, target-environment, or production-change decisions.
+- **Gate disposition remains:** CI evidence for isolated primitives = PASS; Gate A contract approval = OPEN; route-level Core API enforcement = NOT PROVEN; production activation = NOT AUTHORIZED; P4-REQ-011 = OPEN / NOT PROVEN; Phase 4 exit = BLOCKED.
+
+## Smallest remaining evidence set to close Phase 4
+
+1. Record approved canonical production target and OIDC contract (issuer, audience, JWKS, subject, roles, tenant claim) from authoritative provider/deployment settings.
+2. Record trusted membership provisioning and guardian verification authorities, plus approved consent lifecycle/expiry and privacy/audit retention rules.
+3. Reconcile PR #122 and #123 into one reviewed migration/repository path without duplicate schema definitions.
+4. Integrate authorization into the actual `backend.main:app` routes and nested-resource access paths; tests must prove unauthenticated, wrong-role, cross-tenant, wrong-owner, and missing/revoked/expired/mismatched-consent requests cannot read or mutate protected resources.
+5. Run durable PostgreSQL tests and route-level regression on the exact final commit; then separately authorize and execute controlled read-only runtime verification against the confirmed production target.
+6. Independent retest must cite exact commit and workflow URLs before P4-REQ-011 can close.
+
+No production schema, configuration, secrets, or live records were changed by this checkpoint.
