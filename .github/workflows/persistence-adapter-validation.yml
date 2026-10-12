@@ -63,6 +63,8 @@ jobs:
         run: PYTHONPATH=. python -m unittest test_phase4_postgres_route_denial -v
       - name: Verify tenant-scoped audit endpoint and fail-closed behavior
         run: PYTHONPATH=. python -m unittest test_phase4_audit_endpoint -v
+      - name: Verify Phase 4 domain role matrix
+        run: PYTHONPATH=. pytest -q test_phase4_domain_authorization_policy.py
       - name: Verify domain runtime actor/tenant spoofing and durable ownership fail-closed
         working-directory: backend
         run: PYTHONPATH=. pytest -q test_phase4_domain_authorization.py
