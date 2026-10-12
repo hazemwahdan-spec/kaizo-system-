@@ -117,7 +117,7 @@ class Phase4RouteAuthorizationHTTPTests(unittest.TestCase):
                            if "FROM kaizo_guardian_relationships gr" in sql)
         self.assertIn("c.state='active'", consent_sql)
         self.assertIn("NOT EXISTS", consent_sql)
-        self.assertIn("newer.created_at > c.created_at", consent_sql)
+        self.assertIn("newer.recorded_sequence > c.recorded_sequence", consent_sql)
 
     def test_unverified_principal_is_denied_before_database_access(self):
         connection = FakeConnection([])
