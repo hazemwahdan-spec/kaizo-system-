@@ -82,6 +82,7 @@ def create_athlete(req: AthleteCreateRequest, principal: Principal = Depends(req
         "created_at": now,
         "updated_at": now,
     }
+    bind_new_resource(resource_type="athlete", resource_id=athlete["athlete_id"], principal=principal)
     ATHLETE_RECORDS[athlete["athlete_id"]] = athlete
     persistence.upsert_athlete(athlete)
     log_action(
@@ -175,6 +176,7 @@ def create_assessment(req: AssessmentCreateRequest, principal: Principal = Depen
         "assessed_at": now,
         "created_at": now,
     }
+    bind_new_resource(resource_type="assessment", resource_id=assessment["assessment_id"], principal=principal)
     ASSESSMENT_RECORDS[assessment["assessment_id"]] = assessment
     persistence.upsert_assessment(assessment)
     log_action(
