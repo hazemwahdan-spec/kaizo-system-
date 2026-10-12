@@ -123,7 +123,7 @@ def authorize_resource_access(
                                WHERE newer_gr.child_resource_id=gr.child_resource_id
                                  AND newer_gr.guardian_subject_id=gr.guardian_subject_id
                                  AND newer_gr.tenant_id=gr.tenant_id
-                                 AND newer_gr.created_at > gr.created_at
+                                 AND newer_gr.recorded_sequence > gr.recorded_sequence
                              )
                              AND c.resource_type=%s AND c.action=%s
                              AND c.state='active'
@@ -135,7 +135,7 @@ def authorize_resource_access(
                                  AND newer.tenant_id=c.tenant_id
                                  AND newer.resource_type=c.resource_type
                                  AND newer.action=c.action
-                                 AND newer.created_at > c.created_at
+                                 AND newer.recorded_sequence > c.recorded_sequence
                              )
                            ORDER BY c.created_at DESC LIMIT 1""",
                         (child_resource_id, tenant_id, resource_type, action),
