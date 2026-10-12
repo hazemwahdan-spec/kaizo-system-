@@ -532,14 +532,26 @@ def upsert_knowledge(
         conn.commit()
 
 
-def load_knowledge() -> Dict[str, Any]:
+def load_knowledge(tenant_id: str | None = None) -> Dict[str, Any]:
+    """Load knowledge globally only for trusted internal jobs, or tenant-scoped for requests."""
     if not is_postgres_enabled():
         return {}
     with connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT item_id, payload FROM kaizo_knowledge_repository ORDER BY item_id"
-            )
+            if tenant_id is None:
+                cur.execute(
+                    "SELECT item_id, payload FROM kaizo_knowledge_repository ORDER BY item_id"
+                )
+            else:
+                cur.execute(
+                    """SELECT k.item_id,k.payload
+                       FROM kaizo_knowledge_repository k
+                       JOIN kaizo_resource_tenant_bindings b
+                         ON b.resource_type='knowledge' AND b.resource_id=k.item_id
+                       WHERE b.tenant_id=%s
+                       ORDER BY k.item_id""",
+                    (tenant_id,),
+                )
             rows = cur.fetchall()
     return {row[0]: row[1] for row in rows}
 
