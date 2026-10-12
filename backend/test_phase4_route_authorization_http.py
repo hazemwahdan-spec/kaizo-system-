@@ -105,6 +105,7 @@ class Phase4RouteAuthorizationHTTPTests(unittest.TestCase):
         consent_sql = next(sql for sql, _ in cursor.statements
                            if "FROM kaizo_guardian_relationships gr" in sql)
         self.assertIn("c.state='active'", consent_sql)
+        self.assertIn("c.recorded_by_subject=c.guardian_subject_id", consent_sql)
         self.assertTrue(any("INSERT INTO kaizo_p14_audit_events" in sql
                             for sql, _ in cursor.statements))
 
