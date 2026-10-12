@@ -10,6 +10,7 @@ from phase4_identity_boundary import Principal, require_phase4_principal
 
 
 def test_academy_create_persists_binding_in_same_transaction():
+    persistence.initialize()
     suffix = uuid4().hex
     tenant_id = "academy-create-tenant-" + suffix
     subject = "oidc|academy-owner-" + suffix
