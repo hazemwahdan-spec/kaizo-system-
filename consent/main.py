@@ -196,7 +196,6 @@ def health():
         "status": "ok",
         "service": "kaizo-p14-consent",
         "deny_by_default": True,
-        "deny_by_default": True,
         "durable_storage": _postgres_enabled(),
         "identity_mode": _identity_mode(),
     }
@@ -261,11 +260,14 @@ def upsert_consent(
         ]
         CONSENTS.append(consent)
 
-    _audit("consent_change", {
-        "actor_id": claims.get("sub", change.actor_id), "child_id": consent.child_id,
-        "guardian_id": consent.guardian_id, "academy_id": consent.academy_id,
-        "resource": consent.resource, "action": consent.action, "state": consent.state.value,
-    })
+    # PostgreSQL mode already wrote this event in the same transaction as the
+    # consent upsert. Do not emit a second, non-atomic duplicate audit record.
+    if not _postgres_enabled():
+        _audit("consent_change", {
+            "actor_id": claims.get("sub", change.actor_id), "child_id": consent.child_id,
+            "guardian_id": consent.guardian_id, "academy_id": consent.academy_id,
+            "resource": consent.resource, "action": consent.action, "state": consent.state.value,
+        })
     return {"stored": True, "state": consent.state.value, "durable": _postgres_enabled()}
 
 
@@ -303,12 +305,17 @@ def authorize(
             allowed, reason = False, "no_consent"
         else:
             state, expires_at = row
-            consent = Consent(
-                child_id=req.child_id, guardian_id=req.guardian_id, academy_id=req.academy_id,
-                resource=req.resource, action=req.action, state=ConsentState(str(state).lower()),
-                expires_at=expires_at,
-            )
-            allowed, reason = valid(consent, req)
+            try:
+                consent = Consent(
+                    child_id=req.child_id, guardian_id=req.guardian_id, academy_id=req.academy_id,
+                    resource=req.resource, action=req.action, state=ConsentState(str(state).lower()),
+                    expires_at=expires_at,
+                )
+            except (ValueError, TypeError):
+                # Corrupt or unknown persisted state must never authorize access.
+                allowed, reason = False, "invalid_consent_state"
+            else:
+                allowed, reason = valid(consent, req)
     else:
         if _identity_mode() != "development":
             raise HTTPException(status_code=503, detail="production consent requires durable PostgreSQL storage")
