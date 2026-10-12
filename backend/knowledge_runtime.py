@@ -54,7 +54,10 @@ def get_item(k, tenant_id=None):
         # Never fall back to an unscoped global repository read on a request path.
         if not tenant_id:
             return None
-        return persistence.load_knowledge(tenant_id=tenant_id).get(k)
+        item = persistence.load_knowledge(tenant_id=tenant_id).get(k)
+        if item and item.get("knowledge_id") == k:
+            return item
+        return None
     return MEMORY_ITEMS.get(k)
 
 class ProvenanceRequest(BaseModel):
