@@ -3,7 +3,7 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
@@ -1320,7 +1320,11 @@ def get_kpi(kpi_id: str) -> Dict[str, Any]:
     return definition
 
 @app.post("/api/v1/kpis/captures", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
-def capture_kpi(req: KPICaptureRequest) -> Dict[str, Any]:
+def capture_kpi(
+    req: KPICaptureRequest,
+    request: Request,
+    phase4_access: Dict[str, Any] = Depends(require_phase4_route_access),
+) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.kpi_id.strip() or not req.captured_by.strip():
         raise HTTPException(status_code=400, detail="athlete_id, kpi_id and captured_by are required")
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
@@ -1329,6 +1333,12 @@ def capture_kpi(req: KPICaptureRequest) -> Dict[str, Any]:
     kpi = persistence.get_kpi_definition(req.kpi_id) if persistence.is_postgres_enabled() else KPI_DEFINITIONS.get(req.kpi_id)
     if kpi is None:
         raise HTTPException(status_code=404, detail="KPI not found")
+    principal = phase4_access.get("principal")
+    tenant_id = phase4_access.get("tenant_id")
+    actor_subject = getattr(principal, "actor_id", None)
+    actor_role = getattr(principal, "role", None)
+    if not tenant_id or not actor_subject or not actor_role:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required for KPI capture")
     import uuid
     now = datetime.utcnow().isoformat()
     capture = {
@@ -1336,14 +1346,35 @@ def capture_kpi(req: KPICaptureRequest) -> Dict[str, Any]:
         "athlete_id": req.athlete_id,
         "kpi_id": req.kpi_id,
         "value": req.value,
-        "captured_by": req.captured_by,
+        "captured_by": actor_subject,
         "assessment_id": req.assessment_id,
         "captured_at": now,
         "created_at": now,
     }
+    try:
+        persistence.upsert_kpi_capture(
+            capture, tenant_id=tenant_id, bound_by_subject=actor_subject, role=actor_role,
+        )
+    except persistence.PersistenceConfigurationError as exc:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO kaizo_p14_audit_events
+                       (actor_subject_id,event_type,tenant_id,resource_type,action,
+                        allowed,reason_code,trace_id,metadata)
+                       VALUES (%s,'authorization_decision',%s,'kpi_definition',%s,FALSE,
+                               'kpi_or_athlete_tenant_binding_missing',%s,%s::jsonb)""",
+                    (actor_subject, tenant_id, "POST:/api/v1/kpis/captures",
+                     request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+                     '{"source":"kpi_capture","decision":"DENY"}'),
+                )
+            conn.commit()
+        raise HTTPException(
+            status_code=403,
+            detail={"decision": "DENY", "reason_code": "kpi_or_athlete_tenant_binding_missing"},
+        ) from exc
     KPI_CAPTURES[capture["capture_id"]] = capture
-    persistence.upsert_kpi_capture(capture)
-    log_action(req.captured_by, "KPI_CAPTURED", None, capture, "KPI value captured for an existing athlete and defined KPI.")
+    log_action(actor_subject, "KPI_CAPTURED", None, capture, "KPI value captured for an existing athlete and tenant-owned KPI.")
     return capture
 
 @app.get("/api/v1/kpis/captures/{capture_id}", dependencies=[Depends(require_phase4_route_access)])
