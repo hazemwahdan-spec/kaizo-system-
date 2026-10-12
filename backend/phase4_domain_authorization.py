@@ -17,12 +17,13 @@ from phase4_identity_boundary import Principal, require_phase4_principal
 from phase4_tenant_consent import Phase4AuthorizationUnavailable, authorize_resource_access
 
 _ACTOR_FIELDS = (
-    "actor_id", "created_by", "owner_id", "changed_by", "requested_by", "user_id",
+    "actor_id", "created_by", "owner_id", "changed_by", "requested_by", "user_id", "defined_by",
     "recorded_by", "assessed_by", "decided_by", "reviewed_by", "traced_by",
     "linked_by", "assigned_by", "reported_by", "uploaded_by", "author_id",
 )
 _RESOURCE_FIELDS = {
     "athlete_id": "athlete", "academy_id": "academy", "item_id": "knowledge",
+    "kpi_id": "kpi_definition",
     "group_id": "academy_group", "knowledge_id": "knowledge",
     "event_id": "competition_event", "report_id": "report",
     "subject_id": None, "entity_id": "digital_twin",
@@ -96,7 +97,7 @@ def _allowed_domain_roles(path: str, method: str) -> set[str]:
         if "/export" in path or method not in {"GET", "HEAD"}:
             return {"academy", "coach"}
         return {"academy", "coach", "athlete", "parent"}
-    if path == "/api/v1/knowledge/ingest":
+    if path == "/api/v1/knowledge/ingest" or path.startswith("/api/v1/kpis"):
         return {"academy", "coach"}
     if path.startswith(("/api/v1/features", "/api/v1/knowledge-runtime",
                         "/api/v1/audit-trace", "/api/v1/evidence-safety")):
@@ -151,6 +152,24 @@ async def require_phase4_domain_access(
                     existing_record = cur.fetchone()
             if existing_binding is None and existing_record is None:
                 resources = [item for item in resources if item != ("knowledge", knowledge_id)]
+    if request.method.upper() == "POST" and request.url.path == "/api/v1/kpis":
+        kpi_id = str(payload.get("kpi_id") or "").strip()
+        if kpi_id:
+            with persistence.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                           WHERE resource_type='kpi_definition' AND resource_id=%s LIMIT 1""",
+                        (kpi_id,),
+                    )
+                    existing_binding = cur.fetchone()
+                    cur.execute(
+                        "SELECT 1 FROM kaizo_kpi_definitions WHERE kpi_id=%s",
+                        (kpi_id,),
+                    )
+                    existing_record = cur.fetchone()
+            if existing_binding is None and existing_record is None:
+                resources = [item for item in resources if item != ("kpi_definition", kpi_id)]
     if not resources:
         # Root resources have no parent binding yet. These explicitly allowlisted
         # creation handlers must write their canonical resource binding in the
@@ -160,6 +179,7 @@ async def require_phase4_domain_access(
             "/api/v1/competition/events": "competition_event",
             "/api/v1/knowledge-runtime/feat-047/provenance": "knowledge",
             "/api/v1/knowledge/ingest": "knowledge",
+            "/api/v1/kpis": "kpi_definition",
         }
         is_tenant_scoped_knowledge_retrieval = (
             request.method.upper() == "POST"
