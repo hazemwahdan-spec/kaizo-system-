@@ -3,13 +3,15 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
+from phase4_route_guard import enforce_athlete_read, require_phase4_principal
+from productization.identity import Principal
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
@@ -91,7 +93,12 @@ def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
 
 
 @app.get("/api/v1/athletes/{athlete_id}")
-def get_athlete(athlete_id: str) -> Dict[str, Any]:
+def get_athlete(
+    athlete_id: str,
+    principal: Principal = Depends(require_phase4_principal),
+) -> Dict[str, Any]:
+    # Authorization is checked before loading/returning the protected resource.
+    enforce_athlete_read(principal, athlete_id)
     athlete = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
