@@ -50,8 +50,10 @@ class FEAT013KPIAcceptanceTests(unittest.TestCase):
         self.assertEqual(capture["value"], 21.5)
         readback = self.client.get(f"/api/v1/kpis/captures/{capture['capture_id']}")
         self.assertEqual(readback.status_code, 200)
-        logs = self.client.get("/api/v1/audit/logs").json()["logs"]
-        actions = [entry for entry in logs if entry["action"] == "KPI_CAPTURED"]
+        # This legacy business-contract test checks event emission directly.
+        # The global audit API is now tenant-scoped and its access contract is
+        # verified by dedicated Phase 4 security tests.
+        actions = [entry for entry in main.AUDIT_LOGS if entry["action"] == "KPI_CAPTURED"]
         self.assertTrue(actions)
         self.assertEqual(actions[-1]["who"], "coach-feat013")
         self.assertEqual(actions[-1]["new_value"]["athlete_id"], self.athlete_id)
