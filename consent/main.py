@@ -77,43 +77,24 @@ def _connect():
 
 
 def _ensure_schema() -> None:
+    """Verify the canonical Phase 4 schema exists; never create parallel ledgers."""
     if not _postgres_enabled():
         raise HTTPException(status_code=503, detail="durable consent storage is not enabled")
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS kaizo_guardian_links (
-                        guardian_id TEXT NOT NULL,
-                        child_id TEXT NOT NULL,
-                        academy_id TEXT NOT NULL,
-                        status TEXT NOT NULL,
-                        updated_at TEXT NOT NULL,
-                        PRIMARY KEY (guardian_id, child_id, academy_id)
-                    );
-                    CREATE TABLE IF NOT EXISTS kaizo_minor_consents (
-                        child_id TEXT NOT NULL,
-                        guardian_id TEXT NOT NULL,
-                        academy_id TEXT NOT NULL,
-                        resource TEXT NOT NULL,
-                        action TEXT NOT NULL,
-                        state TEXT NOT NULL,
-                        expires_at TEXT,
-                        updated_at TEXT NOT NULL,
-                        updated_by TEXT NOT NULL,
-                        PRIMARY KEY (child_id, guardian_id, academy_id, resource, action)
-                    );
-                    CREATE TABLE IF NOT EXISTS kaizo_consent_audit (
-                        id BIGSERIAL PRIMARY KEY,
-                        event TEXT NOT NULL,
-                        timestamp TEXT NOT NULL,
-                        payload JSONB NOT NULL
-                    );
-                """)
+                cur.execute(
+                    """SELECT to_regclass('public.kaizo_guardian_relationships'),
+                              to_regclass('public.kaizo_p14_consents'),
+                              to_regclass('public.kaizo_p14_audit_events')"""
+                )
+                tables = cur.fetchone()
+        if not tables or any(table is None for table in tables):
+            raise HTTPException(status_code=503, detail="canonical Phase 4 consent schema is unavailable")
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="durable consent schema is unavailable") from exc
+        raise HTTPException(status_code=503, detail="canonical Phase 4 consent schema is unavailable") from exc
 
 
 def _verified_claims(authorization: str | None) -> dict:
@@ -165,7 +146,10 @@ def _audit(event: str, payload: dict) -> None:
             with _connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "INSERT INTO kaizo_consent_audit(event,timestamp,payload) VALUES (%s,%s,%s)",
+                        "INSERT INTO kaizo_p14_audit_events
+                           (actor_subject_id,event_type,child_resource_id,guardian_subject_id,
+                            tenant_id,resource_type,action,allowed,reason_code,metadata)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
                         (event, entry["timestamp"], psycopg.types.json.Jsonb(payload)),
                     )
         except Exception as exc:
@@ -218,32 +202,39 @@ def upsert_consent(
             with _connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT 1 FROM kaizo_guardian_links
-                           WHERE guardian_id=%s AND child_id=%s AND academy_id=%s
-                             AND status='ACTIVE' LIMIT 1""",
+                        """SELECT 1 FROM kaizo_guardian_relationships
+                           WHERE guardian_subject_id=%s AND child_resource_id=%s AND tenant_id=%s
+                             AND verification_status='VERIFIED'
+                             AND verified_by_subject IS NOT NULL
+                             AND verified_by_subject <> guardian_subject_id
+                             AND verified_at IS NOT NULL
+                           LIMIT 1""",
                         (consent.guardian_id, consent.child_id, consent.academy_id),
                     )
                     if not cur.fetchone():
                         raise HTTPException(status_code=403, detail="verified guardian-child link is required")
                     cur.execute(
-                        """INSERT INTO kaizo_minor_consents
-                           (child_id,guardian_id,academy_id,resource,action,state,expires_at,updated_at,updated_by)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                           ON CONFLICT (child_id,guardian_id,academy_id,resource,action)
-                           DO UPDATE SET state=EXCLUDED.state, expires_at=EXCLUDED.expires_at,
-                                         updated_at=EXCLUDED.updated_at, updated_by=EXCLUDED.updated_by""",
+                        """INSERT INTO kaizo_p14_consents
+                           (child_resource_id,guardian_subject_id,tenant_id,resource_type,action,
+                            state,expires_at,recorded_by_subject)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
                         (consent.child_id, consent.guardian_id, consent.academy_id,
                          consent.resource, consent.action, consent.state.value,
-                         consent.expires_at, _now(), claims.get("sub", change.actor_id)),
+                         consent.expires_at, claims.get("sub", change.actor_id)),
                     )
                     cur.execute(
-                        "INSERT INTO kaizo_consent_audit(event,timestamp,payload) VALUES (%s,%s,%s)",
-                        ("consent_change", _now(), psycopg.types.json.Jsonb({
+                        "INSERT INTO kaizo_p14_audit_events
+                           (actor_subject_id,event_type,child_resource_id,guardian_subject_id,
+                            tenant_id,resource_type,action,allowed,reason_code,metadata)
+                           VALUES (%s,'consent_change',%s,%s,%s,%s,%s,NULL,'consent_changed',%s::jsonb)",
+                        (claims.get("sub", change.actor_id), consent.child_id, consent.guardian_id,
+                         consent.academy_id, consent.resource, consent.action,
+                         psycopg.types.json.Jsonb({
                             "actor_id": claims.get("sub", change.actor_id),
                             "child_id": consent.child_id, "guardian_id": consent.guardian_id,
                             "academy_id": consent.academy_id, "resource": consent.resource,
                             "action": consent.action, "state": consent.state.value,
-                        })),
+                         })),
                     )
         except HTTPException:
             raise
@@ -284,16 +275,21 @@ def authorize(
             with _connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT 1 FROM kaizo_guardian_links
-                           WHERE guardian_id=%s AND child_id=%s AND academy_id=%s
-                             AND status='ACTIVE' LIMIT 1""",
+                        """SELECT 1 FROM kaizo_guardian_relationships
+                           WHERE guardian_subject_id=%s AND child_resource_id=%s AND tenant_id=%s
+                             AND verification_status='VERIFIED'
+                             AND verified_by_subject IS NOT NULL
+                             AND verified_by_subject <> guardian_subject_id
+                             AND verified_at IS NOT NULL
+                           LIMIT 1""",
                         (req.guardian_id, req.child_id, req.academy_id),
                     )
                     linked = cur.fetchone()
                     cur.execute(
-                        """SELECT state,expires_at FROM kaizo_minor_consents
-                           WHERE child_id=%s AND guardian_id=%s AND academy_id=%s
-                             AND resource=%s AND action=%s LIMIT 1""",
+                        """SELECT state,expires_at FROM kaizo_p14_consents
+                           WHERE child_resource_id=%s AND guardian_subject_id=%s AND tenant_id=%s
+                             AND resource_type=%s AND action=%s
+                           ORDER BY recorded_sequence DESC LIMIT 1""",
                         (req.child_id, req.guardian_id, req.academy_id, req.resource, req.action),
                     )
                     row = cur.fetchone()
@@ -347,10 +343,19 @@ def audit_log(authorization: str | None = Header(None, alias="Authorization")):
         try:
             with _connect() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT event,timestamp,payload FROM kaizo_consent_audit ORDER BY id")
+                    cur.execute("""SELECT event_type,occurred_at,actor_subject_id,child_resource_id,
+                                           guardian_subject_id,tenant_id,resource_type,action,
+                                           allowed,reason_code,trace_id,metadata
+                                    FROM kaizo_p14_audit_events
+                                    WHERE tenant_id=%s OR tenant_id IS NULL
+                                    ORDER BY occurred_at""", (claims.get("tenant_id"),))
                     events = [
-                        {"event": event, "timestamp": timestamp, **(payload or {})}
-                        for event, timestamp, payload in cur.fetchall()
+                        {"event": event, "timestamp": timestamp, "actor_id": actor,
+                         "child_id": child, "guardian_id": guardian, "academy_id": tenant,
+                         "resource": resource, "action": action, "allowed": allowed,
+                         "reason": reason, "trace_id": trace, **(metadata or {})}
+                        for event, timestamp, actor, child, guardian, tenant, resource,
+                            action, allowed, reason, trace, metadata in cur.fetchall()
                     ]
             return {"events": events, "durable": True}
         except Exception as exc:
