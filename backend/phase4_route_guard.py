@@ -62,33 +62,37 @@ def _resolve_athlete_id(request: Request, payload: dict[str, Any]) -> str:
     if path.get("assessment_id") or payload.get("assessment_id"):
         assessment_id = str(path.get("assessment_id") or payload.get("assessment_id"))
         assessment = persistence.get_assessment(assessment_id)
-        if assessment:
-            persisted_athlete_id = str(assessment.get("athlete_id") or "")
-            if payload.get("athlete_id") and str(payload["athlete_id"]) != persisted_athlete_id:
-                raise HTTPException(status_code=403, detail="Assessment/athlete ownership mismatch")
-            return persisted_athlete_id
+        if not assessment:
+            raise HTTPException(status_code=404, detail="assessment not found")
+        persisted_athlete_id = str(assessment.get("athlete_id") or "")
+        if payload.get("athlete_id") and str(payload["athlete_id"]) != persisted_athlete_id:
+            raise HTTPException(status_code=403, detail="Assessment/athlete ownership mismatch")
+        return persisted_athlete_id
 
     if path.get("problem_id") or payload.get("problem_id"):
         problem_id = str(path.get("problem_id") or payload.get("problem_id"))
         problem = persistence.get_problem_statement(problem_id)
-        if problem:
-            persisted_athlete_id = str(problem.get("athlete_id") or "")
-            if payload.get("athlete_id") and str(payload["athlete_id"]) != persisted_athlete_id:
-                raise HTTPException(status_code=403, detail="Problem/athlete ownership mismatch")
-            return persisted_athlete_id
-
-    if payload.get("athlete_id"):
-        return str(payload["athlete_id"])
+        if not problem:
+            raise HTTPException(status_code=404, detail="problem statement not found")
+        persisted_athlete_id = str(problem.get("athlete_id") or "")
+        if payload.get("athlete_id") and str(payload["athlete_id"]) != persisted_athlete_id:
+            raise HTTPException(status_code=403, detail="Problem/athlete ownership mismatch")
+        return persisted_athlete_id
 
     if path.get("diagnosis_id"):
         rows = persistence.list_evidence_linked_diagnoses_for_id(str(path["diagnosis_id"]))
-        if rows:
-            return str(rows[0].get("athlete_id") or "")
+        if not rows:
+            raise HTTPException(status_code=404, detail="diagnosis not found")
+        return str(rows[0].get("athlete_id") or "")
 
     if path.get("candidate_id"):
         candidate = persistence.get_decision_candidate(str(path["candidate_id"]))
-        if candidate:
-            return str(candidate.get("athlete_id") or "")
+        if not candidate:
+            raise HTTPException(status_code=404, detail="decision candidate not found")
+        return str(candidate.get("athlete_id") or "")
+
+    if payload.get("athlete_id"):
+        return str(payload["athlete_id"])
 
     raise HTTPException(status_code=403, detail="Persisted athlete ownership could not be resolved")
 
@@ -122,7 +126,7 @@ async def require_phase4_route_access(request: Request) -> dict[str, Any]:
             tenant_id=principal.tenant_id,
             resource_type="athlete",
             resource_id=athlete_id,
-            allowed_roles=("coach", "academy"),
+            allowed_roles=(principal.role,),
             action=action,
             trace_id=request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
             child_resource_id=athlete_id,
