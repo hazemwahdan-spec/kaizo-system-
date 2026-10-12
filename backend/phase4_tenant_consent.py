@@ -109,6 +109,13 @@ def authorize_resource_access(
                              AND gr.verification_status='VERIFIED'
                              AND gr.verified_by_subject IS NOT NULL
                              AND gr.verified_at IS NOT NULL
+                             AND NOT EXISTS (
+                               SELECT 1 FROM kaizo_guardian_relationships newer_gr
+                               WHERE newer_gr.child_resource_id=gr.child_resource_id
+                                 AND newer_gr.guardian_subject_id=gr.guardian_subject_id
+                                 AND newer_gr.tenant_id=gr.tenant_id
+                                 AND newer_gr.created_at > gr.created_at
+                             )
                              AND c.resource_type=%s AND c.action=%s
                              AND c.state='active'
                              AND (c.expires_at IS NULL OR c.expires_at > NOW())
