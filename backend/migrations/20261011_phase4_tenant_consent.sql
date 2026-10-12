@@ -55,8 +55,8 @@ CREATE TABLE IF NOT EXISTS kaizo_guardian_relationships (
         CHECK (verification_status IN ('PENDING', 'VERIFIED', 'REJECTED', 'REVOKED')),
     verified_by_subject TEXT,
     verified_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     CHECK (
         (verification_status = 'VERIFIED'
             AND verified_by_subject IS NOT NULL AND verified_at IS NOT NULL)
