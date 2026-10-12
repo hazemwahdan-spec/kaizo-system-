@@ -1,0 +1,55 @@
+"""Run legacy feature acceptance tests with route guards explicitly overridden.
+
+These tests validate business behavior and are not authorization evidence.
+Phase 4 authorization has its own real-route and PostgreSQL denial suites.
+The override exists only in this CI runner, never in application runtime.
+"""
+import runpy
+import sys
+
+import main
+import persistence
+import phase4_route_guard
+from phase4_identity_boundary import Principal
+
+if len(sys.argv) != 2:
+    raise SystemExit("usage: python test_legacy_acceptance_runner.py test_feat_XXX.py")
+
+tenant_id = "ci-legacy-acceptance"
+principal = Principal(
+    actor_id="ci|legacy-acceptance",
+    role="coach",
+    tenant_id=tenant_id,
+    resource_owner_id=None,
+    verified=True,
+    source="oidc_jwt",
+)
+
+# Route-specific security tests exercise the real dependencies separately.
+# Legacy feature tests use this explicit test-only override to isolate their
+# business contract from the new authorization boundary.
+main.app.dependency_overrides[phase4_route_guard.require_phase4_tenant_member] = (
+    lambda: {"principal": principal, "tenant_id": tenant_id}
+)
+main.app.dependency_overrides[phase4_route_guard.require_phase4_route_access] = (
+    lambda: {
+        "principal": principal,
+        "tenant_id": tenant_id,
+        "athlete_id": None,
+        "authorization": {"allowed": True, "test_only_override": True},
+    }
+)
+
+if persistence.is_postgres_enabled():
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_tenants (tenant_id, display_name)
+                   VALUES (%s, %s) ON CONFLICT (tenant_id) DO NOTHING""",
+                (tenant_id, "CI Legacy Acceptance"),
+            )
+        conn.commit()
+
+target = sys.argv[1]
+sys.argv = [target]
+runpy.run_path(target, run_name="__main__")
