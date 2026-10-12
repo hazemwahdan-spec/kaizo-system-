@@ -1276,7 +1276,10 @@ KPI_DEFINITIONS: Dict[str, Dict[str, Any]] = {}
 KPI_CAPTURES: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/api/v1/kpis", status_code=status.HTTP_201_CREATED)
-def create_kpi(req: KPIDefinitionCreateRequest) -> Dict[str, Any]:
+def create_kpi(
+    req: KPIDefinitionCreateRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+) -> Dict[str, Any]:
     allowed_directions = {"higher_is_better", "lower_is_better", "target_range"}
     if not req.kpi_id.strip() or not req.name.strip() or not req.metric_name.strip() or not req.unit.strip():
         raise HTTPException(status_code=400, detail="kpi_id, name, metric_name and unit are required")
@@ -1297,12 +1300,19 @@ def create_kpi(req: KPIDefinitionCreateRequest) -> Dict[str, Any]:
         "created_at": now,
         "updated_at": now,
     }
+    principal = phase4.get("principal")
+    tenant_id = phase4.get("tenant_id")
+    actor_subject = getattr(principal, "actor_id", None)
+    if not tenant_id or not actor_subject:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required to create a KPI")
+    persistence.upsert_kpi_definition(
+        definition, tenant_id=tenant_id, bound_by_subject=actor_subject,
+    )
     KPI_DEFINITIONS[req.kpi_id] = definition
-    persistence.upsert_kpi_definition(definition)
-    log_action(req.defined_by, "KPI_DEFINED", None, definition, "KPI definition captured with explicit metric semantics and owner.")
+    log_action(actor_subject, "KPI_DEFINED", None, definition, "KPI definition captured with explicit metric semantics and owner.")
     return definition
 
-@app.get("/api/v1/kpis/{kpi_id}")
+@app.get("/api/v1/kpis/{kpi_id}", dependencies=[Depends(require_phase4_domain_access)])
 def get_kpi(kpi_id: str) -> Dict[str, Any]:
     definition = persistence.get_kpi_definition(kpi_id) if persistence.is_postgres_enabled() else KPI_DEFINITIONS.get(kpi_id)
     if definition is None:
