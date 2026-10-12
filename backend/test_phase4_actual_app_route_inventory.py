@@ -21,7 +21,7 @@ if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
 from backend import main as core_main
-from backend import phase4_core_resource_authorization as authz
+import phase4_core_resource_authorization as authz
 
 
 def _dependency_functions(dependant):
