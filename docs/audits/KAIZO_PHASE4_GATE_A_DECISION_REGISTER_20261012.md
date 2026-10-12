@@ -38,3 +38,14 @@ Evidence rule: Evidence Before Claim
 ## Current disposition
 
 P4-REQ-011 remains **OPEN / NOT PROVEN**. PR #122 remains a draft implementation candidate. This register does not approve the contract, apply a schema, change runtime settings, or authorize production writes. Coach Final Authority remains intact and training execution remains unauthorized by default.
+
+
+## Implementation progress after this register was created
+
+A **non-production candidate implementation** has now been added to this draft PR for review:
+- `backend/migrations/0001_phase4_identity_consent.sql`: versioned membership, guardian relationship, child consent, and authorization audit tables.
+- `backend/phase4_identity_store.py`: PostgreSQL-only append/look-up primitives. Memory mode raises a configuration error; latest-version membership/relationship/consent is used; consent requires exact child/guardian/academy/resource/action scope and a non-expired active record.
+- `backend/test_phase4_identity_store.py`: ephemeral PostgreSQL lifecycle tests for membership revocation, guardian relationship revocation, consent scope/revocation/expiry, and deny-audit roundtrip.
+- `.github/workflows/persistence-adapter-validation.yml`: invokes the new acceptance test in CI.
+
+**Important limitation:** this candidate code does not establish the trusted origin of membership provisioning or guardian verification, is not wired to Core API routes, and has not been applied to any production database. The test fixture's verification actor is test-only. Gate A decisions remain OPEN; Gate B remains **pending CI evidence and contract review**. Do not merge or enable production enforcement based solely on this implementation.
