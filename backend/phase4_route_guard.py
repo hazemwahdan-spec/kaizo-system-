@@ -21,6 +21,15 @@ from phase4_tenant_consent import (
 )
 
 
+_ACTOR_ID_FIELDS = (
+    "actor_id", "created_by", "changed_by", "requested_by", "recorded_by",
+    "assessed_by", "decided_by", "reviewed_by", "traced_by", "linked_by",
+    "assigned_by", "reported_by", "uploaded_by", "author_id", "verified_by",
+    "selected_by", "captured_by", "defined_by", "user_id", "blocked_by",
+    "approved_by", "submitted_by", "attached_by", "synchronized_by",
+)
+
+
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -212,6 +221,14 @@ async def require_phase4_route_access(request: Request) -> dict[str, Any]:
             payload = {}
     except Exception:
         payload = {}
+
+    for field in _ACTOR_ID_FIELDS:
+        supplied_actor = payload.get(field)
+        if supplied_actor is not None and str(supplied_actor).strip() and str(supplied_actor).strip() != principal.actor_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"decision": "DENY", "reason_code": "actor_identity_mismatch", "field": field},
+            )
 
     athlete_id = _resolve_athlete_id(request, payload)
     athlete = persistence.get_athlete(athlete_id)
