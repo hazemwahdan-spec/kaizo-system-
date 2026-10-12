@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS kaizo_guardian_relationships (
         OR verification_status <> 'VERIFIED'
     )
 );
+ALTER TABLE kaizo_guardian_relationships
+    ADD COLUMN IF NOT EXISTS recorded_sequence BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE;
 CREATE INDEX IF NOT EXISTS idx_kaizo_guardian_lookup
     ON kaizo_guardian_relationships(child_resource_id, tenant_id, verification_status);
 CREATE INDEX IF NOT EXISTS idx_kaizo_guardian_subject
@@ -86,6 +88,8 @@ CREATE TABLE IF NOT EXISTS kaizo_p14_consents (
     source_reference TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE kaizo_p14_consents
+    ADD COLUMN IF NOT EXISTS recorded_sequence BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE;
 CREATE INDEX IF NOT EXISTS idx_kaizo_p14_consent_scope
     ON kaizo_p14_consents(
         child_resource_id, guardian_subject_id, tenant_id,
