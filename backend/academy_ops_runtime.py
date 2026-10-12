@@ -10,12 +10,12 @@ from typing import Any, Dict, List
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Depends
-from phase4_identity_boundary import require_phase4_principal
+from phase4_domain_authorization import require_phase4_domain_access
 from pydantic import BaseModel, Field
 
 import persistence
 
-router = APIRouter(prefix="/api/v1/academy", tags=["Academy Operations"], dependencies=[Depends(require_phase4_principal)])
+router = APIRouter(prefix="/api/v1/academy", tags=["Academy Operations"], dependencies=[Depends(require_phase4_domain_access)])
 
 ACADEMIES: Dict[str, Dict[str, Any]] = {}
 MEMBERSHIPS: Dict[str, Dict[str, Any]] = {}
