@@ -156,8 +156,13 @@ async def require_phase4_domain_access(
             "/api/v1/competition/events": "competition_event",
             "/api/v1/knowledge-runtime/feat-047/provenance": "knowledge",
         }
+        is_tenant_scoped_knowledge_retrieval = (
+            request.method.upper() == "POST"
+            and request.url.path == "/api/v1/knowledge-runtime/feat-049/retrieve"
+        )
         create_resource_type = creation_types.get(request.url.path) if request.method.upper() == "POST" else None
-        if not create_resource_type:
+        scope_resource_type = create_resource_type or ("knowledge" if is_tenant_scoped_knowledge_retrieval else None)
+        if not scope_resource_type:
             raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "resource_binding_required"})
         with persistence.connection() as conn:
             with conn.cursor() as cur:
@@ -175,11 +180,11 @@ async def require_phase4_domain_access(
                        (actor_subject_id,event_type,tenant_id,resource_type,action,
                         allowed,reason_code,trace_id,metadata)
                        VALUES (%s,'authorization_decision',%s,%s,%s,%s,%s,%s,%s::jsonb)""",
-                    (principal.actor_id, principal.tenant_id, create_resource_type,
+                    (principal.actor_id, principal.tenant_id, scope_resource_type,
                      f"{request.method.upper()}:{request.url.path}", allowed,
-                     "active_membership_create_authorized" if allowed else "active_tenant_membership_missing",
+                     ("active_membership_tenant_scoped_operation" if is_tenant_scoped_knowledge_retrieval else "active_membership_create_authorized") if allowed else "active_tenant_membership_missing",
                      request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
-                     '{"source":"phase4_domain_authorization","operation":"create_root_resource"}'),
+                     '{"source":"phase4_domain_authorization","operation":"tenant_scoped_root_operation"}'),
                 )
         if not allowed:
             raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "active_tenant_membership_missing"})
