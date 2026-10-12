@@ -21,7 +21,7 @@ if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
 from backend import main as core_main
-from backend import phase4_identity_boundary as boundary
+from backend import phase4_core_resource_authorization as authz
 
 
 def _dependency_functions(dependant):
@@ -66,7 +66,7 @@ def test_actual_core_app_route_inventory_includes_sensitive_and_generated_routes
     assert ("POST", "/api/v1/state-cycle/feat-042/digital-twin-state") in identities
 
 
-def test_actual_core_app_baseline_records_routes_not_yet_wired_to_phase4_identity():
+def test_actual_core_app_sensitive_routes_are_wired_to_phase4_identity_and_scope():
     rows = _registered_http_routes()
     by_route = {(method, row["path"]): row for row in rows for method in row["methods"]}
     sensitive_baseline = [
