@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from phase4_identity_boundary import require_phase4_principal
 from pydantic import BaseModel, Field
 
 import persistence
@@ -25,7 +26,7 @@ from drill_library import Drill, validate_drill
 from problem_drill_linkage import ProblemDrillLink, validate_link
 
 
-router = APIRouter(prefix="/api/v1/features", tags=["Feature Runtime"])
+router = APIRouter(prefix="/api/v1/features", tags=["Feature Runtime"], dependencies=[Depends(require_phase4_principal)])
 
 
 class FeatureRecordRequest(BaseModel):
