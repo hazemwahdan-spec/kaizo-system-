@@ -172,3 +172,44 @@ def list_authorization_audit(*, correlation_id: str) -> list[dict[str, Any]]:
         }
         for row in rows
     ]
+
+
+def bind_resource_to_tenant(
+    *, resource_type: str, resource_id: str, tenant_id: str, bound_by_actor_id: str,
+) -> None:
+    """Create authoritative server-side tenant binding for a persisted resource."""
+    _postgres_required()
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_resource_tenant_bindings
+                   (resource_type, resource_id, tenant_id, bound_by_actor_id)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (resource_type, resource_id) DO NOTHING""",
+                (resource_type, resource_id, tenant_id, bound_by_actor_id),
+            )
+            cur.execute(
+                """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                   WHERE resource_type=%s AND resource_id=%s""",
+                (resource_type, resource_id),
+            )
+            row = cur.fetchone()
+            if not row or row[0] != tenant_id:
+                raise persistence.PersistenceConfigurationError(
+                    "Resource already has a different authoritative tenant binding"
+                )
+        conn.commit()
+
+
+def get_resource_tenant(*, resource_type: str, resource_id: str) -> str | None:
+    """Resolve tenant scope from the database; never from request payload."""
+    _postgres_required()
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                   WHERE resource_type=%s AND resource_id=%s""",
+                (resource_type, resource_id),
+            )
+            row = cur.fetchone()
+    return str(row[0]) if row else None
