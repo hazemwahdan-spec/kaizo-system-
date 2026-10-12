@@ -103,6 +103,13 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
         )
         self._assert_audit(self.trace_id + "-cross-tenant", False)
 
+    def test_active_scoped_consent_allows_route_and_is_audited(self):
+        self._insert_consent("active")
+        response = self._request("-active")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["athlete_id"], self.athlete_id)
+        self._assert_audit(self.trace_id + "-active", True)
+
     def test_missing_guardian_consent_is_denied_and_audited(self):
         response = self._request("-no-consent")
         self.assertEqual(response.status_code, 403)
