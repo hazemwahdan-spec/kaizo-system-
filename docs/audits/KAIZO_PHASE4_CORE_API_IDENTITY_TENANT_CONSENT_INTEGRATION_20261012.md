@@ -27,7 +27,7 @@ The backend/main.py Core API now attaches the Phase 4 guard to athlete reads/upd
 ## Tests added
 
 - Deterministic HTTP contract tests through the actual FastAPI route for cross-tenant, missing-consent, revoked/superseded-consent, and unverified-identity denial.
-- PostgreSQL-backed route tests run against the disposable PostgreSQL service. They create tenant, membership, resource binding and guardian/consent records, then assert HTTP 403 and a durable deny audit for cross-tenant access, absent consent, and a newer revoked consent superseding an older active row.
+- PostgreSQL-backed route tests run against the disposable PostgreSQL service. They create tenant, membership, resource binding and guardian/consent records, then assert successful scoped access with active consent and HTTP 403 plus durable deny audit for cross-tenant access, absent consent, and a newer revoked consent superseding an older active row.
 - Migration remains additive and is applied only to the CI disposable database in this workflow.
 
 ## Rollout limitations / gates
