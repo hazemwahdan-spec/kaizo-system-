@@ -8,6 +8,9 @@ on:
 jobs:
   runtime:
     runs-on: ubuntu-latest
+    env:
+      KAIZO_IDENTITY_MODE: development
+      KAIZO_PERSISTENCE_MODE: memory
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
