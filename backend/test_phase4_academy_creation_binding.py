@@ -286,7 +286,7 @@ def test_academy_create_persists_binding_in_same_transaction():
                       "value": 5.2, "captured_by": subject},
                 headers={"X-Trace-Id": "cross-tenant-kpi-" + suffix},
             )
-        assert cross_tenant_capture.status_code == 403
+        assert cross_tenant_capture.status_code == 403, cross_tenant_capture.text
         assert cross_tenant_capture.json()["detail"]["reason_code"] == "kpi_or_athlete_tenant_binding_missing"
 
         foreign_knowledge_id = "foreign-knowledge-" + suffix
