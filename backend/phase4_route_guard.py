@@ -155,10 +155,10 @@ def _resolve_athlete_id(request: Request, payload: dict[str, Any]) -> str:
         twin_state = _as_dict(twin.get("state")) if twin else {}
         if twin_state.get("athlete_id"):
             return str(twin_state["athlete_id"])
-        state_athlete_id = _as_dict(payload.get("state")).get("athlete_id")
-        if state_athlete_id:
-            return str(state_athlete_id)
-        raise HTTPException(status_code=403, detail="Digital Twin entity has no verified athlete ownership")
+        # Never accept a body-supplied state.athlete_id as proof that an
+        # entity belongs to that athlete: it would let a caller authorize one
+        # athlete and write/read a different arbitrary Digital Twin entity.
+        raise HTTPException(status_code=403, detail="Digital Twin entity has no persisted athlete ownership")
 
     query_athlete_id = request.query_params.get("athlete_id")
     if query_athlete_id:
