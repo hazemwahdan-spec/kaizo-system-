@@ -25,6 +25,19 @@ class Phase4AthleteRouteEnforcementTests(unittest.TestCase):
     def tearDown(self):
         main.app.dependency_overrides.clear()
 
+    def test_identity_gate_disabled_fails_closed(self):
+        main.app.dependency_overrides.clear()
+        with patch.dict(os.environ, {"KAIZO_PHASE4_IDENTITY_ENFORCEMENT": "disabled"}):
+            response = self.client.get("/api/v1/athletes/athlete-1")
+        self.assertEqual(response.status_code, 503)
+
+    def test_missing_bearer_token_is_rejected_when_oidc_gate_enabled(self):
+        main.app.dependency_overrides.clear()
+        with patch.dict(os.environ, {"KAIZO_PHASE4_IDENTITY_ENFORCEMENT": "oidc"}):
+            response = self.client.get("/api/v1/athletes/athlete-1")
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.headers.get("www-authenticate"), "Bearer")
+
     def test_cross_tenant_or_missing_resource_binding_is_denied_before_read(self):
         with patch(
             "phase4_route_guard.authorize_resource_access",
