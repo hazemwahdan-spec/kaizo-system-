@@ -95,7 +95,8 @@ def create_athlete(req: AthleteCreateRequest, principal: Principal = Depends(req
 
 
 @app.get("/api/v1/athletes/{athlete_id}")
-def get_athlete(athlete_id: str) -> Dict[str, Any]:
+def get_athlete(athlete_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal)
     athlete = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -103,7 +104,8 @@ def get_athlete(athlete_id: str) -> Dict[str, Any]:
 
 
 @app.patch("/api/v1/athletes/{athlete_id}")
-def update_athlete(athlete_id: str, req: AthleteUpdateRequest) -> Dict[str, Any]:
+def update_athlete(athlete_id: str, req: AthleteUpdateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal)
     current = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if current is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -151,6 +153,7 @@ def create_assessment(req: AssessmentCreateRequest, principal: Principal = Depen
         raise HTTPException(status_code=400, detail="template_id is required")
     if not req.recorded_by.strip():
         raise HTTPException(status_code=400, detail="recorded_by is required")
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal)
     athlete = (
         persistence.get_athlete(req.athlete_id)
         if persistence.is_postgres_enabled()
@@ -185,7 +188,8 @@ def create_assessment(req: AssessmentCreateRequest, principal: Principal = Depen
 
 
 @app.get("/api/v1/assessments/{assessment_id}")
-def get_assessment(assessment_id: str) -> Dict[str, Any]:
+def get_assessment(assessment_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_assessment_tenant(assessment_id=assessment_id, principal=principal)
     assessment = (
         persistence.get_assessment(assessment_id)
         if persistence.is_postgres_enabled()
