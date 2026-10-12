@@ -6,10 +6,10 @@
 
 ## Integrated route
 
-The actual Core API route `GET /api/v1/athletes/{athlete_id}` now invokes the fail-closed Phase 4 OIDC dependency before loading the athlete record. The authorization repository requires:
+The actual Core API routes `POST /api/v1/athletes`, `GET /api/v1/athletes/{athlete_id}`, and `PATCH /api/v1/athletes/{athlete_id}` now invoke the fail-closed Phase 4 OIDC dependency before loading the athlete record. The authorization repository requires:
 - a verified `oidc_jwt` principal;
 - active membership for the authenticated subject and role in an active academy tenant;
-- a persisted server-side resource-to-tenant binding matching the requested athlete and the principal's tenant;
+- on creation, active coach/academy membership and atomic insertion of the athlete record plus a server-derived tenant binding (the request body cannot choose the tenant);\n- on read/update, a persisted server-side resource-to-tenant binding matching the requested athlete and the principal's tenant;
 - for parent-role reads, a verified guardian relationship belonging to that same authenticated guardian and an active, unexpired consent for the exact child, tenant, resource type, and action;
 - a durable audit event in the same transaction as the authorization decision.
 
@@ -17,8 +17,8 @@ An absent/mismatched binding or missing/revoked/expired/pending/mismatched conse
 
 ## Test evidence requested in CI
 
-1. Actual `backend.main:app` HTTP tests for identity gate disabled, missing bearer token, cross-tenant/binding mismatch, missing consent, revoked consent, authorization backend failure, and allowed scoped read.
-2. PostgreSQL-backed integration tests on disposable CI PostgreSQL for cross-tenant mismatch, missing consent, revoked consent superseding older active consent, one guardian being unable to reuse another guardian's consent, positive scoped consent, and durable audit persistence.
+1. Actual `backend.main:app` HTTP tests for identity gate disabled, missing bearer token, cross-tenant/binding mismatch, missing consent, revoked consent, authorization backend failure, allowed scoped read, and denied parent-role create/update.
+2. PostgreSQL-backed integration tests on disposable CI PostgreSQL for atomic athlete+tenant binding creation, cross-tenant mismatch, missing consent, revoked consent superseding older active consent, one guardian being unable to reuse another guardian's consent, positive scoped consent, and durable audit persistence.
 3. Existing Phase 4 smoke, route contract, security regression, and persistence workflows.
 
 ## Explicit limits
