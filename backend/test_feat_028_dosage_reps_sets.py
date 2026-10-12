@@ -6,8 +6,8 @@ os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 
 from backend.main import app
 from backend import main as package_main
-from backend.phase4_identity_boundary import Principal
-from backend import phase4_route_guard
+from phase4_identity_boundary import Principal
+import phase4_route_guard
 
 # This is a legacy business-contract acceptance test, not authorization
 # evidence. The real route guards are covered by the dedicated Phase 4
