@@ -1354,6 +1354,8 @@ def capture_kpi(
     try:
         persistence.upsert_kpi_capture(
             capture, tenant_id=tenant_id, bound_by_subject=actor_subject, role=actor_role,
+            trace_id=request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+            action="POST:/api/v1/kpis/captures",
         )
     except persistence.PersistenceConfigurationError as exc:
         with persistence.connection() as conn:
