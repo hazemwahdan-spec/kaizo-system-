@@ -106,6 +106,28 @@ def test_academy_create_persists_binding_in_same_transaction():
         kpi_read = client.get(f"/api/v1/kpis/{kpi_id}")
         assert kpi_read.status_code == 200, kpi_read.text
 
+        feature_response = client.post(
+            "/api/v1/features/feat-029/progression-regression-rules",
+            json={
+                "subject_id": subject, "actor_id": subject,
+                "payload": {"metric": "entry_timing_score", "threshold": 7,
+                            "action": "adjust", "adjustment": "reduce resistance",
+                            "rule_version": "v1", "approval_status": "DRAFT"},
+                "evidence_refs": ["P4-FEATURE-EVIDENCE"],
+                "coach_final_authority": True, "execution_authorized": False,
+            },
+            headers={"X-Trace-Id": "feature-record-create-" + suffix},
+        )
+        assert feature_response.status_code == 201, feature_response.text
+        feature_record_id = feature_response.json()["record_id"]
+        feature_list = client.get("/api/v1/features/feat-029/progression-regression-rules")
+        assert feature_list.status_code == 200, feature_list.text
+        assert any(item["record_id"] == feature_record_id for item in feature_list.json()["records"])
+        feature_read = client.get(
+            f"/api/v1/features/feat-029/progression-regression-rules/{feature_record_id}"
+        )
+        assert feature_read.status_code == 200, feature_read.text
+
         group_response = client.post(
             "/api/v1/academy/groups",
             json={"academy_id": academy_id, "name": "Group " + suffix,
