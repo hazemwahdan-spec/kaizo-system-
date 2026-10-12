@@ -256,6 +256,25 @@ def test_academy_create_persists_binding_in_same_transaction():
         persistence.upsert_kpi_definition(
             foreign_kpi, tenant_id=foreign_tenant, bound_by_subject=foreign_subject,
         )
+        guardian_subject = "oidc|guardian-" + suffix
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO kaizo_guardian_relationships
+                       (child_resource_id,guardian_subject_id,tenant_id,relationship_type,
+                        verification_status,verified_by_subject,verified_at)
+                       VALUES (%s,%s,%s,'parent','VERIFIED',%s,NOW())""",
+                    (athlete_id, guardian_subject, tenant_id, subject),
+                )
+                cur.execute(
+                    """INSERT INTO kaizo_p14_consents
+                       (child_resource_id,guardian_subject_id,tenant_id,resource_type,action,
+                        state,expires_at,recorded_by_subject,source_reference)
+                       VALUES (%s,%s,%s,'athlete','POST:/api/v1/kpis/captures',
+                               'active',NULL,%s,'phase4-kpi-cross-tenant-test')""",
+                    (athlete_id, guardian_subject, tenant_id, guardian_subject),
+                )
+            conn.commit()
         with patch.object(phase4_route_guard, "require_phase4_principal", return_value=principal):
             cross_tenant_capture = client.post(
                 "/api/v1/kpis/captures",
