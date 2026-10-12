@@ -9,8 +9,14 @@ import phase4_identity_store as store
 def main() -> None:
     assert persistence.is_postgres_enabled(), "This acceptance test requires disposable PostgreSQL"
     migration = Path("migrations/20261012_phase4_identity_consent_canonical.sql").read_text()
+    # Reset only dedicated Phase 4 identity/consent tables in this disposable CI database.
     with persistence.connection() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                "DROP TABLE IF EXISTS kaizo_authorization_audit, kaizo_child_consents, "
+                "kaizo_guardian_relationships, kaizo_resource_tenant_bindings, "
+                "kaizo_tenant_memberships, kaizo_tenants CASCADE"
+            )
             cur.execute(migration)
             cur.execute(
                 "INSERT INTO kaizo_tenants (tenant_id, display_name) "
