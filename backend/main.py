@@ -11,6 +11,7 @@ from datetime import datetime
 
 import persistence
 from phase4_route_guard import require_phase4_route_access, require_phase4_tenant_member
+from phase4_identity_boundary import require_phase4_principal
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
@@ -1686,9 +1687,29 @@ def list_evidence(subject_id: Optional[str] = None) -> Dict[str, Any]:
 
 
 @app.get("/api/v1/audit/logs")
-def get_audit_logs():
-    logs = persistence.list_audit_logs() if persistence.is_postgres_enabled() else AUDIT_LOGS
-    return {"system": "KAIZO Audit-Ready System", "total_logs": len(logs), "logs": logs}
+def get_audit_logs(phase4_principal: Any = Depends(require_phase4_principal)):
+    # Global legacy audit logs have no guaranteed tenant predicate. Never expose
+    # them through an authenticated-but-unscoped endpoint; read only the
+    # canonical Phase 4 audit ledger for the verified tenant.
+    if not persistence.is_postgres_enabled():
+        raise HTTPException(status_code=503, detail="Tenant-scoped audit access requires PostgreSQL")
+    tenant_id = str(getattr(phase4_principal, "tenant_id", "") or "").strip()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Verified tenant scope is required")
+    try:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM kaizo_p14_audit_events WHERE tenant_id=%s LIMIT 500",
+                    (tenant_id,),
+                )
+                columns = [item[0] for item in cur.description]
+                logs = [dict(zip(columns, row)) for row in cur.fetchall()]
+    except Exception as exc:
+        # Fail closed rather than falling back to cross-tenant legacy logs.
+        raise HTTPException(status_code=503, detail="Tenant-scoped audit ledger is unavailable") from exc
+    return {"system": "KAIZO Audit-Ready System", "tenant_id": tenant_id,
+            "total_logs": len(logs), "logs": logs}
 
 @app.get("/api/v1/health")
 def health_check():
