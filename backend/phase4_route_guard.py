@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 from fastapi import HTTPException
 
@@ -27,6 +28,7 @@ def enforce_athlete_read(principal: Any, athlete_id: str) -> None:
             resource_id=athlete_id,
             allowed_roles=[principal.role],
             action="read",
+            trace_id=str(uuid4()),
             child_resource_id=athlete_id if requires_consent else None,
             requires_guardian_consent=requires_consent,
         )
