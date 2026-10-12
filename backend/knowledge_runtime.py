@@ -49,10 +49,13 @@ def save_item(r, phase4=None):
         persistence.append_audit(timestamp=r["updated_at"],who=r["changed_by"],action="FEAT-047_048_KNOWLEDGE_RECORDED",old_value=None,new_value=r,why="Knowledge retained with provenance and lifecycle metadata.")
     MEMORY_ITEMS[r["knowledge_id"]]=r
 
-def get_item(k):
+def get_item(k, tenant_id=None):
     if persistence.is_postgres_enabled():
-        data=persistence.load_knowledge().get(k)
-        if data: return data
+        data=persistence.load_knowledge(tenant_id=tenant_id).get(k)
+        if data:
+            return data
+        if tenant_id is not None:
+            return None
     return MEMORY_ITEMS.get(k)
 
 class ProvenanceRequest(BaseModel):
@@ -83,11 +86,10 @@ def provenance(
     if req.evidence_status not in allowed_evidence_statuses:
         raise HTTPException(400,{"evidence_status":"invalid","allowed":sorted(allowed_evidence_statuses)})
     if not req.evidence_refs: raise HTTPException(400,"at least one evidence reference is required")
-    existing_records=list(MEMORY_ITEMS.values())
     if persistence.is_postgres_enabled():
-        for item in persistence.load_knowledge().values():
-            if not any(old.get("knowledge_id")==item.get("knowledge_id") for old in existing_records):
-                existing_records.append(item)
+        existing_records = list(persistence.load_knowledge(tenant_id=phase4.get("tenant_id")).values())
+    else:
+        existing_records = list(MEMORY_ITEMS.values())
     conflicts=[
         item for item in existing_records
         if item.get("source_type")==req.source_type
@@ -104,11 +106,14 @@ def provenance(
     save_item(r, phase4=phase4); return {"feature_id":"FEAT-047","record":r}
 
 @router.post("/feat-048/lifecycle",status_code=200)
-def lifecycle(req:LifecycleRequest):
+def lifecycle(
+    req: LifecycleRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     authority(req.coach_final_authority)
     allowed={"DRAFT","REVIEW","APPROVED","RETIRED","REJECTED"}
     if req.lifecycle_status not in allowed: raise HTTPException(400,{"allowed":sorted(allowed)})
-    r=get_item(req.knowledge_id)
+    r=get_item(req.knowledge_id, tenant_id=phase4.get("tenant_id"))
     if not r: raise HTTPException(404,"knowledge item not found")
     if req.lifecycle_status=="APPROVED" and r.get("evidence_status")!="VERIFIED":
         raise HTTPException(409,"knowledge evidence_status must be VERIFIED before approval")
@@ -118,21 +123,27 @@ def lifecycle(req:LifecycleRequest):
     return {"feature_id":"FEAT-048","previous_status":old,"record":r}
 
 @router.post("/feat-049/retrieve",status_code=200)
-def retrieve(req:RetrievalRequest):
+def retrieve(
+    req: RetrievalRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     authority(req.coach_final_authority)
     if not req.workflow_context.strip() or not req.query.strip() or not req.requested_by.strip(): raise HTTPException(400,"workflow_context, query and requested_by are required")
     q=req.query.lower()
-    candidates=[r for r in MEMORY_ITEMS.values() if r["lifecycle_status"]=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r["knowledge_id"].lower() or q in r["provenance_note"].lower() or q in r["source_ref"].lower())]
     if persistence.is_postgres_enabled():
-        for r in persistence.load_knowledge().values():
-            if r.get("lifecycle_status")=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower()):
-                if not any(x.get("knowledge_id")==r.get("knowledge_id") for x in candidates): candidates.append(r)
+        source_records = persistence.load_knowledge(tenant_id=phase4.get("tenant_id")).values()
+    else:
+        source_records = MEMORY_ITEMS.values()
+    candidates=[r for r in source_records if r["lifecycle_status"]=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower())]
     return {"feature_id":"FEAT-049","workflow_context":req.workflow_context,"query":req.query,"results":candidates,"retrieved_by":req.requested_by,"coach_final_authority":True,"execution_authorized":False}
 
 @router.post("/feat-050/link",status_code=201)
-def link(req:LinkRequest):
+def link(
+    req: LinkRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     authority(req.coach_final_authority)
-    r=get_item(req.knowledge_id)
+    r=get_item(req.knowledge_id, tenant_id=phase4.get("tenant_id"))
     if not r: raise HTTPException(404,"knowledge item not found")
     if r["lifecycle_status"]!="APPROVED": raise HTTPException(409,"knowledge must be APPROVED before reusable linkage")
     if not req.unit_id.strip() or not req.link_type.strip() or not req.linked_by.strip(): raise HTTPException(400,"unit_id, link_type and linked_by are required")
