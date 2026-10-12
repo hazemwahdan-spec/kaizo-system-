@@ -120,6 +120,7 @@ def authorize_resource_access(
                             AND c.tenant_id=gr.tenant_id
                            WHERE gr.child_resource_id=%s
                              AND gr.tenant_id=%s
+                             AND gr.guardian_subject_id=%s
                              AND gr.verification_status='VERIFIED'
                              AND gr.verified_by_subject IS NOT NULL
                              AND gr.verified_at IS NOT NULL
@@ -143,7 +144,7 @@ def authorize_resource_access(
                                  AND newer.created_at > c.created_at
                              )
                            ORDER BY c.created_at DESC LIMIT 1""",
-                        (child_resource_id, tenant_id, resource_type, action),
+                        (child_resource_id, tenant_id, subject, resource_type, action),
                     )
                     row = cur.fetchone()
                     if row is not None:
