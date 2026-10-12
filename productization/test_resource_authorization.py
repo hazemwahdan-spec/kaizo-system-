@@ -63,7 +63,6 @@ def configure_db(monkeypatch, state):
         yield FakeConnection(state)
 
     monkeypatch.setattr(access.persistence, "connection", connection)
-    monkeypatch.setattr(access, "_schema_ready", False)
 
 
 def test_athlete_must_have_active_assignment_in_requested_academy(monkeypatch):
@@ -111,7 +110,6 @@ def test_parent_access_allows_only_active_unexpired_exact_scope(monkeypatch):
 
 
 def test_database_unavailable_fails_closed(monkeypatch):
-    monkeypatch.setattr(access, "_schema_ready", False)
     monkeypatch.setattr(access.persistence, "is_postgres_enabled", lambda: False)
     with pytest.raises(access.ResourceAuthorizationUnavailable, match="requires PostgreSQL"):
         access.require_parent_consent("guardian-1", "athlete-1", "academy-A")
