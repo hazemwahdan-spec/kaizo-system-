@@ -110,16 +110,16 @@ jobs:
         run: PYTHONPATH=. python test_legacy_acceptance_runner.py --pytest -q test_phase4_digital_brain_acceptance.py
 
       - name: Run Phase 4 approved-rule governance acceptance tests
-        run: PYTHONPATH=. python test_phase4_approved_rule_governance.py
+        run: PYTHONPATH=. python test_legacy_acceptance_runner.py --pytest -q test_phase4_approved_rule_governance.py
 
       - name: Run Phase 4 provenance version and status acceptance tests
-        run: PYTHONPATH=. python test_phase4_provenance_acceptance.py
+        run: PYTHONPATH=. python test_legacy_acceptance_runner.py --pytest -q test_phase4_provenance_acceptance.py
 
       - name: Run Phase 4 override history and outcome lineage acceptance tests
-        run: PYTHONPATH=. python test_phase4_override_outcome_lineage.py
+        run: PYTHONPATH=. python test_legacy_acceptance_runner.py --pytest -q test_phase4_override_outcome_lineage.py
 
       - name: Run Phase 4 evidence fail-closed acceptance tests
-        run: PYTHONPATH=. python test_phase4_evidence_fail_closed.py
+        run: PYTHONPATH=. python test_legacy_acceptance_runner.py --pytest -q test_phase4_evidence_fail_closed.py
 
       - name: Run Phase 4 audit and plan authority acceptance tests
-        run: PYTHONPATH=. python test_phase4_audit_authority.py
+        run: PYTHONPATH=. python test_legacy_acceptance_runner.py --pytest -q test_phase4_audit_authority.py
