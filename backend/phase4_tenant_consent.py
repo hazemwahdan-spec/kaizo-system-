@@ -16,10 +16,20 @@ class Phase4AuthorizationUnavailable(RuntimeError):
     """Raised when durable authorization cannot be evaluated safely."""
 
 
-def _verified_subject(principal: Mapping[str, Any]) -> str | None:
-    if principal.get("identity_source") != "oidc_jwt":
+def _verified_subject(principal: Any) -> str | None:
+    # Align with productization.identity.Principal (verified/source/actor_id).
+    # Mapping support exists for tests and resolver adapters, but the same
+    # verified=True and source=oidc_jwt requirements always apply.
+    if isinstance(principal, Mapping):
+        verified = principal.get("verified") is True
+        source = principal.get("source")
+        subject = principal.get("actor_id") or principal.get("sub")
+    else:
+        verified = getattr(principal, "verified", False) is True
+        source = getattr(principal, "source", None)
+        subject = getattr(principal, "actor_id", None)
+    if not verified or source != "oidc_jwt":
         return None
-    subject = principal.get("sub")
     if not isinstance(subject, str) or not subject.strip():
         return None
     return subject.strip()
