@@ -157,7 +157,7 @@ async def require_phase4_domain_access(
                      f"{request.method.upper()}:{request.url.path}", allowed,
                      "active_membership_create_authorized" if allowed else "active_tenant_membership_missing",
                      request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
-                     '{"source":"phase4_domain_authorization","operation":"create_academy"}'),
+                     '{"source":"phase4_domain_authorization","operation":"create_root_resource"}'),
                 )
         if not allowed:
             raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "active_tenant_membership_missing"})
