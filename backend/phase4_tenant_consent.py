@@ -37,7 +37,7 @@ def _verified_subject(principal: Any) -> str | None:
 
 def authorize_resource_access(
     *,
-    principal: Mapping[str, Any],
+    principal: Any,
     tenant_id: str,
     resource_type: str,
     resource_id: str,
