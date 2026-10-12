@@ -18,5 +18,9 @@ def test_reporting_export_is_limited_to_academy_and_coach():
     assert _allowed_domain_roles("/api/v1/reporting/export/report-1", "GET") == {"academy", "coach"}
 
 
+def test_legacy_knowledge_ingestion_is_limited_to_academy_and_coach():
+    assert _allowed_domain_roles("/api/v1/knowledge/ingest", "POST") == {"academy", "coach"}
+
+
 def test_unknown_domain_path_fails_closed():
     assert _allowed_domain_roles("/api/v1/unknown/write", "POST") == set()
