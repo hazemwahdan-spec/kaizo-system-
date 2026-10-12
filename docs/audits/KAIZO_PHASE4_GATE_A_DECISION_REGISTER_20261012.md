@@ -49,3 +49,14 @@ A **non-production candidate implementation** has now been added to this draft P
 - `.github/workflows/persistence-adapter-validation.yml`: invokes the new acceptance test in CI.
 
 **Important limitation:** this candidate code does not establish the trusted origin of membership provisioning or guardian verification, is not wired to Core API routes, and has not been applied to any production database. The test fixture's verification actor is test-only. Gate A decisions remain OPEN; Gate B remains **pending CI evidence and contract review**. Do not merge or enable production enforcement based solely on this implementation.
+
+
+## CI result — 2026-10-12
+
+The candidate persistence implementation at commit `f6ba0a907e6fcbf94b5621b85788dfddfcf5884d` passed the complete Persistence Adapter Validation workflow, including the new **Phase 4 durable identity and consent store acceptance tests**:
+- [Persistence Adapter Validation run 38201027285](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38201027285) — **SUCCESS**.
+- The new test applies the migration only to the workflow's ephemeral PostgreSQL service and covers membership revocation, guardian relationship revocation, exact-scope consent, consent revocation/expiry, and durable deny-audit roundtrip.
+- Related identity-boundary tests passed: [run 38201027202](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38201027202).
+- Limited live smoke passed: [run 38201027300](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38201027300).
+
+This proves the candidate schema/store behavior in CI only. It does **not** prove trusted membership provisioning, real guardian verification, route-level enforcement in `backend.main:app`, production persistence, or live tenant/resource isolation. Therefore Gate B has test evidence for its isolated primitives but remains subject to contract review; Gate A and P4-REQ-011 remain OPEN.
