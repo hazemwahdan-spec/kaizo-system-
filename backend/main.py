@@ -1330,15 +1330,47 @@ def capture_kpi(
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
-    kpi = persistence.get_kpi_definition(req.kpi_id) if persistence.is_postgres_enabled() else KPI_DEFINITIONS.get(req.kpi_id)
-    if kpi is None:
-        raise HTTPException(status_code=404, detail="KPI not found")
     principal = phase4_access.get("principal")
     tenant_id = phase4_access.get("tenant_id")
     actor_subject = getattr(principal, "actor_id", None)
     actor_role = getattr(principal, "role", None)
     if not tenant_id or not actor_subject or not actor_role:
         raise HTTPException(status_code=503, detail="Verified tenant context is required for KPI capture")
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1
+                       FROM kaizo_resource_tenant_bindings b
+                       JOIN kaizo_tenants t ON t.tenant_id=b.tenant_id
+                       JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                       WHERE b.resource_type='kpi_definition' AND b.resource_id=%s
+                         AND b.tenant_id=%s AND t.status='ACTIVE'
+                         AND m.subject_id=%s AND m.role=%s AND m.status='ACTIVE'
+                       LIMIT 1""",
+                    (req.kpi_id, tenant_id, actor_subject, actor_role),
+                )
+                kpi_binding_allowed = cur.fetchone() is not None
+                if not kpi_binding_allowed:
+                    cur.execute(
+                        """INSERT INTO kaizo_p14_audit_events
+                           (actor_subject_id,event_type,tenant_id,resource_type,action,
+                            allowed,reason_code,trace_id,metadata)
+                           VALUES (%s,'authorization_decision',%s,'kpi_definition',%s,FALSE,
+                                   'kpi_or_athlete_tenant_binding_missing',%s,%s::jsonb)""",
+                        (actor_subject, tenant_id, "POST:/api/v1/kpis/captures",
+                         request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+                         json.dumps({"source": "kpi_capture_precheck", "kpi_id": req.kpi_id})),
+                    )
+            conn.commit()
+        if not kpi_binding_allowed:
+            raise HTTPException(
+                status_code=403,
+                detail={"decision": "DENY", "reason_code": "kpi_or_athlete_tenant_binding_missing"},
+            )
+    kpi = persistence.get_kpi_definition(req.kpi_id) if persistence.is_postgres_enabled() else KPI_DEFINITIONS.get(req.kpi_id)
+    if kpi is None:
+        raise HTTPException(status_code=404, detail="KPI not found")
     import uuid
     now = datetime.utcnow().isoformat()
     capture = {
