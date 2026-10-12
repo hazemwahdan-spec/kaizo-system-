@@ -152,7 +152,16 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
             resource_owner_id=None, verified=True, source="oidc_jwt",
         )
         trace = self.trace_id + "-other-parent"
-        response = self._request("-other-parent", principal=parent_principal, domain_route=True)
+        from phase4_identity_boundary import require_phase4_principal
+        previous = main.app.dependency_overrides.get(require_phase4_principal)
+        main.app.dependency_overrides[require_phase4_principal] = lambda: parent_principal
+        try:
+            response = self._request("-other-parent", principal=parent_principal, domain_route=True)
+        finally:
+            if previous is None:
+                main.app.dependency_overrides.pop(require_phase4_principal, None)
+            else:
+                main.app.dependency_overrides[require_phase4_principal] = previous
         self.assertEqual(response.status_code, 403)
         self.assertEqual(
             response.json()["detail"]["reason_code"],
