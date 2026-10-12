@@ -13,12 +13,17 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 import persistence
+from phase4_route_guard import require_phase4_route_access
 
-router = APIRouter(prefix="/api/v1/state-cycle", tags=["state-cycle"])
+router = APIRouter(
+    prefix="/api/v1/state-cycle",
+    tags=["state-cycle"],
+    dependencies=[Depends(require_phase4_route_access)],
+)
 
 _MEMORY_STATE: Dict[str, Dict[str, Any]] = {}
 _MEMORY_HISTORY: List[Dict[str, Any]] = []
