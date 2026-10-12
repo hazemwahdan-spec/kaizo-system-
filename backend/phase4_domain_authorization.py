@@ -127,10 +127,15 @@ async def require_phase4_domain_access(
 
     resources = _payload_resource_ids(request, payload)
     if not resources:
-        # The first academy record has no parent resource to bind yet. It may
-        # be created only by an active academy member; the handler must insert
-        # its canonical binding in the same transaction as the academy row.
-        if request.method.upper() != "POST" or request.url.path != "/api/v1/academy/academies":
+        # Root resources have no parent binding yet. These explicitly allowlisted
+        # creation handlers must write their canonical resource binding in the
+        # same transaction as the resource row.
+        creation_types = {
+            "/api/v1/academy/academies": "academy",
+            "/api/v1/competition/events": "competition_event",
+        }
+        create_resource_type = creation_types.get(request.url.path) if request.method.upper() == "POST" else None
+        if not create_resource_type:
             raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "resource_binding_required"})
         with persistence.connection() as conn:
             with conn.cursor() as cur:
@@ -147,8 +152,8 @@ async def require_phase4_domain_access(
                     """INSERT INTO kaizo_p14_audit_events
                        (actor_subject_id,event_type,tenant_id,resource_type,action,
                         allowed,reason_code,trace_id,metadata)
-                       VALUES (%s,'authorization_decision',%s,'academy',%s,%s,%s,%s,%s::jsonb)""",
-                    (principal.actor_id, principal.tenant_id,
+                       VALUES (%s,'authorization_decision',%s,%s,%s,%s,%s,%s,%s::jsonb)""",
+                    (principal.actor_id, principal.tenant_id, create_resource_type,
                      f"{request.method.upper()}:{request.url.path}", allowed,
                      "active_membership_create_authorized" if allowed else "active_tenant_membership_missing",
                      request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
@@ -157,7 +162,7 @@ async def require_phase4_domain_access(
         if not allowed:
             raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "active_tenant_membership_missing"})
         return {"principal": principal, "tenant_id": principal.tenant_id,
-                "resources": [], "create_resource_type": "academy"}
+                "resources": [], "create_resource_type": create_resource_type}
     for resource_type, resource_id in resources:
         if resource_type == "athlete":
             athlete = persistence.get_athlete(resource_id)
