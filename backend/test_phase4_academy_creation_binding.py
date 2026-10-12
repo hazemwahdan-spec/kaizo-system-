@@ -245,6 +245,27 @@ def test_academy_create_persists_binding_in_same_transaction():
                     (foreign_tenant, foreign_subject),
                 )
             conn.commit()
+        foreign_kpi_id = "KPI-FOREIGN-" + suffix
+        foreign_kpi = {
+            "kpi_id": foreign_kpi_id, "name": "Foreign KPI " + suffix,
+            "metric_name": "entry_timing_score", "unit": "score", "target": 7,
+            "direction": "higher_is_better", "defined_by": foreign_subject,
+            "status": "ACTIVE", "created_at": "2026-10-13T00:00:00+00:00",
+            "updated_at": "2026-10-13T00:00:00+00:00",
+        }
+        persistence.upsert_kpi_definition(
+            foreign_kpi, tenant_id=foreign_tenant, bound_by_subject=foreign_subject,
+        )
+        with patch.object(phase4_route_guard, "require_phase4_principal", return_value=principal):
+            cross_tenant_capture = client.post(
+                "/api/v1/kpis/captures",
+                json={"athlete_id": athlete_id, "kpi_id": foreign_kpi_id,
+                      "value": 5.2, "captured_by": subject},
+                headers={"X-Trace-Id": "cross-tenant-kpi-" + suffix},
+            )
+        assert cross_tenant_capture.status_code == 403
+        assert cross_tenant_capture.json()["detail"]["reason_code"] == "kpi_or_athlete_tenant_binding_missing"
+
         foreign_knowledge_id = "foreign-knowledge-" + suffix
         foreign_payload = {
             "knowledge_id": foreign_knowledge_id, "source_type": "IJF",
