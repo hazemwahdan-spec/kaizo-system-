@@ -11,6 +11,7 @@ import main
 import persistence
 import phase4_route_guard
 import phase4_identity_boundary
+import phase4_domain_authorization
 import backend.main as package_main
 from phase4_identity_boundary import Principal
 
@@ -47,6 +48,9 @@ main.app.dependency_overrides[phase4_route_guard.require_phase4_route_access] = 
 main.app.dependency_overrides[phase4_identity_boundary.require_phase4_principal] = (
     lambda: principal
 )
+main.app.dependency_overrides[phase4_domain_authorization.require_phase4_domain_access] = (
+    lambda: {"principal": principal, "tenant_id": tenant_id}
+)
 
 # Some older acceptance modules import the app as backend.main rather than main.
 package_main.app.dependency_overrides.update(main.app.dependency_overrides)
@@ -58,6 +62,13 @@ if persistence.is_postgres_enabled():
                 """INSERT INTO kaizo_tenants (tenant_id, display_name)
                    VALUES (%s, %s) ON CONFLICT (tenant_id) DO NOTHING""",
                 (tenant_id, "CI Legacy Acceptance"),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_tenant_memberships (tenant_id,subject_id,role,status)
+                   VALUES (%s,%s,%s,'ACTIVE')
+                   ON CONFLICT (tenant_id,subject_id,role)
+                   DO UPDATE SET status='ACTIVE',updated_at=NOW()""",
+                (tenant_id, principal.actor_id, principal.role),
             )
         conn.commit()
 
