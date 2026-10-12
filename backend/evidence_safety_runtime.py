@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends
-from phase4_identity_boundary import require_phase4_principal
+from phase4_domain_authorization import require_phase4_domain_access
 from pydantic import BaseModel, Field
 import persistence
 
-router=APIRouter(prefix="/api/v1/evidence-safety",tags=["Evidence Safety"], dependencies=[Depends(require_phase4_principal)])
+router=APIRouter(prefix="/api/v1/evidence-safety",tags=["Evidence Safety"], dependencies=[Depends(require_phase4_domain_access)])
 MEMORY:List[Dict[str,Any]]=[]
 
 def now(): return datetime.now(timezone.utc).isoformat()
