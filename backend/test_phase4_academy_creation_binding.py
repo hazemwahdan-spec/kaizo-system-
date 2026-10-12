@@ -1,10 +1,12 @@
 """PostgreSQL integration test for atomic academy creation + tenant binding."""
 from uuid import uuid4
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 import main
 import persistence
+import phase4_route_guard
 from phase4_domain_authorization import require_phase4_domain_access
 from phase4_identity_boundary import Principal, require_phase4_principal
 
@@ -53,6 +55,25 @@ def test_academy_create_persists_binding_in_same_transaction():
                 )
                 binding = cur.fetchone()
         assert binding == (tenant_id, subject)
+
+        with patch.object(phase4_route_guard, "require_phase4_principal", return_value=principal):
+            athlete_response = client.post(
+                "/api/v1/athletes",
+                json={"display_name": "Athlete " + suffix,
+                      "metadata": {"date_of_birth": "2000-01-01"}},
+                headers={"X-Trace-Id": "athlete-create-" + suffix},
+            )
+        assert athlete_response.status_code == 201, athlete_response.text
+        athlete_id = athlete_response.json()["athlete_id"]
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT tenant_id,bound_by_subject FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='athlete' AND resource_id=%s""",
+                    (athlete_id,),
+                )
+                athlete_binding = cur.fetchone()
+        assert athlete_binding == (tenant_id, subject)
 
         group_response = client.post(
             "/api/v1/academy/groups",
