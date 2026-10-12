@@ -8,7 +8,17 @@ verified-principal dependency. When route enforcement is implemented, replace
 the baseline assertions with positive acceptance assertions for auth, role,
 server-loaded tenant/resource ownership, consent, and no-write-on-deny.
 """
+import sys
+from pathlib import Path
+
 from fastapi.routing import APIRoute
+
+# Core modules use the backend directory as their import root in deployment.
+# Put it on sys.path before importing backend.main so this test mirrors that
+# module layout when pytest is launched from the repository root.
+_BACKEND_DIR = str(Path(__file__).resolve().parent)
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 from backend import main as core_main
 from backend import phase4_identity_boundary as boundary
