@@ -275,7 +275,11 @@ def test_academy_create_persists_binding_in_same_transaction():
                     (athlete_id, guardian_subject, tenant_id, guardian_subject),
                 )
             conn.commit()
-        with patch.object(phase4_route_guard, "require_phase4_principal", return_value=principal):
+        with patch.object(phase4_route_guard, "require_phase4_principal", return_value=principal), \
+             patch.object(
+                 phase4_route_guard, "authorize_resource_access",
+                 return_value={"allowed": True, "reason_code": "active_membership_and_resource_binding", "trace_id": "P4-KPI-TEST"},
+             ):
             cross_tenant_capture = client.post(
                 "/api/v1/kpis/captures",
                 json={"athlete_id": athlete_id, "kpi_id": foreign_kpi_id,
