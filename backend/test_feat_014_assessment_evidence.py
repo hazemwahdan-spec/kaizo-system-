@@ -1,11 +1,27 @@
 import unittest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import main
+from phase4_core_resource_authorization import require_core_actor
+from productization.identity import Principal
 
 
 class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
     def setUp(self):
+        self.principal = Principal(
+            actor_id="unit-test-coach", role="coach", tenant_id="unit-test-academy",
+            resource_owner_id=None, verified=True, source="test_override",
+        )
+        main.app.dependency_overrides[require_core_actor] = lambda: self.principal
+        self._authorization_patches = [
+            patch("main.bind_new_resource"),
+            patch("main.assert_resource_tenant"),
+            patch("main.assert_assessment_tenant"),
+        ]
+        for item in self._authorization_patches:
+            item.start()
+        self.addCleanup(self._cleanup_authorization)
         self.client = TestClient(main.app)
         self.athlete_id = self.client.post(
             "/api/v1/athletes",
@@ -20,6 +36,11 @@ class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
                 "recorded_by": "coach-feat014",
             },
         ).json()["assessment_id"]
+
+    def _cleanup_authorization(self):
+        main.app.dependency_overrides.pop(require_core_actor, None)
+        for item in reversed(self._authorization_patches):
+            item.stop()
 
     def _record_evidence(self, evidence_id, subject_id=None):
         return self.client.post(
