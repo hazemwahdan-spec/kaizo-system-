@@ -57,6 +57,8 @@ jobs:
         run: PYTHONPATH=. python -m unittest test_phase4_tenant_consent_repository -v
       - name: Run Phase 4 Core API tenant/consent route denial tests
         run: PYTHONPATH=. python -m unittest test_phase4_route_authorization_http -v
+      - name: Run PostgreSQL-backed Phase 4 route denial tests
+        run: PYTHONPATH=. python -m unittest test_phase4_postgres_route_denial -v
       - name: Verify OpenAPI and documentation endpoint contract
         run: PYTHONPATH=. python tests/test_openapi_contract.py
       - name: Run FEAT-001 athlete acceptance tests
