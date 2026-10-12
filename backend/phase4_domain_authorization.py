@@ -20,6 +20,9 @@ _ACTOR_FIELDS = (
     "actor_id", "created_by", "owner_id", "changed_by", "requested_by", "user_id", "defined_by",
     "recorded_by", "assessed_by", "decided_by", "reviewed_by", "traced_by",
     "linked_by", "assigned_by", "reported_by", "uploaded_by", "author_id",
+    "verified_by", "selected_by", "captured_by", "blocked_by", "approved_by",
+    "submitted_by", "attached_by", "synchronized_by", "confirmed_by",
+    "override_by", "published_by",
 )
 _RESOURCE_FIELDS = {
     "athlete_id": "athlete", "academy_id": "academy", "item_id": "knowledge",
