@@ -31,12 +31,23 @@ def schema():
                 linked_by TEXT NOT NULL, linked_at TEXT NOT NULL);""")
         c.commit()
 
-def save_item(r):
-    MEMORY_ITEMS[r["knowledge_id"]]=r
+def save_item(r, phase4=None):
     if persistence.is_postgres_enabled():
         schema()
-        persistence.upsert_knowledge(r["knowledge_id"],r, r["updated_at"])
+        principal = (phase4 or {}).get("principal")
+        tenant_id = (phase4 or {}).get("tenant_id")
+        actor_subject = getattr(principal, "actor_id", None)
+        if phase4 is not None:
+            if not tenant_id or not actor_subject:
+                raise HTTPException(503, "Verified tenant context is required to persist knowledge")
+            persistence.upsert_knowledge(
+                r["knowledge_id"], r, r["updated_at"],
+                tenant_id=tenant_id, bound_by_subject=actor_subject,
+            )
+        else:
+            persistence.upsert_knowledge(r["knowledge_id"], r, r["updated_at"])
         persistence.append_audit(timestamp=r["updated_at"],who=r["changed_by"],action="FEAT-047_048_KNOWLEDGE_RECORDED",old_value=None,new_value=r,why="Knowledge retained with provenance and lifecycle metadata.")
+    MEMORY_ITEMS[r["knowledge_id"]]=r
 
 def get_item(k):
     if persistence.is_postgres_enabled():
@@ -61,7 +72,10 @@ class LinkRequest(BaseModel):
     evidence_refs:List[str]=Field(default_factory=list); coach_final_authority:bool=True
 
 @router.post("/feat-047/provenance",status_code=201)
-def provenance(req:ProvenanceRequest):
+def provenance(
+    req: ProvenanceRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     authority(req.coach_final_authority)
     if not req.knowledge_id.strip() or not req.source_type.strip() or not req.source_ref.strip() or not req.source_version.strip() or not req.provenance_note.strip() or not req.changed_by.strip():
         raise HTTPException(400,"knowledge_id, source_type, source_ref, source_version, provenance_note and changed_by are required")
@@ -87,7 +101,7 @@ def provenance(req:ProvenanceRequest):
        "version_conflict_refs":[item.get("knowledge_id") for item in conflicts],
        "provenance_note":req.provenance_note,"evidence_refs":req.evidence_refs,"lifecycle_status":"DRAFT",
        "changed_by":req.changed_by,"created_at":now(),"updated_at":now(),"coach_final_authority":True,"execution_authorized":False}
-    save_item(r); return {"feature_id":"FEAT-047","record":r}
+    save_item(r, phase4=phase4); return {"feature_id":"FEAT-047","record":r}
 
 @router.post("/feat-048/lifecycle",status_code=200)
 def lifecycle(req:LifecycleRequest):
