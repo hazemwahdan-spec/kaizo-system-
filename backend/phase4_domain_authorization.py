@@ -43,6 +43,8 @@ def _payload_resource_ids(request: Request, payload: dict[str, Any]) -> list[tup
         if value is None or not str(value).strip():
             continue
         inferred = resource_type
+        if key == "item_id" and request.url.path == "/api/v1/knowledge/ingest":
+            inferred = "knowledge_ingest"
         if key == "subject_id":
             subject_type = str(payload.get("subject_type") or "").strip().lower()
             inferred = {"athlete": "athlete", "player": "athlete", "academy": "academy",
@@ -135,26 +137,34 @@ async def require_phase4_domain_access(
     resources = _payload_resource_ids(request, payload)
     # A new knowledge ID may be bound only when neither a binding nor a legacy
     # record exists. Existing unbound records are not silently claimed.
-    if request.method.upper() == "POST" and request.url.path in {
-        "/api/v1/knowledge-runtime/feat-047/provenance", "/api/v1/knowledge/ingest"
-    }:
-        knowledge_id = str(payload.get("knowledge_id") or payload.get("item_id") or "").strip()
-        if knowledge_id:
-            with persistence.connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """SELECT tenant_id FROM kaizo_resource_tenant_bindings
-                           WHERE resource_type='knowledge' AND resource_id=%s LIMIT 1""",
-                        (knowledge_id,),
-                    )
-                    existing_binding = cur.fetchone()
-                    cur.execute(
-                        "SELECT 1 FROM kaizo_knowledge_repository WHERE item_id=%s",
-                        (knowledge_id,),
-                    )
-                    existing_record = cur.fetchone()
-            if existing_binding is None and existing_record is None:
-                resources = [item for item in resources if item != ("knowledge", knowledge_id)]
+    if request.method.upper() == "POST":
+        candidate = {
+            "/api/v1/knowledge-runtime/feat-047/provenance": (
+                "knowledge", "knowledge_id", "kaizo_knowledge_repository"
+            ),
+            "/api/v1/knowledge/ingest": (
+                "knowledge_ingest", "item_id", "kaizo_knowledge_ingest_records"
+            ),
+        }.get(request.url.path)
+        if candidate:
+            resource_type, id_field, table_name = candidate
+            candidate_id = str(payload.get(id_field) or "").strip()
+            if candidate_id:
+                with persistence.connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                               WHERE resource_type=%s AND resource_id=%s LIMIT 1""",
+                            (resource_type, candidate_id),
+                        )
+                        existing_binding = cur.fetchone()
+                        cur.execute(
+                            f"SELECT 1 FROM {table_name} WHERE item_id=%s",
+                            (candidate_id,),
+                        )
+                        existing_record = cur.fetchone()
+                if existing_binding is None and existing_record is None:
+                    resources = [item for item in resources if item != (resource_type, candidate_id)]
     if request.method.upper() == "POST" and request.url.path == "/api/v1/kpis":
         kpi_id = str(payload.get("kpi_id") or "").strip()
         if kpi_id:
@@ -181,7 +191,7 @@ async def require_phase4_domain_access(
             "/api/v1/academy/academies": "academy",
             "/api/v1/competition/events": "competition_event",
             "/api/v1/knowledge-runtime/feat-047/provenance": "knowledge",
-            "/api/v1/knowledge/ingest": "knowledge",
+            "/api/v1/knowledge/ingest": "knowledge_ingest",
             "/api/v1/kpis": "kpi_definition",
         }
         is_tenant_scoped_knowledge_retrieval = (
