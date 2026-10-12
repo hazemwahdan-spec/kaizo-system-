@@ -267,6 +267,23 @@ def test_academy_create_persists_binding_in_same_transaction():
                     (foreign_tenant, foreign_subject),
                 )
             conn.commit()
+        previous_override = main.app.dependency_overrides.get(require_phase4_principal)
+        main.app.dependency_overrides[require_phase4_principal] = lambda: Principal(
+            actor_id=foreign_subject, role="academy", tenant_id=foreign_tenant,
+            resource_owner_id=None, verified=True, source="oidc_jwt",
+        )
+        try:
+            foreign_read = client.get(
+                f"/api/v1/features/feat-029/progression-regression-rules/{feature_record_id}"
+            )
+        finally:
+            if previous_override is None:
+                main.app.dependency_overrides.pop(require_phase4_principal, None)
+            else:
+                main.app.dependency_overrides[require_phase4_principal] = previous_override
+        assert foreign_read.status_code == 403
+        assert foreign_read.json()["detail"]["reason_code"] == "resource_tenant_binding_missing"
+
         foreign_kpi_id = "KPI-FOREIGN-" + suffix
         foreign_kpi = {
             "kpi_id": foreign_kpi_id, "name": "Foreign KPI " + suffix,
