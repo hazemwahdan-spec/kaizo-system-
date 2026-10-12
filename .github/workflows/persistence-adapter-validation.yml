@@ -111,3 +111,6 @@ jobs:
 
       - name: Run Phase 4 audit and plan authority acceptance tests
         run: PYTHONPATH=. python test_phase4_audit_authority.py
+
+      - name: Run Phase 4 durable identity and consent store acceptance tests
+        run: PYTHONPATH=. python test_phase4_identity_store.py
