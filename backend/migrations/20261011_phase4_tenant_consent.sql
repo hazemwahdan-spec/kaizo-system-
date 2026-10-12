@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS kaizo_p14_consents (
     expires_at TIMESTAMPTZ,
     recorded_by_subject TEXT NOT NULL,
     source_reference TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
 CREATE INDEX IF NOT EXISTS idx_kaizo_p14_consent_scope
     ON kaizo_p14_consents(
