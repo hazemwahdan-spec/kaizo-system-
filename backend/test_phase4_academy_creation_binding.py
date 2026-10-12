@@ -168,7 +168,7 @@ def test_academy_create_persists_binding_in_same_transaction():
             with conn.cursor() as cur:
                 cur.execute(
                     """SELECT tenant_id,bound_by_subject FROM kaizo_resource_tenant_bindings
-                       WHERE resource_type='knowledge' AND resource_id=%s""",
+                       WHERE resource_type='knowledge_ingest' AND resource_id=%s""",
                     (ingested_id,),
                 )
                 ingested_binding = cur.fetchone()
