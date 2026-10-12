@@ -117,6 +117,7 @@ def authorize_resource_access(
                              AND gr.tenant_id=%s
                              AND gr.verification_status='VERIFIED'
                              AND gr.verified_by_subject IS NOT NULL
+                             AND gr.verified_by_subject <> gr.guardian_subject_id
                              AND gr.verified_at IS NOT NULL
                              AND NOT EXISTS (
                                SELECT 1 FROM kaizo_guardian_relationships newer_gr
@@ -126,6 +127,7 @@ def authorize_resource_access(
                                  AND newer_gr.recorded_sequence > gr.recorded_sequence
                              )
                              AND c.resource_type=%s AND c.action=%s
+                             AND c.recorded_by_subject=c.guardian_subject_id
                              AND c.state='active'
                              AND (c.expires_at IS NULL OR c.expires_at > NOW())
                              AND NOT EXISTS (
