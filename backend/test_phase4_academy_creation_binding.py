@@ -71,6 +71,28 @@ def test_academy_create_persists_binding_in_same_transaction():
                 )
                 event_binding = cur.fetchone()
         assert event_binding == (tenant_id, subject)
+
+        knowledge_id = "knowledge-" + suffix
+        knowledge_response = client.post(
+            "/api/v1/knowledge-runtime/feat-047/provenance",
+            json={"knowledge_id": knowledge_id, "source_type": "IJF",
+                  "source_ref": "https://example.invalid/technical-source",
+                  "source_version": "v1", "evidence_status": "VERIFIED",
+                  "provenance_note": "Phase 4 tenant binding integration test",
+                  "evidence_refs": ["P4-TEST-SOURCE"], "changed_by": subject,
+                  "coach_final_authority": True},
+            headers={"X-Trace-Id": "knowledge-create-" + suffix},
+        )
+        assert knowledge_response.status_code == 201, knowledge_response.text
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT tenant_id,bound_by_subject FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='knowledge' AND resource_id=%s""",
+                    (knowledge_id,),
+                )
+                knowledge_binding = cur.fetchone()
+        assert knowledge_binding == (tenant_id, subject)
     finally:
         if previous_principal is None:
             main.app.dependency_overrides.pop(require_phase4_principal, None)
