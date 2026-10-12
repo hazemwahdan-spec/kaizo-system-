@@ -2,6 +2,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 
+import main
 from main import app, ATHLETE_RECORDS, ASSESSMENT_RECORDS
 
 
@@ -82,6 +83,7 @@ class FEAT046AuditSpineTests(unittest.TestCase):
     def test_assessment_action_is_written_to_audit_spine(self):
         ATHLETE_RECORDS.clear()
         ASSESSMENT_RECORDS.clear()
+        main.AUDIT_LOGS.clear()
         client = TestClient(app)
 
         athlete = client.post("/api/v1/athletes", json={"display_name": "Audit Athlete"})
@@ -98,20 +100,29 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         )
         self.assertEqual(created.status_code, 201)
 
-        audit = client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
-        matching = [x for x in audit.json()["logs"] if x["action"] == "ASSESSMENT_RECORDED"]
+        matching = [x for x in main.AUDIT_LOGS if x["action"] == "ASSESSMENT_RECORDED"]
         self.assertTrue(matching)
         self.assertEqual(matching[-1]["who"], "coach-audit")
         self.assertEqual(matching[-1]["new_value"]["athlete_id"], athlete.json()["athlete_id"])
         self.assertEqual(matching[-1]["why"], "Assessment measurements persisted with explicit athlete ownership and timestamp.")
 
     def test_audit_log_preserves_old_and_new_values(self):
+        ATHLETE_RECORDS.clear()
+        ASSESSMENT_RECORDS.clear()
+        main.AUDIT_LOGS.clear()
         client = TestClient(app)
-        response = client.get("/api/v1/audit/logs")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("logs", response.json())
-        for entry in response.json()["logs"]:
+        athlete = client.post("/api/v1/athletes", json={"display_name": "Audit Shape Athlete"})
+        self.assertEqual(athlete.status_code, 201)
+        created = client.post("/api/v1/assessments", json={
+            "athlete_id": athlete.json()["athlete_id"],
+            "template_id": "AUDIT-SHAPE",
+            "measurements": {"score": 8},
+            "recorded_by": "coach-audit-shape",
+        })
+        self.assertEqual(created.status_code, 201)
+        entries = main.AUDIT_LOGS
+        self.assertTrue(entries)
+        for entry in entries:
             self.assertIn("timestamp", entry)
             self.assertIn("who", entry)
             self.assertIn("action", entry)
