@@ -196,6 +196,7 @@ def health():
         "status": "ok",
         "service": "kaizo-p14-consent",
         "deny_by_default": True,
+        "deny_by_default": True,
         "durable_storage": _postgres_enabled(),
         "identity_mode": _identity_mode(),
     }
