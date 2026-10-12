@@ -29,11 +29,11 @@ class FakeCursor:
         self.params = params or ()
 
     def fetchone(self):
-        if "FROM kaizo_academy_assignments" in self.query:
+        if "FROM kaizo_resource_tenant_bindings" in self.query:
             return (1,) if self.state.get("assignment") else None
-        if "FROM kaizo_guardian_links" in self.query:
+        if "FROM kaizo_guardian_relationships" in self.query:
             return (1,) if self.state.get("guardian_link") else None
-        if "FROM kaizo_minor_consents" in self.query:
+        if "FROM kaizo_p14_consents" in self.query:
             return self.state.get("consent")
         return None
 
@@ -68,19 +68,19 @@ def configure_db(monkeypatch, state):
 
 def test_athlete_must_have_active_assignment_in_requested_academy(monkeypatch):
     configure_db(monkeypatch, {"assignment": False})
-    with pytest.raises(access.ResourceAuthorizationError, match="not assigned"):
+    with pytest.raises(access.ResourceAuthorizationError, match="not bound to this academy"):
         access.require_athlete_academy("athlete-1", "academy-A")
 
 
 def test_parent_access_denied_without_verified_guardian_link(monkeypatch):
     configure_db(monkeypatch, {"guardian_link": False})
-    with pytest.raises(access.ResourceAuthorizationError, match="guardian-to-child link"):
+    with pytest.raises(access.ResourceAuthorizationError, match="verified guardian-to-child relationship"):
         access.require_parent_consent("guardian-1", "athlete-1", "academy-A")
 
 
 def test_parent_access_denied_when_consent_is_missing(monkeypatch):
     configure_db(monkeypatch, {"guardian_link": True, "consent": None})
-    with pytest.raises(access.ResourceAuthorizationError, match="consent is absent"):
+    with pytest.raises(access.ResourceAuthorizationError, match="latest canonical P14 consent is absent"):
         access.require_parent_consent("guardian-1", "athlete-1", "academy-A")
 
 
