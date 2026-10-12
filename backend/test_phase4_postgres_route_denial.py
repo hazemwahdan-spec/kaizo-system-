@@ -81,7 +81,7 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
                         (child_resource_id,guardian_subject_id,tenant_id,resource_type,
                          action,state,recorded_by_subject,created_at)
                         VALUES (%s,%s,%s,'athlete','GET:/api/v1/athletes/{{athlete_id}}',%s,%s,{created_at_sql})""",
-                    (self.athlete_id, self.guardian, self.tenant_a, state, self.subject),
+                    (self.athlete_id, self.guardian, self.tenant_a, state, self.guardian),
                 )
             conn.commit()
 
