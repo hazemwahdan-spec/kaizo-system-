@@ -81,20 +81,18 @@ def create_athlete(req: AthleteCreateRequest, phase4_access: Dict[str, Any] = De
         "created_at": now,
         "updated_at": now,
     }
+    principal = phase4_access.get("principal")
+    tenant_id = phase4_access.get("tenant_id")
+    actor_subject = getattr(principal, "actor_id", None)
+    if not tenant_id or not actor_subject:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required to create an athlete")
+    # The athlete row and canonical tenant binding commit or roll back together.
+    persistence.upsert_athlete(
+        athlete, tenant_id=tenant_id, bound_by_subject=actor_subject,
+    )
     ATHLETE_RECORDS[athlete["athlete_id"]] = athlete
-    persistence.upsert_athlete(athlete)
-    # Persist academy ownership from the verified principal, never from the request body.
-    with persistence.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO kaizo_resource_tenant_bindings
-                   (resource_type, resource_id, tenant_id, bound_by_subject)
-                   VALUES ('athlete', %s, %s, %s)
-                   ON CONFLICT (resource_type, resource_id) DO NOTHING""",
-                (athlete["athlete_id"], phase4_access["tenant_id"], phase4_access["principal"].actor_id),
-            )
     log_action(
-        "system",
+        actor_subject,
         "ATHLETE_CREATED",
         None,
         athlete,
