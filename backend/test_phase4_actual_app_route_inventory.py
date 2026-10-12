@@ -63,7 +63,7 @@ def test_actual_core_app_route_inventory_includes_sensitive_and_generated_routes
     assert ("POST", "/api/v1/assessments") in identities
     assert ("GET", "/api/v1/assessments/{assessment_id}") in identities
     assert any(path.startswith("/api/v1/features") for _, path in identities)
-    assert any(path.endswith("/feat-042/digital-twin-state") for _, path in identities)
+    assert ("POST", "/api/v1/state-cycle/feat-042/digital-twin-state") in identities
 
 
 def test_actual_core_app_baseline_records_routes_not_yet_wired_to_phase4_identity():
