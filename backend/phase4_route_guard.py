@@ -264,9 +264,12 @@ def require_phase4_tenant_member(request: Request) -> dict[str, Any]:
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT 1 FROM kaizo_tenant_memberships
-                   WHERE tenant_id=%s AND subject_id=%s AND role=%s
-                     AND status='ACTIVE' LIMIT 1""",
+                """SELECT 1
+                   FROM kaizo_tenant_memberships m
+                   JOIN kaizo_tenants t ON t.tenant_id=m.tenant_id
+                   WHERE m.tenant_id=%s AND m.subject_id=%s AND m.role=%s
+                     AND m.status='ACTIVE' AND t.status='ACTIVE'
+                   LIMIT 1""",
                 (principal.tenant_id, principal.actor_id, principal.role),
             )
             allowed = cur.fetchone() is not None
