@@ -24,7 +24,7 @@ Evidence rule: Evidence Before Claim
 | Consent lifecycle | Approve who may grant/revoke, required scope, effective/expiry behavior, non-expiring-consent policy, and state transitions | Missing, pending, revoked, expired, or scope-mismatched consent denies |
 | Resource/action vocabulary | Approve stable resource types and action names used by routes and consent records | Do not create guessed policy values or claim route coverage |
 | Audit and privacy | Approve correlation ID, reason codes, retention/deletion, minimization, and transaction/failure behavior | No tokens or unnecessary child-sensitive payloads in audit; fail closed if required audit cannot persist |
-| Canonical production target | Confirm which deployed service is authoritative (FastAPI Cloud vs Railway) and which database is attached to it | No production schema, environment, or live-data changes |
+| Canonical production target | **DECIDED for current PACK-A / Core Engine v2.0 and Phase 4 workstream: FastAPI Cloud** (https://kaizo-system.fastapicloud.dev). Railway records are historical/secondary and are not the target for this workstream unless changed through explicit change control. The database attached to FastAPI Cloud still requires verification from authoritative deployment settings. | No production schema, environment, or live-data changes until separately authorized |
 | Change authorization | Explicitly authorize the eventual production configuration/schema/write window and test scope | No production writes or identity-provider activation |
 
 ## Required implementation gates
@@ -100,4 +100,15 @@ Follow-up comments were posted on [PR #122](https://github.com/hazemwahdan-spec/
 - Therefore these green workflows are useful CI evidence only. They do not establish protected route coverage, tenant ownership enforcement, guardian verification, consent checks, or production isolation.
 - No production target/provider settings, schema, secrets, or live data were changed in this checkpoint. Canonical production target still requires explicit confirmation because the project history contains both FastAPI Cloud and Railway deployment evidence.
 - Disposition unchanged: Gate A OPEN; P4-REQ-011 OPEN / NOT PROVEN; production activation NOT AUTHORIZED; Phase 4 EXIT BLOCKED.
+
+## Canonical target decision — 2026-10-12
+
+**Decision resolved:** Use **FastAPI Cloud** (https://kaizo-system.fastapicloud.dev) as the canonical deployment target for the current **KAIZO Core Engine v2.0 / PACK-A** workstream and the associated controlled Phase 4 verification. This decision follows the latest active deployment/debugging workflow, live app/docs/OpenAPI URLs, and the user's current deployment objective. Historical Railway deployment evidence remains valid only for the Railway deployment it describes; it is not interchangeable with FastAPI Cloud evidence and does not establish which database is attached to the FastAPI Cloud app.
+
+- Target app: https://kaizo-system.fastapicloud.dev
+- API docs: https://kaizo-system.fastapicloud.dev/docs
+- OpenAPI document: https://kaizo-system.fastapicloud.dev/openapi.json
+- This is a target-selection decision, **not** a claim that live health, authentication, route-level authorization, tenant isolation, consent, or production persistence have passed.
+- Do not change Railway, production variables, Auth0 configuration, production schemas, or live data as part of this decision. Verify FastAPI Cloud's attached database and provider contract from authoritative settings before any production write or activation.
+- Current status remains: PR #122 open/draft; PR #123 open/draft with overlapping schema scope; Gate A is only partially resolved (hosting target decided, identity/privacy/policy decisions still open); P4-REQ-011 OPEN / NOT PROVEN; Phase 4 exit BLOCKED.
 
