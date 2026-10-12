@@ -91,3 +91,13 @@ This confirms route-level enforcement is a substantive remaining gap, not merely
 Follow-up comments were posted on [PR #122](https://github.com/hazemwahdan-spec/kaizo-system-/pull/122) and [PR #123](https://github.com/hazemwahdan-spec/kaizo-system-/pull/123) to preserve the safety boundary and require schema reconciliation. Both remain draft candidates; neither should be independently merged or applied.
 
 **Disposition unchanged:** isolated CI = PASS; Gate A = OPEN; route-level enforcement = NOT PROVEN; production activation = NOT AUTHORIZED; P4-REQ-011 = OPEN / NOT PROVEN; Phase 4 exit = BLOCKED.
+
+## Fresh HEAD verification checkpoint — 2026-10-12
+
+- Current PR #122 head verified from GitHub metadata: `4cdfc31e9bd935bef46d929f5a9e3adae07bfac4` (open, draft, mergeable; not merged).
+- PR-triggered workflows attached to this exact HEAD completed successfully: Phase 7 Identity RBAC Boundary run [38203917015](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38203917015), Phase 4 Live Runtime Smoke run [38203917155](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38203917155), Persistence Adapter Validation run [38203916969](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38203916969), plus the listed product/runtime/security contract workflows in the same run batch.
+- Source reinspection of `backend/main.py` confirms the current top-level athlete and assessment handlers still accept no verified-principal dependency in their function signatures; actor fields such as `recorded_by` / `attached_by` are client-supplied attribution, not authentication. The app also includes feature routers whose route-level protection must be inventoried separately.
+- Therefore these green workflows are useful CI evidence only. They do not establish protected route coverage, tenant ownership enforcement, guardian verification, consent checks, or production isolation.
+- No production target/provider settings, schema, secrets, or live data were changed in this checkpoint. Canonical production target still requires explicit confirmation because the project history contains both FastAPI Cloud and Railway deployment evidence.
+- Disposition unchanged: Gate A OPEN; P4-REQ-011 OPEN / NOT PROVEN; production activation NOT AUTHORIZED; Phase 4 EXIT BLOCKED.
+
