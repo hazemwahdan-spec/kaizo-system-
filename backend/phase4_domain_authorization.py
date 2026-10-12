@@ -62,13 +62,33 @@ def _is_minor_or_unknown(athlete: dict[str, Any]) -> bool:
     return _requires_guardian_consent(athlete)
 
 
+def _allowed_domain_roles(path: str, method: str) -> set[str]:
+    """Least-privilege role matrix for domain routes; never infer role from body."""
+    method = method.upper()
+    if path.startswith("/api/v1/academy/"):
+        if path.endswith("/dashboard") or (method == "GET" and "/academies/" in path):
+            return {"academy", "coach"}
+        return {"academy"}
+    if path.startswith("/api/v1/competition/"):
+        return {"academy", "coach"} if method not in {"GET", "HEAD"} else {"academy", "coach", "athlete", "parent"}
+    if path.startswith("/api/v1/reporting/"):
+        if "/export" in path or method not in {"GET", "HEAD"}:
+            return {"academy", "coach"}
+        return {"academy", "coach", "athlete", "parent"}
+    if path.startswith(("/api/v1/features", "/api/v1/knowledge-runtime",
+                        "/api/v1/audit-trace", "/api/v1/evidence-safety")):
+        return {"academy", "coach"}
+    return set()
+
+
 async def require_phase4_domain_access(
     request: Request,
     principal: Principal = Depends(require_phase4_principal),
 ) -> dict[str, Any]:
     """Require verified caller identity plus canonical persisted tenant ownership."""
-    if principal.role not in {"academy", "coach", "athlete", "parent"}:
-        raise HTTPException(status_code=403, detail="Role is not authorized for this domain")
+    allowed_roles = _allowed_domain_roles(request.url.path, request.method)
+    if principal.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "domain_role_not_authorized"})
     try:
         raw = await request.json()
         payload = raw if isinstance(raw, dict) else {}
@@ -108,13 +128,50 @@ async def require_phase4_domain_access(
             if not result.get("allowed"):
                 raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": result.get("reason_code", "phase4_scope_denied"), "trace_id": result.get("trace_id")})
             continue
+        denial: dict[str, Any] | None = None
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT 1 FROM kaizo_resource_tenant_bindings
-                       WHERE resource_type=%s AND resource_id=%s AND tenant_id=%s LIMIT 1""",
-                    (resource_type, resource_id, principal.tenant_id),
+                    """SELECT 1 FROM kaizo_tenants
+                       WHERE tenant_id=%s AND status='ACTIVE' LIMIT 1""",
+                    (principal.tenant_id,),
                 )
-                if cur.fetchone() is None:
-                    raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "resource_tenant_binding_missing", "resource_type": resource_type})
+                tenant_ok = cur.fetchone() is not None
+                cur.execute(
+                    """SELECT 1 FROM kaizo_tenant_memberships
+                       WHERE tenant_id=%s AND subject_id=%s AND role=%s
+                         AND status='ACTIVE' LIMIT 1""",
+                    (principal.tenant_id, principal.actor_id, principal.role),
+                )
+                membership_ok = cur.fetchone() is not None
+                for resource_type, resource_id in resources:
+                    if not tenant_ok:
+                        reason = "tenant_missing_or_inactive"
+                    elif not membership_ok:
+                        reason = "active_tenant_membership_missing"
+                    else:
+                        cur.execute(
+                            """SELECT 1 FROM kaizo_resource_tenant_bindings
+                               WHERE resource_type=%s AND resource_id=%s AND tenant_id=%s LIMIT 1""",
+                            (resource_type, resource_id, principal.tenant_id),
+                        )
+                        reason = "active_membership_and_resource_binding"
+                        if cur.fetchone() is None:
+                            reason = "resource_tenant_binding_missing_or_mismatched"
+                    allowed = reason == "active_membership_and_resource_binding"
+                    cur.execute(
+                        """INSERT INTO kaizo_p14_audit_events
+                           (actor_subject_id,event_type,tenant_id,resource_type,action,
+                            allowed,reason_code,trace_id,metadata)
+                           VALUES (%s,'authorization_decision',%s,%s,%s,%s,%s,%s,%s::jsonb)""",
+                        (principal.actor_id, principal.tenant_id, resource_type,
+                         f"{request.method.upper()}:{request.url.path}", allowed, reason,
+                         request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+                         '{"source":"phase4_domain_authorization"}'),
+                    )
+                    if not allowed and denial is None:
+                        denial = {"decision": "DENY", "reason_code": reason,
+                                  "resource_type": resource_type}
+        if denial is not None:
+            raise HTTPException(status_code=403, detail=denial)
     return {"principal": principal, "tenant_id": principal.tenant_id, "resources": resources}
