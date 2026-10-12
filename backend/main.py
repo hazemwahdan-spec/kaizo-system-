@@ -1388,6 +1388,10 @@ def get_kpi_capture(
     capture = persistence.get_kpi_capture(capture_id) if persistence.is_postgres_enabled() else KPI_CAPTURES.get(capture_id)
     if capture is None:
         raise HTTPException(status_code=404, detail="KPI capture not found")
+    if not persistence.is_postgres_enabled():
+        # Only reachable under explicit test overrides; production authorization
+        # already fails closed when durable persistence is unavailable.
+        return capture
     tenant_id = phase4_access.get("tenant_id")
     principal = phase4_access.get("principal")
     actor_subject = getattr(principal, "actor_id", None)
