@@ -389,6 +389,19 @@ def _create(feature_id: str, req: FeatureRecordRequest, phase4: Dict[str, Any] |
     if persistence.is_postgres_enabled() and req.actor_id.strip() != actor_subject:
         raise HTTPException(status_code=403, detail={"decision":"DENY","reason_code":"actor_identity_mismatch","field":"actor_id"})
     effective_actor = actor_subject or req.actor_id.strip()
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1 FROM kaizo_resource_tenant_bindings
+                       WHERE resource_id=%s AND tenant_id<>%s LIMIT 1""",
+                    (req.subject_id.strip(), tenant_id),
+                )
+                if cur.fetchone() is not None:
+                    raise HTTPException(
+                        status_code=403,
+                        detail={"decision":"DENY","reason_code":"subject_tenant_mismatch"},
+                    )
     record={
         "feature_id":feature_id,
         "record_id":str(uuid4()),
