@@ -1689,7 +1689,7 @@ def ingest_knowledge(
         "tenant_id": tenant_id,
         "created_by": actor_subject,
     }
-    persistence.upsert_knowledge(
+    persistence.upsert_ingested_knowledge(
         req.item_id, item, datetime.utcnow().isoformat(),
         tenant_id=tenant_id, bound_by_subject=actor_subject,
     )
