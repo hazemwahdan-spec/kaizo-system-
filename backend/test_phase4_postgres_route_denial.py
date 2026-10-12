@@ -30,6 +30,7 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
         self.subject = "auth0|coach-" + suffix
         self.guardian = "auth0|guardian-" + suffix
         self.athlete_id = "athlete-" + suffix
+        self.event_id = "event-" + suffix
         self.trace_id = "p4-route-" + suffix
         self.principal = Principal(
             actor_id=self.subject, role="coach", tenant_id=self.tenant_a,
@@ -50,8 +51,9 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
                 cur.execute(
                     """INSERT INTO kaizo_resource_tenant_bindings
                        (resource_type,resource_id,tenant_id,bound_by_subject)
-                       VALUES ('athlete',%s,%s,%s)""",
-                    (self.athlete_id, self.tenant_a, self.subject),
+                       VALUES ('athlete',%s,%s,%s),('competition_event',%s,%s,%s)""",
+                    (self.athlete_id, self.tenant_a, self.subject,
+                     self.event_id, self.tenant_a, self.subject),
                 )
                 cur.execute(
                     """INSERT INTO kaizo_guardian_relationships
@@ -62,13 +64,17 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
                 )
             conn.commit()
 
-    def _request(self, trace_suffix, principal=None):
+    def _request(self, trace_suffix, principal=None, domain_route=False):
+        if domain_route:
+            path = f"/api/v1/competition/readiness/{self.athlete_id}/{self.event_id}"
+        else:
+            path = f"/api/v1/athletes/{self.athlete_id}"
         with patch.object(phase4_route_guard, "require_phase4_principal",
                           return_value=principal or self.principal), \
              patch.object(phase4_route_guard.persistence, "get_athlete",
                           return_value=self.athlete):
             return self.client.get(
-                f"/api/v1/athletes/{self.athlete_id}",
+                path,
                 headers={"Authorization": "Bearer test-token",
                          "X-Trace-Id": self.trace_id + trace_suffix},
             )
@@ -146,7 +152,7 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
             resource_owner_id=None, verified=True, source="oidc_jwt",
         )
         trace = self.trace_id + "-other-parent"
-        response = self._request("-other-parent", principal=parent_principal)
+        response = self._request("-other-parent", principal=parent_principal, domain_route=True)
         self.assertEqual(response.status_code, 403)
         self.assertEqual(
             response.json()["detail"]["reason_code"],
