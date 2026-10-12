@@ -27,7 +27,7 @@ class FEAT001AthleteRecordTests(unittest.TestCase):
             },
         )
         self.authorization_patch.start()
-        self.create_patch = patch("main.create_athlete_with_tenant", return_value=None)
+        self.create_patch = patch(\n            "main.create_athlete_with_tenant",\n            side_effect=lambda principal, athlete: main.persistence.upsert_athlete(athlete),\n        )
         self.create_patch.start()
 
     def tearDown(self):
