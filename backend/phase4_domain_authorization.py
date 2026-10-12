@@ -64,8 +64,6 @@ async def require_phase4_domain_access(
     """Require verified caller identity plus canonical persisted tenant ownership."""
     if principal.role not in {"academy", "coach", "athlete", "parent"}:
         raise HTTPException(status_code=403, detail="Role is not authorized for this domain")
-    if not persistence.is_postgres_enabled():
-        raise HTTPException(status_code=503, detail="Durable Phase 4 tenant authorization requires PostgreSQL")
     try:
         raw = await request.json()
         payload = raw if isinstance(raw, dict) else {}
@@ -79,6 +77,8 @@ async def require_phase4_domain_access(
     supplied_tenant = payload.get("tenant_id") or request.path_params.get("tenant_id")
     if supplied_tenant is not None and str(supplied_tenant) != principal.tenant_id:
         raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "tenant_mismatch"})
+    if not persistence.is_postgres_enabled():
+        raise HTTPException(status_code=503, detail="Durable Phase 4 tenant authorization requires PostgreSQL")
 
     resources = _payload_resource_ids(request, payload)
     if not resources:
