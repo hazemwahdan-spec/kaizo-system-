@@ -9,12 +9,17 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 import persistence
+from phase4_route_guard import require_phase4_route_access
 
-router = APIRouter(prefix="/api/v1/training-workflow", tags=["training-workflow"])
+router = APIRouter(
+    prefix="/api/v1/training-workflow",
+    tags=["training-workflow"],
+    dependencies=[Depends(require_phase4_route_access)],
+)
 
 
 def _now() -> str:
