@@ -96,9 +96,11 @@ class FEAT012RecordAthleteAssessmentTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 201)
 
-        audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
-        matches = [x for x in audit.json()["logs"] if x["action"] == "ASSESSMENT_RECORDED"]
+        # The global audit endpoint is now intentionally tenant-scoped and
+        # requires a verified Phase 4 principal. This legacy business-contract
+        # test verifies the audit event emitted by the assessment operation;
+        # tenant-filtered API access is covered by Phase 4 security tests.
+        matches = [x for x in AUDIT_LOGS if x["action"] == "ASSESSMENT_RECORDED"]
         self.assertTrue(matches)
         self.assertEqual(matches[-1]["who"], "coach-feat012")
         self.assertEqual(matches[-1]["new_value"]["athlete_id"], athlete["athlete_id"])
