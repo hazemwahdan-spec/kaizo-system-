@@ -56,3 +56,48 @@ jobs:
           assert any(e['event']=='child_data_authorization' for e in events)
           print('P14 RUNTIME PASS: deny-by-default, scoped active consent, revocation/expiry, guardian/academy/scope mismatch, audit')
           PY
+
+  production-fail-closed:
+    runs-on: ubuntu-latest
+    env:
+      KAIZO_IDENTITY_MODE: production
+      KAIZO_PERSISTENCE_MODE: memory
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r consent/requirements.txt
+      - name: Start production-mode service without identity or durable storage
+        run: uvicorn consent.main:app --host 127.0.0.1 --port 8081 > /tmp/p14-production.log 2>&1 &
+      - name: Assert protected routes fail closed
+        run: |
+          python - <<'PY'
+          import json, time, urllib.error, urllib.request
+          base = 'http://127.0.0.1:8081'
+          for _ in range(30):
+              try:
+                  urllib.request.urlopen(base + '/health', timeout=1)
+                  break
+              except Exception:
+                  time.sleep(1)
+          access = {
+              "child_id": "child-1", "guardian_id": "guardian-1",
+              "academy_id": "academy-1", "resource": "athlete_progress", "action": "read"
+          }
+          consent = {"consent": {**access, "state": "active"}, "actor_id": "guardian-1"}
+          for path, body in [
+              ('/api/v1/authorize-child-data', access),
+              ('/api/v1/consents', consent),
+          ]:
+              request = urllib.request.Request(
+                  base + path, data=json.dumps(body).encode(),
+                  headers={"Content-Type": "application/json"}, method="POST"
+              )
+              try:
+                  urllib.request.urlopen(request, timeout=3)
+                  raise AssertionError(path + " unexpectedly allowed unauthenticated production access")
+              except urllib.error.HTTPError as exc:
+                  assert exc.code == 503, (path, exc.code, exc.read().decode())
+          print('P14 PRODUCTION FAIL-CLOSED PASS: no verified identity/provider configuration means protected routes deny access')
+          PY
