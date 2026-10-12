@@ -1380,10 +1380,44 @@ def capture_kpi(
     return capture
 
 @app.get("/api/v1/kpis/captures/{capture_id}", dependencies=[Depends(require_phase4_route_access)])
-def get_kpi_capture(capture_id: str) -> Dict[str, Any]:
+def get_kpi_capture(
+    capture_id: str,
+    request: Request,
+    phase4_access: Dict[str, Any] = Depends(require_phase4_route_access),
+) -> Dict[str, Any]:
     capture = persistence.get_kpi_capture(capture_id) if persistence.is_postgres_enabled() else KPI_CAPTURES.get(capture_id)
     if capture is None:
         raise HTTPException(status_code=404, detail="KPI capture not found")
+    tenant_id = phase4_access.get("tenant_id")
+    principal = phase4_access.get("principal")
+    actor_subject = getattr(principal, "actor_id", None)
+    if not tenant_id or not actor_subject:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required to read a KPI capture")
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT 1 FROM kaizo_resource_tenant_bindings
+                   WHERE resource_type='kpi_definition' AND resource_id=%s AND tenant_id=%s
+                   LIMIT 1""",
+                (capture["kpi_id"], tenant_id),
+            )
+            allowed = cur.fetchone() is not None
+            cur.execute(
+                """INSERT INTO kaizo_p14_audit_events
+                   (actor_subject_id,event_type,tenant_id,resource_type,action,
+                    allowed,reason_code,trace_id,metadata)
+                   VALUES (%s,'authorization_decision',%s,'kpi_definition',%s,%s,%s,%s,%s::jsonb)""",
+                (actor_subject, tenant_id, f"GET:/api/v1/kpis/captures/{capture_id}", allowed,
+                 "active_membership_and_resource_binding" if allowed else "kpi_or_athlete_tenant_binding_missing",
+                 request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+                 json.dumps({"source": "kpi_capture_read", "kpi_id": capture["kpi_id"]})),
+            )
+        conn.commit()
+    if not allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={"decision": "DENY", "reason_code": "kpi_or_athlete_tenant_binding_missing"},
+        )
     return capture
 
 
