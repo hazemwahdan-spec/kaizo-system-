@@ -51,11 +51,10 @@ def save_item(r, phase4=None):
 
 def get_item(k, tenant_id=None):
     if persistence.is_postgres_enabled():
-        data=persistence.load_knowledge(tenant_id=tenant_id).get(k)
-        if data:
-            return data
-        if tenant_id is not None:
+        # Never fall back to an unscoped global repository read on a request path.
+        if not tenant_id:
             return None
+        return persistence.load_knowledge(tenant_id=tenant_id).get(k)
     return MEMORY_ITEMS.get(k)
 
 class ProvenanceRequest(BaseModel):
@@ -87,7 +86,10 @@ def provenance(
         raise HTTPException(400,{"evidence_status":"invalid","allowed":sorted(allowed_evidence_statuses)})
     if not req.evidence_refs: raise HTTPException(400,"at least one evidence reference is required")
     if persistence.is_postgres_enabled():
-        existing_records = list(persistence.load_knowledge(tenant_id=phase4.get("tenant_id")).values())
+        tenant_id = phase4.get("tenant_id")
+        if not tenant_id:
+            raise HTTPException(503, "Verified tenant context is required for knowledge provenance")
+        existing_records = list(persistence.load_knowledge(tenant_id=tenant_id).values())
     else:
         existing_records = list(MEMORY_ITEMS.values())
     conflicts=[
@@ -131,7 +133,10 @@ def retrieve(
     if not req.workflow_context.strip() or not req.query.strip() or not req.requested_by.strip(): raise HTTPException(400,"workflow_context, query and requested_by are required")
     q=req.query.lower()
     if persistence.is_postgres_enabled():
-        source_records = persistence.load_knowledge(tenant_id=phase4.get("tenant_id")).values()
+        tenant_id = phase4.get("tenant_id")
+        if not tenant_id:
+            raise HTTPException(503, "Verified tenant context is required for knowledge retrieval")
+        source_records = persistence.load_knowledge(tenant_id=tenant_id).values()
     else:
         source_records = MEMORY_ITEMS.values()
     candidates=[r for r in source_records if r["lifecycle_status"]=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower())]
