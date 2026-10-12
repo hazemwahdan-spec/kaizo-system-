@@ -1,7 +1,7 @@
 # KAIZO Phase 4 — Core API Identity, Tenant and P14 Consent Integration
 
 **Date:** 2026-10-12  
-**Status:** Integration candidate — CI validation pending  
+**Status:** Core API CI validation PASS; production rollout and Phase 4 EXIT remain BLOCKED  
 **Requirement:** P4-REQ-011 remains OPEN until all checks and independent retest pass.
 
 ## Route enforcement added
@@ -29,6 +29,15 @@ The backend/main.py Core API now attaches the Phase 4 guard to athlete reads/upd
 - Deterministic HTTP contract tests through the actual FastAPI route for cross-tenant, missing-consent, revoked/superseded-consent, and unverified-identity denial.
 - PostgreSQL-backed route tests run against the disposable PostgreSQL service. They create tenant, membership, resource binding and guardian/consent records, then assert successful scoped access with active consent and HTTP 403 plus durable deny audit for cross-tenant access, absent consent, and a newer revoked consent superseding an older active row.
 - Migration remains additive and is applied only to the CI disposable database in this workflow.
+
+## Verified CI evidence (2026-10-12)
+
+- **Persistence Adapter Validation #566 — SUCCESS**: compile, PostgreSQL migration/schema checks, durable tenant/P14 repository tests, route denial tests, FEAT-001 through FEAT-027 acceptance, Digital Brain, approved-rule governance, provenance, override lineage, evidence fail-closed, and audit/plan authority checks. [Run #566](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38221845409)
+- **FEAT-028 Acceptance #103 — SUCCESS** after isolating the business-contract test from the real Phase 4 authorization dependency. [Run #103](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38221845383)
+- **Phase 7 Identity RBAC Boundary #210 — SUCCESS** after updating the commercial authorization tests to use the canonical tenant/resource-binding and P14 consent schema. [Run #210](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38221966602)
+- **Persistence Adapter Validation #571 — SUCCESS** on the coordinated branch update. [Run #571](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38221966561)
+
+These are CI results against disposable test infrastructure, not production identity, migration, tenant-backfill, or live negative-test evidence.
 
 ## Rollout limitations / gates
 
