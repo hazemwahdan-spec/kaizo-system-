@@ -146,11 +146,14 @@ def _audit(event: str, payload: dict) -> None:
             with _connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "INSERT INTO kaizo_p14_audit_events
+                        """INSERT INTO kaizo_p14_audit_events
                            (actor_subject_id,event_type,child_resource_id,guardian_subject_id,
                             tenant_id,resource_type,action,allowed,reason_code,metadata)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
-                        (event, entry["timestamp"], psycopg.types.json.Jsonb(payload)),
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)""",
+                        (payload.get("actor_id"), event, payload.get("child_id"), payload.get("guardian_id"),
+                         payload.get("academy_id"), payload.get("resource"), payload.get("action"),
+                         payload.get("allowed"), payload.get("reason", event),
+                         psycopg.types.json.Jsonb(payload)),
                     )
         except Exception as exc:
             raise HTTPException(status_code=503, detail="consent audit persistence failed") from exc
@@ -347,7 +350,7 @@ def audit_log(authorization: str | None = Header(None, alias="Authorization")):
                                            guardian_subject_id,tenant_id,resource_type,action,
                                            allowed,reason_code,trace_id,metadata
                                     FROM kaizo_p14_audit_events
-                                    WHERE tenant_id=%s OR tenant_id IS NULL
+                                    WHERE tenant_id=%s
                                     ORDER BY occurred_at""", (claims.get("tenant_id"),))
                     events = [
                         {"event": event, "timestamp": timestamp, "actor_id": actor,
