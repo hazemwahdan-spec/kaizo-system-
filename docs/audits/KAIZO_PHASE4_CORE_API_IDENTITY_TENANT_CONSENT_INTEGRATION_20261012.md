@@ -6,12 +6,13 @@
 
 ## Route enforcement added
 
-The backend/main.py Core API now attaches the Phase 4 guard to athlete reads/updates and these assessment/decision routes:
+The backend/main.py Core API now attaches the Phase 4 guard to athlete reads/updates and athlete-bound routes:
 - create/get assessment and attach/list assessment evidence
-- create/get problem statement and create/list evidence-linked diagnosis
-- decision candidate generation and comparisons
-- candidate rationale and coach-review endpoints
-- athlete creation is gated by verified OIDC and active database membership; new athlete IDs receive a server-side athlete tenant binding from the verified principal's tenant.
+- create/list problem statements, diagnosis, cause-context, decision candidates/comparisons/rationales/reviews/records
+- create/get training plans, sessions and dosage
+- KPI capture, evidence creation/retrieval/listing, state snapshots, Digital Twin sync/retrieval, rules/safety evaluation, and decision loop/adapt
+- athlete creation is gated by verified OIDC and active database membership; new athlete IDs receive a server-side athlete tenant binding from the verified principal's tenant
+- athlete-filtered collection routes require an athlete/subject scope; unscoped collections are denied rather than returning cross-academy data.
 
 ## Authorization path
 
@@ -35,6 +36,6 @@ The backend/main.py Core API now attaches the Phase 4 guard to athlete reads/upd
 - Existing athlete records remain unbound until a separately reviewed, evidence-backed ownership backfill is executed. They are denied by default.
 - The production OIDC environment gate and issuer/audience/JWKS values must be configured and verified before the guarded routes can be used. This PR does not alter production variables.
 - Guardian identity verification and consent enrollment must be sourced from a trusted process; request-body guardian_id or actor fields are not accepted as proof.
-- The scope is the listed Core API routes; other routers still require inventory and route-level integration before claiming complete Phase 4 coverage.
+- The scope is athlete-bound routes in backend/main.py; separate routers (feature runtime, training workflow, knowledge, evidence-safety, state-cycle, reporting, competition and academy operations) still require route inventory/integration before claiming complete Phase 4 coverage. Global audit-log tenant filtering also remains a separate gate.
 - Do not close P4-REQ-011 or Phase 4 EXIT until this PR's checks pass, ownership backfill is reviewed, remaining protected routes are covered, controlled verification succeeds, and an independent retest passes.
 - Coach Final Authority remains mandatory; no autonomous execution is authorized.
