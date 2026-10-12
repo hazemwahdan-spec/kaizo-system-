@@ -89,9 +89,12 @@ def authorize_resource_access(
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT 1 FROM kaizo_tenant_memberships
-                   WHERE tenant_id=%s AND subject_id=%s AND role = ANY(%s)
-                     AND status='ACTIVE' LIMIT 1""",
+                """SELECT 1
+                   FROM kaizo_tenant_memberships m
+                   JOIN kaizo_tenants t ON t.tenant_id=m.tenant_id
+                   WHERE m.tenant_id=%s AND m.subject_id=%s AND m.role = ANY(%s)
+                     AND m.status='ACTIVE' AND t.status='ACTIVE'
+                   LIMIT 1""",
                 (tenant_id, subject, list(allowed_roles)),
             )
             membership_ok = cur.fetchone() is not None
