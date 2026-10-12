@@ -38,8 +38,12 @@ _RESOURCE_FIELDS = {
 
 def _payload_resource_ids(request: Request, payload: dict[str, Any]) -> list[tuple[str, str]]:
     values: list[tuple[str, str]] = []
+    nested_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
     for key, resource_type in _RESOURCE_FIELDS.items():
-        value = request.path_params.get(key) or payload.get(key) or request.query_params.get(key)
+        value = (
+            request.path_params.get(key) or payload.get(key)
+            or nested_payload.get(key) or request.query_params.get(key)
+        )
         if value is None or not str(value).strip():
             continue
         inferred = resource_type
@@ -198,8 +202,17 @@ async def require_phase4_domain_access(
             request.method.upper() == "POST"
             and request.url.path == "/api/v1/knowledge-runtime/feat-049/retrieve"
         )
+        is_feature_create = request.method.upper() == "POST" and request.url.path.startswith("/api/v1/features/")
+        is_feature_list = (
+            request.method.upper() == "GET" and request.url.path.startswith("/api/v1/features/")
+            and not request.path_params.get("record_id")
+        )
         create_resource_type = creation_types.get(request.url.path) if request.method.upper() == "POST" else None
-        scope_resource_type = create_resource_type or ("knowledge" if is_tenant_scoped_knowledge_retrieval else None)
+        scope_resource_type = (
+            create_resource_type
+            or ("knowledge" if is_tenant_scoped_knowledge_retrieval else None)
+            or ("feature_record" if is_feature_create or is_feature_list else None)
+        )
         if not scope_resource_type:
             raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "resource_binding_required"})
         with persistence.connection() as conn:
@@ -220,7 +233,7 @@ async def require_phase4_domain_access(
                        VALUES (%s,'authorization_decision',%s,%s,%s,%s,%s,%s,%s::jsonb)""",
                     (principal.actor_id, principal.tenant_id, scope_resource_type,
                      f"{request.method.upper()}:{request.url.path}", allowed,
-                     ("active_membership_tenant_scoped_operation" if is_tenant_scoped_knowledge_retrieval else "active_membership_create_authorized") if allowed else "active_tenant_membership_missing",
+                     ("active_membership_tenant_scoped_operation" if is_tenant_scoped_knowledge_retrieval or is_feature_list else "active_membership_create_authorized") if allowed else "active_tenant_membership_missing",
                      request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
                      '{"source":"phase4_domain_authorization","operation":"tenant_scoped_root_operation"}'),
                 )
