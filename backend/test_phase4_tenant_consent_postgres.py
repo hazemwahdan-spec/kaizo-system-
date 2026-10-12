@@ -6,10 +6,12 @@ PostgreSQL service configured in persistence-adapter-validation.yml.
 import os
 import unittest
 import uuid
+from types import SimpleNamespace
 from datetime import datetime, timezone
 
 import persistence
 from phase4_tenant_consent import authorize_resource_access
+from phase4_route_guard import create_athlete_with_tenant
 
 
 @unittest.skipUnless(
@@ -37,9 +39,9 @@ class Phase4TenantConsentPostgresTests(unittest.TestCase):
                 cur.execute(
                     """INSERT INTO kaizo_tenant_memberships
                        (tenant_id,subject_id,role,status)
-                       VALUES (%s,%s,'parent','ACTIVE'),(%s,%s,'parent','ACTIVE'),(%s,%s,'parent','ACTIVE')""",
+                       VALUES (%s,%s,'parent','ACTIVE'),(%s,%s,'parent','ACTIVE'),(%s,%s,'parent','ACTIVE'),(%s,%s,'coach','ACTIVE')""",
                     (self.tenant, self.guardian, self.other_tenant, self.guardian,
-                     self.tenant, self.other_guardian),
+                     self.tenant, self.other_guardian, self.tenant, self.coach),
                 )
                 cur.execute(
                     """INSERT INTO kaizo_resource_tenant_bindings
@@ -92,6 +94,40 @@ class Phase4TenantConsentPostgresTests(unittest.TestCase):
                        VALUES (%s,%s,%s,'athlete','read',%s,%s,{when_sql})""",
                     (self.athlete,self.guardian,self.tenant,state,self.coach),
                 )
+
+    def test_new_athlete_is_bound_to_authenticated_academy_atomically(self):
+        new_athlete_id = "new-athlete-" + uuid.uuid4().hex
+        athlete = {
+            "athlete_id": new_athlete_id,
+            "display_name": "CI Athlete",
+            "status": "ACTIVE",
+            "metadata": {"source": "phase4-test"},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        principal = SimpleNamespace(
+            actor_id=self.coach, role="coach", tenant_id=self.tenant,
+            verified=True, source="oidc_jwt",
+        )
+        try:
+            create_athlete_with_tenant(principal, athlete)
+            with persistence.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT tenant_id,bound_by_subject FROM kaizo_resource_tenant_bindings
+                           WHERE resource_type='athlete' AND resource_id=%s""",
+                        (new_athlete_id,),
+                    )
+                    binding = cur.fetchone()
+                    cur.execute("SELECT 1 FROM kaizo_athletes WHERE athlete_id=%s", (new_athlete_id,))
+                    persisted = cur.fetchone()
+            self.assertEqual(binding, (self.tenant, self.coach))
+            self.assertIsNotNone(persisted)
+        finally:
+            with persistence.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM kaizo_resource_tenant_bindings WHERE resource_id=%s", (new_athlete_id,))
+                    cur.execute("DELETE FROM kaizo_athletes WHERE athlete_id=%s", (new_athlete_id,))
 
     def test_cross_tenant_resource_binding_is_denied_and_audited(self):
         result = self.authorize(tenant_id=self.other_tenant)
