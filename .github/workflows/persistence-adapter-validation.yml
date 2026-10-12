@@ -60,6 +60,8 @@ jobs:
         run: PYTHONPATH=. python -m unittest test_phase4_route_authorization_http -v
       - name: Run PostgreSQL-backed Phase 4 route denial tests
         run: PYTHONPATH=. python -m unittest test_phase4_postgres_route_denial -v
+      - name: Verify tenant-scoped audit endpoint and fail-closed behavior
+        run: PYTHONPATH=. python -m unittest test_phase4_audit_endpoint -v
       - name: Verify OpenAPI and documentation endpoint contract
         run: PYTHONPATH=. python tests/test_openapi_contract.py
       - name: Run FEAT-001 athlete acceptance tests
