@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Depends
-from phase4_domain_authorization import require_phase4_domain_access
+from phase4_domain_authorization import bind_resource_to_tenant_cursor, require_phase4_domain_access
 from pydantic import BaseModel, Field
 
 import persistence
@@ -167,7 +167,10 @@ def _membership_exists(academy_id: str, coach_id: str) -> bool:
 
 
 @router.post("/academies", status_code=201)
-def create_academy(req: AcademyCreate) -> Dict[str, Any]:
+def create_academy(
+    req: AcademyCreate,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("name", req.name), ("owner_id", req.owner_id))
     if req.status not in {"ACTIVE", "INACTIVE", "ARCHIVED"}:
@@ -185,9 +188,13 @@ def create_academy(req: AcademyCreate) -> Dict[str, Any]:
         "coach_final_authority": True,
         "execution_authorized": False,
     }
-    ACADEMIES[item["academy_id"]] = item
     if _pg_enabled():
         _ensure_schema()
+        principal = phase4.get("principal")
+        actor_subject = getattr(principal, "actor_id", None)
+        tenant_id = phase4.get("tenant_id")
+        if not actor_subject or not tenant_id:
+            raise HTTPException(status_code=503, detail="Verified tenant context is required to persist an academy")
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -196,7 +203,12 @@ def create_academy(req: AcademyCreate) -> Dict[str, Any]:
                     VALUES (%s,%s,%s,%s,%s,%s)""",
                     (item["academy_id"], item["name"], item["status"], item["owner_id"], now, now),
                 )
+                bind_resource_to_tenant_cursor(
+                    cur, resource_type="academy", resource_id=item["academy_id"],
+                    tenant_id=tenant_id, bound_by_subject=actor_subject,
+                )
             conn.commit()
+    ACADEMIES[item["academy_id"]] = item
     _audit(req.owner_id, "ACADEMY_CREATED", item)
     return item
 
