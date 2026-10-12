@@ -63,6 +63,8 @@ jobs:
         run: PYTHONPATH=. python -m unittest test_phase4_postgres_route_denial -v
       - name: Verify tenant-scoped audit endpoint and fail-closed behavior
         run: PYTHONPATH=. python -m unittest test_phase4_audit_endpoint -v
+      - name: Verify all domain runtime routes fail closed without verified identity
+        run: PYTHONPATH=. pytest -q test_phase4_domain_runtime_auth.py
       - name: Verify OpenAPI and documentation endpoint contract
         run: PYTHONPATH=. python tests/test_openapi_contract.py
       - name: Run FEAT-001 athlete acceptance tests
