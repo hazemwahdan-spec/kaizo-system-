@@ -117,3 +117,6 @@ jobs:
 
       - name: Run Phase 4 canonical migration and identity-store integration acceptance tests
         run: PYTHONPATH=. python test_phase4_canonical_identity_consent_integration.py
+
+      - name: Run Phase 4 actual Core resource authorization HTTP acceptance tests
+        run: PYTHONPATH=. python -m pytest -q test_phase4_actual_app_route_inventory.py test_phase4_core_resource_authorization.py
