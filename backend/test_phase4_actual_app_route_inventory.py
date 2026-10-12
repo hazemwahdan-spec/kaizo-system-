@@ -78,9 +78,8 @@ def test_actual_core_app_sensitive_routes_are_wired_to_phase4_identity_and_scope
     ]
 
     assert all(key in by_route for key in sensitive_baseline)
-    # Explicitly pins the known gap so this file cannot be mistaken for proof
-    # of protection. This expectation must be inverted when real wiring lands.
+    # The five Core handlers must depend on the shared fail-closed authorization gate.
     assert all(
-        boundary.require_phase4_principal not in by_route[key]["dependencies"]
+        authz.require_core_actor in by_route[key]["dependencies"]
         for key in sensitive_baseline
     )
