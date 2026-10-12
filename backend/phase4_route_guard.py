@@ -91,10 +91,114 @@ def _resolve_athlete_id(request: Request, payload: dict[str, Any]) -> str:
             raise HTTPException(status_code=404, detail="decision candidate not found")
         return str(candidate.get("athlete_id") or "")
 
+    # Additional child resources are resolved through their persisted parent records.
+    if path.get("plan_id") or payload.get("plan_id"):
+        plan_id = str(path.get("plan_id") or payload.get("plan_id"))
+        plan = persistence.get_training_plan(plan_id)
+        if not plan:
+            raise HTTPException(status_code=404, detail="training plan not found")
+        return str(plan.get("athlete_id") or "")
+
+    if path.get("session_id") or payload.get("session_id"):
+        session_id = str(path.get("session_id") or payload.get("session_id"))
+        session = persistence.get_training_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="training session not found")
+        return str(session.get("athlete_id") or "")
+
+    if path.get("dosage_id"):
+        dosage = persistence.get_training_dosage(str(path["dosage_id"]))
+        if not dosage:
+            raise HTTPException(status_code=404, detail="training dosage not found")
+        return str(dosage.get("athlete_id") or "")
+
+    if path.get("snapshot_id"):
+        snapshot = persistence.get_state_snapshot(str(path["snapshot_id"]))
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="state snapshot not found")
+        return str(snapshot.get("athlete_id") or "")
+
+    if path.get("capture_id"):
+        capture = persistence.get_kpi_capture(str(path["capture_id"]))
+        if not capture:
+            raise HTTPException(status_code=404, detail="KPI capture not found")
+        return str(capture.get("athlete_id") or "")
+
+    if path.get("selection_id"):
+        selection = persistence.get_problem_library_selection(str(path["selection_id"]))
+        if not selection:
+            raise HTTPException(status_code=404, detail="problem-library selection not found")
+        return str(selection.get("athlete_id") or "")
+
+    if path.get("decision_id") or payload.get("decision_id"):
+        decision_id = str(path.get("decision_id") or payload.get("decision_id"))
+        decision = persistence.get_decision_record(decision_id)
+        if not decision:
+            raise HTTPException(status_code=404, detail="decision record not found")
+        persisted_athlete_id = str(decision.get("athlete_id") or "")
+        if payload.get("athlete_id") and str(payload["athlete_id"]) != persisted_athlete_id:
+            raise HTTPException(status_code=403, detail="Decision/athlete ownership mismatch")
+        return persisted_athlete_id
+
+    if path.get("evidence_id"):
+        evidence = persistence.get_evidence(str(path["evidence_id"]))
+        if not evidence:
+            raise HTTPException(status_code=404, detail="evidence not found")
+        return _resolve_subject_athlete(str(evidence.get("subject_type") or ""),
+                                        str(evidence.get("subject_id") or ""))
+
+    if payload.get("subject_id") and payload.get("subject_type"):
+        return _resolve_subject_athlete(str(payload["subject_type"]), str(payload["subject_id"]))
+
+    if path.get("entity_id") or payload.get("entity_id"):
+        entity_id = str(path.get("entity_id") or payload.get("entity_id"))
+        athlete = persistence.get_athlete(entity_id)
+        if athlete:
+            return entity_id
+        twin = persistence.get_digital_twin(entity_id)
+        twin_state = _as_dict(twin.get("state")) if twin else {}
+        if twin_state.get("athlete_id"):
+            return str(twin_state["athlete_id"])
+        if payload.get("state", {}).get("athlete_id"):
+            return str(payload["state"]["athlete_id"])
+        raise HTTPException(status_code=403, detail="Digital Twin entity has no verified athlete ownership")
+
+    query_athlete_id = request.query_params.get("athlete_id")
+    if query_athlete_id:
+        return query_athlete_id
+    query_subject_id = request.query_params.get("subject_id")
+    if query_subject_id:
+        try:
+            return _resolve_subject_athlete("auto", query_subject_id)
+        except HTTPException:
+            raise
+
     if payload.get("athlete_id"):
         return str(payload["athlete_id"])
 
     raise HTTPException(status_code=403, detail="Persisted athlete ownership could not be resolved")
+
+
+def _resolve_subject_athlete(subject_type: str, subject_id: str) -> str:
+    normalized = subject_type.strip().lower()
+    if not subject_id.strip():
+        raise HTTPException(status_code=403, detail="Evidence subject ownership is incomplete")
+    if normalized in {"athlete", "player"} or persistence.get_athlete(subject_id):
+        if persistence.get_athlete(subject_id):
+            return subject_id
+    if normalized in {"assessment", "assessment_record"} or persistence.get_assessment(subject_id):
+        assessment = persistence.get_assessment(subject_id)
+        if assessment:
+            return str(assessment.get("athlete_id") or "")
+    if normalized in {"problem", "problem_statement", "problem-statement"} or persistence.get_problem_statement(subject_id):
+        problem = persistence.get_problem_statement(subject_id)
+        if problem:
+            return str(problem.get("athlete_id") or "")
+    if normalized in {"decision", "decision_record"} or persistence.get_decision_record(subject_id):
+        decision = persistence.get_decision_record(subject_id)
+        if decision:
+            return str(decision.get("athlete_id") or "")
+    raise HTTPException(status_code=403, detail="Evidence subject has no resolvable athlete ownership")
 
 
 async def require_phase4_route_access(request: Request) -> dict[str, Any]:
