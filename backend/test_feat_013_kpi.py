@@ -34,7 +34,9 @@ class FEAT013KPIAcceptanceTests(unittest.TestCase):
         missing_kpi = self.client.post("/api/v1/kpis/captures", json={
             "athlete_id": self.athlete_id, "kpi_id": "missing-kpi", "value": 21.0, "captured_by": "coach-feat013"
         })
-        self.assertEqual(missing_kpi.status_code, 404)
+        # A foreign or unbound KPI is denied before existence is disclosed.
+        self.assertEqual(missing_kpi.status_code, 403)
+        self.assertEqual(missing_kpi.json()["detail"]["reason_code"], "kpi_or_athlete_tenant_binding_missing")
 
     def test_capture_kpi_preserves_value_ownership_and_audit(self):
         self.client.post("/api/v1/kpis", json={
