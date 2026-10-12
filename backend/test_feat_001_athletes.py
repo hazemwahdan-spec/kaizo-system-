@@ -1,14 +1,36 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+import main
 from main import app, ATHLETE_RECORDS
+from phase4_identity_boundary import Principal
 
 
 class FEAT001AthleteRecordTests(unittest.TestCase):
     def setUp(self):
         ATHLETE_RECORDS.clear()
         self.client = TestClient(app)
+        principal = Principal(
+            actor_id="auth0|test-coach", role="coach", tenant_id="test-academy",
+            resource_owner_id=None, verified=True, source="oidc_jwt",
+        )
+        app.dependency_overrides[main.require_phase4_principal] = lambda: principal
+        self.authorization_patch = patch(
+            "phase4_route_guard.authorize_resource_access",
+            return_value={
+                "allowed": True,
+                "reason_code": "active_membership_and_resource_binding",
+                "audit_persisted": True,
+                "trace_id": "trace-feat-001-test",
+            },
+        )
+        self.authorization_patch.start()
+
+    def tearDown(self):
+        self.authorization_patch.stop()
+        app.dependency_overrides.clear()
 
     def test_create_read_and_update_athlete(self):
         created = self.client.post(
