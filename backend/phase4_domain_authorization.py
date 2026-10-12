@@ -126,6 +126,26 @@ async def require_phase4_domain_access(
         raise HTTPException(status_code=503, detail="Durable Phase 4 tenant authorization requires PostgreSQL")
 
     resources = _payload_resource_ids(request, payload)
+    # A new knowledge ID may be bound only when neither a binding nor a legacy
+    # record exists. Existing unbound records are not silently claimed.
+    if request.method.upper() == "POST" and request.url.path == "/api/v1/knowledge-runtime/feat-047/provenance":
+        knowledge_id = str(payload.get("knowledge_id") or "").strip()
+        if knowledge_id:
+            with persistence.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                           WHERE resource_type='knowledge' AND resource_id=%s LIMIT 1""",
+                        (knowledge_id,),
+                    )
+                    existing_binding = cur.fetchone()
+                    cur.execute(
+                        "SELECT 1 FROM kaizo_knowledge_repository WHERE item_id=%s",
+                        (knowledge_id,),
+                    )
+                    existing_record = cur.fetchone()
+            if existing_binding is None and existing_record is None:
+                resources = [item for item in resources if item != ("knowledge", knowledge_id)]
     if not resources:
         # Root resources have no parent binding yet. These explicitly allowlisted
         # creation handlers must write their canonical resource binding in the
@@ -133,6 +153,7 @@ async def require_phase4_domain_access(
         creation_types = {
             "/api/v1/academy/academies": "academy",
             "/api/v1/competition/events": "competition_event",
+            "/api/v1/knowledge-runtime/feat-047/provenance": "knowledge",
         }
         create_resource_type = creation_types.get(request.url.path) if request.method.upper() == "POST" else None
         if not create_resource_type:
