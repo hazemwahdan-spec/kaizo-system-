@@ -139,7 +139,7 @@ def retrieve(
         source_records = persistence.load_knowledge(tenant_id=tenant_id).values()
     else:
         source_records = MEMORY_ITEMS.values()
-    candidates=[r for r in source_records if r["lifecycle_status"]=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower())]
+    candidates=[r for r in source_records if r.get("lifecycle_status")=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower())]
     return {"feature_id":"FEAT-049","workflow_context":req.workflow_context,"query":req.query,"results":candidates,"retrieved_by":req.requested_by,"coach_final_authority":True,"execution_authorized":False}
 
 @router.post("/feat-050/link",status_code=201)
