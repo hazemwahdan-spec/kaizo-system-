@@ -27,8 +27,11 @@ class FEAT001AthleteRecordTests(unittest.TestCase):
             },
         )
         self.authorization_patch.start()
+        self.create_patch = patch("main.create_athlete_with_tenant", return_value=None)
+        self.create_patch.start()
 
     def tearDown(self):
+        self.create_patch.stop()
         self.authorization_patch.stop()
         app.dependency_overrides.clear()
 
