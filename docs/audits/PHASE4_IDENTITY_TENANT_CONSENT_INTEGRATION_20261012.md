@@ -29,3 +29,12 @@
 - No production environment variables, OIDC settings, or guardian-link data were changed by this branch.
 - Do not claim P4-REQ-011 closed until the PR checks pass, the code is reviewed/merged, the production DB configuration is confirmed, and live rejection tests prove cross-tenant, missing-consent and revoked-consent cases.
 - The existing Core API decision, assessment, KPI, digital-twin and training-plan routes still require the full route-by-route identity/resource authorization review recorded in `docs/audits/KAIZO_PHASE4_CORE_ROUTE_IDENTITY_INVENTORY_20261011.md`. This PR does not claim that all those Core routes are now protected.
+
+
+## Follow-up hardening — 2026-10-12
+
+- Removed the second PostgreSQL `consent_change` audit write after the consent upsert. The change event is now recorded once, in the same transaction as the consent mutation; memory-mode development tests retain their in-memory audit behavior.
+- Unknown/corrupt persisted consent states are denied as `invalid_consent_state` instead of escaping enum parsing as an unhandled server error.
+- Added a separate production-mode CI job that verifies consent write and authorization routes return 503 when no verified identity provider is configured. This is fail-closed evidence only, not proof of successful live OIDC authentication.
+- Updated draft PR #126 to record the evidence boundary and its overlap with PR #124. The two candidate branches must be reconciled before merging; neither branch alone is being declared a Phase 4 exit.
+- At the latest check, product contract, product runtime, product surface, runtime adapter, identity RBAC, UI, end-to-end FEAT-033–040, and commercial security workflows were successful. Persistence Adapter Validation was still in progress. The new P14 workflow run is not represented in the connector's PR-only workflow-run listing, so its conclusion remains unconfirmed here.
