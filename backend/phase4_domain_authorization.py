@@ -43,6 +43,11 @@ def _payload_resource_ids(request: Request, payload: dict[str, Any]) -> list[tup
             inferred = {"athlete": "athlete", "player": "athlete", "academy": "academy",
                         "knowledge": "knowledge", "competition_event": "competition_event",
                         "event": "competition_event"}.get(subject_type)
+            if inferred is None and persistence.is_postgres_enabled():
+                # A bare subject_id is accepted only when the persisted athlete
+                # repository proves it is an athlete; otherwise deny by default.
+                if persistence.get_athlete(str(value)):
+                    inferred = "athlete"
         elif key == "resource_id":
             inferred = str(payload.get("resource_type") or "").strip().lower() or None
         if inferred:
