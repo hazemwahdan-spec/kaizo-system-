@@ -6,13 +6,32 @@ os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
 
 from fastapi.testclient import TestClient
+import pytest
 from main import app
 import knowledge_runtime
 import persistence
+from phase4_domain_authorization import require_phase4_domain_access
 
 persistence.initialize()
 client = TestClient(app)
 BASE = "/api/v1/knowledge-runtime"
+
+
+@pytest.fixture(autouse=True)
+def isolate_provenance_contract_tests_from_live_tenant_guard():
+    # Version/status/retrieval contracts are tested here. Tenant binding and
+    # spoofing are independently exercised against PostgreSQL in Phase 4 tests.
+    previous = app.dependency_overrides.get(require_phase4_domain_access)
+    app.dependency_overrides[require_phase4_domain_access] = lambda: {
+        "principal": "phase4-provenance-test", "tenant_id": "phase4-provenance-test-tenant"
+    }
+    try:
+        yield
+    finally:
+        if previous is None:
+            app.dependency_overrides.pop(require_phase4_domain_access, None)
+        else:
+            app.dependency_overrides[require_phase4_domain_access] = previous
 
 
 def provenance(status="VERIFIED", **overrides):
