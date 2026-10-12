@@ -3,14 +3,14 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
-from evidence_store import EVIDENCE_RECORDS
+from phase4_core_resource_authorization import (\n    require_core_actor, assert_resource_tenant, assert_assessment_tenant, bind_new_resource,\n)\nfrom productization.identity import Principal\nfrom evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
 from knowledge_runtime import router as knowledge_runtime_router
@@ -64,7 +64,7 @@ class AthleteUpdateRequest(BaseModel):
 
 
 @app.post("/api/v1/athletes", status_code=status.HTTP_201_CREATED)
-def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
+def create_athlete(req: AthleteCreateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     display_name = req.display_name.strip()
     if not display_name:
         raise HTTPException(status_code=400, detail="display_name is required")
@@ -140,7 +140,7 @@ class AssessmentCreateRequest(BaseModel):
 
 
 @app.post("/api/v1/assessments", status_code=status.HTTP_201_CREATED)
-def create_assessment(req: AssessmentCreateRequest) -> Dict[str, Any]:
+def create_assessment(req: AssessmentCreateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if not req.athlete_id.strip():
         raise HTTPException(status_code=400, detail="athlete_id is required")
     if not req.template_id.strip():
