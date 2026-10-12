@@ -27,6 +27,7 @@ _RESOURCE_FIELDS = {
     "event_id": "competition_event", "report_id": "report",
     "subject_id": None, "entity_id": "digital_twin",
     "assessment_id": "assessment", "decision_id": "decision",
+    "membership_id": "academy_membership", "assignment_id": "academy_assignment",
     "resource_id": None,
 }
 
