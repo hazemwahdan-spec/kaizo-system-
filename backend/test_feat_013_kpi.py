@@ -55,7 +55,10 @@ class FEAT013KPIAcceptanceTests(unittest.TestCase):
         # verified by dedicated Phase 4 security tests.
         actions = [entry for entry in main.AUDIT_LOGS if entry["action"] == "KPI_CAPTURED"]
         self.assertTrue(actions)
-        self.assertEqual(actions[-1]["who"], "coach-feat013")
+        from phase4_identity_boundary import require_phase4_principal
+        verified_principal = main.app.dependency_overrides[require_phase4_principal]()
+        self.assertEqual(actions[-1]["who"], verified_principal.actor_id)
+        self.assertNotEqual(actions[-1]["who"], "coach-feat013")
         self.assertEqual(actions[-1]["new_value"]["athlete_id"], self.athlete_id)
 
     def test_invalid_kpi_direction_is_rejected(self):
