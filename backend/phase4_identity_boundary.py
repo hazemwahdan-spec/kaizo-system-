@@ -5,8 +5,6 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-import jwt
-from jwt import PyJWKClient
 from fastapi import Header, HTTPException
 
 
@@ -36,6 +34,9 @@ def resolve_bearer_principal(authorization: str | None) -> Principal:
     if not issuer or not audience or not jwks_url:
         raise IdentityNotConfiguredError("OIDC issuer, audience and JWKS must be configured")
     try:
+        import jwt
+        from jwt import PyJWKClient
+
         signing_key = PyJWKClient(jwks_url).get_signing_key_from_jwt(token)
         claims: dict[str, Any] = jwt.decode(
             token,
