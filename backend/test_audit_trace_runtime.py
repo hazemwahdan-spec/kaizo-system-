@@ -2,6 +2,8 @@ import os
 os.environ["KAIZO_PERSISTENCE_MODE"]="memory"
 from fastapi.testclient import TestClient
 from main import app
+from phase4_identity_boundary import Principal, require_phase4_principal
+app.dependency_overrides[require_phase4_principal] = lambda: Principal(actor_id="test-coach", role="coach", tenant_id="test-tenant", resource_owner_id=None, verified=True, source="test")
 client=TestClient(app)
 
 def test_052_055_full_cycle():
