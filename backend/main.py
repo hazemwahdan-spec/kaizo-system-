@@ -3,13 +3,14 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
+from phase4_route_guard import require_phase4_route_access
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
@@ -139,7 +140,7 @@ class AssessmentCreateRequest(BaseModel):
     recorded_by: str
 
 
-@app.post("/api/v1/assessments", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/assessments", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_assessment(req: AssessmentCreateRequest) -> Dict[str, Any]:
     if not req.athlete_id.strip():
         raise HTTPException(status_code=400, detail="athlete_id is required")
@@ -180,7 +181,7 @@ def create_assessment(req: AssessmentCreateRequest) -> Dict[str, Any]:
     return assessment
 
 
-@app.get("/api/v1/assessments/{assessment_id}")
+@app.get("/api/v1/assessments/{assessment_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_assessment(assessment_id: str) -> Dict[str, Any]:
     assessment = (
         persistence.get_assessment(assessment_id)
@@ -199,7 +200,7 @@ class AssessmentEvidenceAttachmentRequest(BaseModel):
     attached_by: str
 
 
-@app.post("/api/v1/assessments/{assessment_id}/evidence", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/assessments/{assessment_id}/evidence", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def attach_assessment_evidence(assessment_id: str, req: AssessmentEvidenceAttachmentRequest) -> Dict[str, Any]:
     if assessment_id != req.assessment_id:
         raise HTTPException(status_code=400, detail="assessment_id mismatch")
@@ -234,7 +235,7 @@ def attach_assessment_evidence(assessment_id: str, req: AssessmentEvidenceAttach
     return attachment
 
 
-@app.get("/api/v1/assessments/{assessment_id}/evidence")
+@app.get("/api/v1/assessments/{assessment_id}/evidence", dependencies=[Depends(require_phase4_route_access)])
 def list_assessment_evidence(assessment_id: str) -> Dict[str, Any]:
     assessment = persistence.get_assessment(assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(assessment_id)
     if assessment is None:
@@ -260,7 +261,7 @@ class ProblemStatementCreateRequest(BaseModel):
 PROBLEM_STATEMENTS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/problem-statements", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/problem-statements", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_problem_statement(req: ProblemStatementCreateRequest) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.statement.strip():
         raise HTTPException(status_code=400, detail="athlete_id, assessment_id and statement are required")
@@ -287,7 +288,7 @@ def create_problem_statement(req: ProblemStatementCreateRequest) -> Dict[str, An
     return problem
 
 
-@app.get("/api/v1/problem-statements/{problem_id}")
+@app.get("/api/v1/problem-statements/{problem_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_problem_statement(problem_id: str) -> Dict[str, Any]:
     problem=persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
@@ -315,7 +316,7 @@ class EvidenceLinkedDiagnosisRequest(BaseModel):
 EVIDENCE_LINKED_DIAGNOSES: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/problem-statements/{problem_id}/diagnosis", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/problem-statements/{problem_id}/diagnosis", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnosisRequest) -> Dict[str, Any]:
     if problem_id != req.problem_id:
         raise HTTPException(status_code=400, detail="problem_id mismatch")
@@ -362,7 +363,7 @@ def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnos
     return diagnosis
 
 
-@app.get("/api/v1/problem-statements/{problem_id}/diagnosis")
+@app.get("/api/v1/problem-statements/{problem_id}/diagnosis", dependencies=[Depends(require_phase4_route_access)])
 def list_evidence_linked_diagnoses(problem_id: str) -> Dict[str, Any]:
     problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
@@ -380,7 +381,7 @@ class DecisionCandidateGenerationRequest(BaseModel):
 DECISION_CANDIDATES: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-candidates", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-candidates", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def generate_decision_candidates(
     diagnosis_id: str, req: DecisionCandidateGenerationRequest
 ) -> Dict[str, Any]:
@@ -490,7 +491,7 @@ class DecisionRationaleEvidenceRequest(BaseModel):
 DECISION_RATIONALES: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/decision-candidates/{candidate_id}/rationale", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/decision-candidates/{candidate_id}/rationale", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceRequest) -> Dict[str, Any]:
     if candidate_id != req.candidate_id:
         raise HTTPException(status_code=400, detail="candidate_id mismatch")
@@ -557,7 +558,7 @@ def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceR
     return rationale
 
 
-@app.get("/api/v1/decision-candidates/{candidate_id}/rationale")
+@app.get("/api/v1/decision-candidates/{candidate_id}/rationale", dependencies=[Depends(require_phase4_route_access)])
 def list_decision_rationales(candidate_id: str) -> Dict[str, Any]:
     candidate = (
         persistence.get_decision_candidate(candidate_id)
@@ -591,7 +592,7 @@ class DecisionAlternativeComparisonRequest(BaseModel):
 DECISION_COMPARISONS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def compare_decision_alternatives(
     diagnosis_id: str, req: DecisionAlternativeComparisonRequest
 ) -> Dict[str, Any]:
@@ -682,7 +683,7 @@ class CoachDecisionReviewRequest(BaseModel):
 COACH_DECISION_REVIEWS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/decision-candidates/{candidate_id}/coach-review", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/decision-candidates/{candidate_id}/coach-review", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewRequest) -> Dict[str, Any]:
     if candidate_id != req.candidate_id:
         raise HTTPException(status_code=400, detail="candidate_id mismatch")
@@ -732,7 +733,7 @@ def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewR
     return review
 
 
-@app.get("/api/v1/decision-candidates/{candidate_id}/coach-review")
+@app.get("/api/v1/decision-candidates/{candidate_id}/coach-review", dependencies=[Depends(require_phase4_route_access)])
 def list_coach_decision_reviews(candidate_id: str) -> Dict[str, Any]:
     candidate = (
         persistence.get_decision_candidate(candidate_id)
@@ -764,7 +765,7 @@ class DecisionRecordRequest(BaseModel):
 DECISION_RECORDS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/decision-candidates/{candidate_id}/decision-record", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/decision-candidates/{candidate_id}/decision-record", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_decision_record(candidate_id: str, req: DecisionRecordRequest) -> Dict[str, Any]:
     if candidate_id != req.candidate_id:
         raise HTTPException(status_code=400, detail="candidate_id mismatch")
