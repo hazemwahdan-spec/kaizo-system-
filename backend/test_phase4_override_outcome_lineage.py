@@ -93,9 +93,8 @@ def test_phase4_override_preserves_candidate_and_audit_history():
     assert decision["coach_final_authority"] is True
     assert decision["execution_authorized"] is False
 
-    logs = client.get("/api/v1/audit/logs")
-    assert logs.status_code == 200
-    actions = [item.get("action") for item in logs.json().get("logs", [])]
+    # Keep business-event assertions separate from the tenant-scoped P14 HTTP ledger.
+    actions = [item.get("action") for item in main.AUDIT_LOGS]
     assert "DECISION_CANDIDATE_OVERRIDDEN" in actions
     assert any("DECISION" in (action or "") for action in actions)
 
