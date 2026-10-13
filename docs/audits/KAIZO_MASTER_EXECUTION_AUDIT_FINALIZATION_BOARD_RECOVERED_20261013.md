@@ -169,3 +169,27 @@ Proceed with **Batch B — Phase 4 identity and resource safety** using existing
 
 ### Exact next action
 Complete the current documentation-head CI and reconcile the actual registered route table against the manifest. Then continue bounded route-family policy/test batches; after each batch rerun the relevant acceptance suites and independently review failures before updating this board. Do not deploy or merge until the canonical production target and all safety/evidence gates are resolved.
+
+
+## 10. Batch B validation checkpoint — 2026-10-13
+
+**Validated candidate code head:** `0b945e96aaeb36bc756cbf202c114af86458dd6a` — 21/21 retrieved workflow runs passed. This includes PostgreSQL persistence and identity/consent acceptance, actual-app route inventory with duplicate-route assertions, commercial security regression, and bounded live health/OpenAPI smoke.
+
+- [Persistence Adapter Validation — PASS](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295580)
+- [Actual Core Route Inventory — PASS](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295474)
+- [Commercial Security Regression — PASS](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295416)
+- [Live Runtime Smoke — PASS within health/OpenAPI scope only](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295362)
+
+### Changes validated
+1. Removed duplicate problem-library route declarations and added a real-app regression asserting exactly one registration per affected method/path.
+2. Added a route/resource manifest with 99 statically declared decorator routes plus generated-feature route patterns.
+3. Hardened consent evaluation: the latest exact-scope consent must be active/unexpired, and the latest guardian relationship for the same child/guardian/academy must still be verified.
+4. Corrected integration acceptance tests to prove active consent, consent revocation, consent expiry, and guardian-relationship revocation behavior.
+
+The route audit was synchronized in documentation-only commit `aa2052376b83a3401a2fd9e766ff763c1132e3d4`. **The 21/21 claim applies to code head `0b945e9...`; fresh workflows on the later documentation-only head are still pending.**
+
+### Phase 4 exit is still BLOCKED
+Automated tests do not establish a trusted real-world guardian verification process, complete route-specific authorization for mounted/global endpoints, production OIDC issuer/audience/JWKS/claim mapping, or independent live allow/deny behavior against the deployed candidate. PR #128 remains draft/unmerged. No production settings or deployment were changed.
+
+### Resume point
+Continue Batch B by resolving route-specific policy gaps (especially shared/global catalogs and mounted runtimes), then independent identity/consent/live-route retest. Re-run relevant CI after every code batch and update this board with the exact validated code head and run links.
