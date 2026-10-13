@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from phase4_core_resource_authorization import require_core_actor
 from pydantic import BaseModel, Field
 
 import persistence
@@ -300,8 +301,24 @@ def get_state_history(entity_id: str) -> Dict[str, Any]:
 
 
 @router.post("/feat-044/decision-state-link", status_code=status.HTTP_201_CREATED)
-def link_decision_to_state(req: StateLinkRequest) -> Dict[str, Any]:
+def link_decision_to_state(
+    req: StateLinkRequest, principal=Depends(require_core_actor),
+) -> Dict[str, Any]:
     _authority(req.coach_final_authority)
+    if principal.source != "test_override":
+        if not persistence.is_postgres_enabled():
+            raise HTTPException(
+                status_code=503,
+                detail="Decision-state linking requires the authoritative decision store",
+            )
+        decision = persistence.get_decision_record(req.decision_id)
+        if decision is None:
+            raise HTTPException(status_code=404, detail="decision record not found")
+        if str(decision.get("athlete_id") or "") != req.entity_id:
+            raise HTTPException(
+                status_code=403,
+                detail="decision record and digital-twin entity must belong to the same athlete",
+            )
     for name, value in (
         ("decision_id", req.decision_id), ("entity_id", req.entity_id),
         ("state_ref", req.state_ref), ("linked_by", req.linked_by)
