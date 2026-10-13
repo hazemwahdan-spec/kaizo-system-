@@ -622,3 +622,54 @@ def test_next_state_policy_denies_actor_mismatch(monkeypatch):
     )
     assert response.status_code == 403
     assert checks == []
+
+
+def test_decision_state_link_write_requires_same_athlete_and_authenticated_actor(monkeypatch):
+    import state_cycle
+    principal = Principal(actor_id="coach-1", role="coach", tenant_id="academy-a", resource_owner_id=None, verified=True, source="oidc_jwt")
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda resource_type, resource_id: "athlete-a")
+    checked = []
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **kw: checked.append(kw))
+    monkeypatch.setattr(state_cycle.persistence, "is_postgres_enabled", lambda: True)
+    monkeypatch.setattr(state_cycle.persistence, "get_decision_record", lambda decision_id: {"decision_id": decision_id, "athlete_id": "athlete-a"})
+    monkeypatch.setattr(state_cycle.persistence, "append_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(state_cycle, "_get_state", lambda entity_id: {"version": 2})
+    writes = []
+    monkeypatch.setattr(state_cycle, "_save_link", lambda record: writes.append(record))
+    response = client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id": "decision-a", "entity_id": "athlete-a", "state_version": 2, "state_ref": "athlete-a:v2", "linked_by": "coach-1"},
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 201
+    assert writes and writes[0]["decision_id"] == "decision-a"
+    assert any(item["resource"] == "decision_state_link" and item["action"] == "write" for item in checked)
+    assert any(item["resource"] == "decision_record" and item["action"] == "read" for item in checked)
+
+
+def test_decision_state_link_write_denies_cross_athlete_decision(monkeypatch):
+    import state_cycle
+    principal = Principal(actor_id="coach-1", role="coach", tenant_id="academy-a", resource_owner_id=None, verified=True, source="oidc_jwt")
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda resource_type, resource_id: "athlete-a")
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **kw: None)
+    monkeypatch.setattr(state_cycle.persistence, "is_postgres_enabled", lambda: True)
+    monkeypatch.setattr(state_cycle.persistence, "get_decision_record", lambda decision_id: {"decision_id": decision_id, "athlete_id": "athlete-b"})
+    monkeypatch.setattr(state_cycle.persistence, "append_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(state_cycle, "_get_state", lambda entity_id: {"version": 2})
+    writes = []
+    monkeypatch.setattr(state_cycle, "_save_link", lambda record: writes.append(record))
+    response = client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id": "decision-b", "entity_id": "athlete-a", "state_version": 2, "state_ref": "athlete-a:v2", "linked_by": "coach-1"},
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 403
+    assert writes == []
