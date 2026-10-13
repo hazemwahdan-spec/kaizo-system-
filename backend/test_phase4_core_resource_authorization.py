@@ -337,6 +337,67 @@ def test_actual_training_plan_read_denies_cross_tenant_before_plan_read(monkeypa
     assert reads == []
 
 
+def test_actual_digital_twin_denies_unmapped_case_before_write(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(
+        authz, "get_resource_tenant",
+        lambda **kwargs: "academy-a" if kwargs.get("resource_id") == "athlete-a" else None,
+    )
+    monkeypatch.setattr(authz, "get_verified_age_classification", lambda **_: "adult")
+    monkeypatch.setattr(
+        main, "get_resource_tenant",
+        lambda **kwargs: "academy-a" if kwargs.get("resource_id") == "athlete-a" else None,
+    )
+    writes = []
+    monkeypatch.setattr(main.persistence, "upsert_digital_twin", lambda state: writes.append(state))
+    response = client.post(
+        "/api/v1/digital-twin/sync",
+        json={
+            "case_id": "case-without-authoritative-owner",
+            "entity_id": "athlete-a",
+            "state": {"score": 4},
+            "source_event": "PHASE4_TEST",
+            "coach_final_authority": True,
+        },
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 403
+    assert writes == []
+
+
+def test_actual_audit_log_endpoint_reads_only_the_authenticated_academy(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    scoped_rows = [{
+        "timestamp": "2026-10-13T00:00:00+00:00",
+        "who": "oidc|phase4-test-coach",
+        "actor_role": "coach",
+        "resource_type": "athlete",
+        "resource_id": "athlete-a",
+        "action": "read",
+        "decision": "deny",
+        "reason_code": "RESOURCE_TENANT_SCOPE_DENIED",
+        "consent_id": None,
+        "policy_version": "phase4-core-v1",
+        "correlation_id": "audit-tenant-test",
+        "request_route": "/api/v1/athletes/{athlete_id}",
+    }]
+    monkeypatch.setattr(main, "list_authorization_audit_for_academy", lambda **kwargs: scoped_rows)
+    monkeypatch.setattr(main.persistence, "list_audit_logs", lambda: (_ for _ in ()).throw(AssertionError("global audit log must not be read")))
+    response = client.get(
+        "/api/v1/audit/logs",
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 200
+    logs = response.json()["logs"]
+    assert len(logs) == 1
+    assert logs[0]["action"] == "AUTHORIZATION_DENY"
+    assert logs[0]["new_value"]["correlation_id"] == "audit-tenant-test"
+
+
 def test_core_routes_fail_closed_when_oidc_gate_is_disabled(monkeypatch):
     monkeypatch.delenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", raising=False)
     response = client.get("/api/v1/athletes/any-id")
