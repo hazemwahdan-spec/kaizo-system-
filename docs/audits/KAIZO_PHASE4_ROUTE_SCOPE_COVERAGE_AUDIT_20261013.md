@@ -80,7 +80,7 @@ Evidence Before Claim. This audit records the current candidate boundary; it doe
 A source-derived route/resource authorization manifest has been added:
 [KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md](https://github.com/hazemwahdan-spec/kaizo-system-/blob/feat/phase4-core-resource-authorization/docs/audits/KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md).
 
-It records 102 statically declared decorator routes across ten backend files and separately lists the three generated feature route patterns. It classifies each route as core-guarded/retest-required, mounted-generic-guard/not-proven, shared-policy-blocker, or public health. The source-derived list is an audit baseline, not a claim of full runtime inventory or security. CI route-inventory verification must be rerun after any route change; dynamic feature routes are handled separately.
+It records 99 statically declared decorator routes across ten backend files and separately lists the three generated feature route patterns. It classifies each route as core-guarded/retest-required, mounted-generic-guard/not-proven, shared-policy-blocker, or public health. The source-derived list is an audit baseline, not a claim of full runtime inventory or security. CI route-inventory verification must be rerun after any route change; dynamic feature routes are handled separately.
 
 ### Latest candidate CI snapshot
 Candidate head at this checkpoint: `c2df6b61ec66e687c4bf6a6cfc58669c954c4d2e`.
@@ -89,6 +89,15 @@ Candidate head at this checkpoint: `c2df6b61ec66e687c4bf6a6cfc58669c954c4d2e`.
 - [Live Runtime Smoke run 38347760456](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760456): PASS for deployed health/OpenAPI only; no proof the candidate code is deployed or that production OIDC/route allow-deny behavior was independently tested.
 - [Persistence Adapter Validation run 38347760408](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760408): in progress at the last check; compile, persistence integration, and PostgreSQL-mode import passed; later acceptance steps were still running/pending. Do not mark the full suite green until the final job conclusion is success.
 
-The route manifest also flags duplicate source declarations for `/api/v1/problem-library` and `/api/v1/problem-library/selections...`; these must be reconciled against the actual FastAPI route table before Phase 4 exit.
+The manifest refresh confirms 99 source-declared decorator routes after removal of three duplicate problem-library declarations. A regression test now asserts exactly one registration for each affected method/path. These code/test changes require fresh CI before their result is claimed.
 
 **Disposition remains BLOCKED — P4-REQ-011 OPEN / NOT PROVEN.** The generic mounted-route guard is not a substitute for explicit per-route policy. No production settings were changed, no PR was merged, and no live OIDC activation claim is made.
+
+
+## Duplicate route correction — 2026-10-13 (CI pending)
+
+- Removed the second declarations of `GET /api/v1/problem-library`, `POST /api/v1/problem-library/selections`, and `GET /api/v1/problem-library/selections/{selection_id}` from `backend/main.py` in commit `afd498b62caf53f267ddc8dcfdd027f4bc497b23`.
+- Added actual-app route-inventory regression assertions requiring exactly one registered route for each of those method/path pairs in commit `035a4987f1ffb8bb8f7b0a732fa83bac6ceff46d`.
+- Refreshed the source-derived route manifest to 99 static decorator routes in commit `5f18a36395b7d75612097b9602df0d1005428829`.
+- **Verification state for these newer commits: NOT YET VERIFIED.** Existing green runs for code head `c2df6b61ec66e687c4bf6a6cfc58669c954c4d2e` do not prove this route cleanup. Wait for fresh CI on the new PR head.
+- No production deployment was performed. PR #128 remains draft/unmerged and Phase 4 exit remains blocked.
