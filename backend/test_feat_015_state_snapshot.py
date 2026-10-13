@@ -17,6 +17,7 @@ class FEAT015BaselineCurrentStateSnapshotTests(unittest.TestCase):
             patch("main.bind_new_resource"),
             patch("main.assert_resource_tenant"),
             patch("main.assert_assessment_tenant"),
+            patch("main.assert_minor_consent"),
         ]
         for item in self._authorization_patches:
             item.start()
