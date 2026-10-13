@@ -156,3 +156,16 @@ The exact original pasted 17-step board has not been recovered byte-for-byte as 
 ### Next execution batch
 Proceed with **Batch B — Phase 4 identity and resource safety** using existing implementation before rebuilding: enumerate actual registered routes, map each protected resource to tenant/owner/role/consent/audit policy, close missing route-family negative tests, then run CI and independent retest. Keep production OIDC/live verification separate until the canonical target is resolved. Do not expose secrets or use real athlete/minor data for test records.
 
+
+
+## 9. Batch B checkpoint — Phase 4 security execution (2026-10-13)
+
+- **Code validation checkpoint:** candidate code head `c2df6b61ec66e687c4bf6a6cfc58669c954c4d2e` passed fresh CI runs for Persistence Adapter Validation, actual-app route inventory, commercial security regression, bounded live health/OpenAPI smoke, training workflow, reporting runtime, and related integrations. The bounded live smoke does not establish that the candidate branch is deployed or prove live OIDC/route allow-deny behavior.
+- **Route manifest saved:** [Phase 4 route/resource authorization manifest](https://github.com/hazemwahdan-spec/kaizo-system-/blob/feat/phase4-core-resource-authorization/docs/audits/KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md) records 102 source-declared decorator routes across ten backend files plus generated-feature route patterns. It is an audit backlog, not a security PASS.
+- **Audit updated:** [Phase 4 route-scope coverage audit](https://github.com/hazemwahdan-spec/kaizo-system-/blob/feat/phase4-core-resource-authorization/docs/audits/KAIZO_PHASE4_ROUTE_SCOPE_COVERAGE_AUDIT_20261013.md).
+- **Latest PR head:** `bf7af8c391be87830c0c4bf2545887fe5d4773d6` adds documentation only. Fresh workflows triggered by the documentation commits were queued/in progress at checkpoint; the branch head must not be called fully validated until those runs conclude.
+- **Phase 4 remains active / exit blocked:** explicit per-route parent-link, role, tenant, consent and audit policies; trusted age/guardian verification; global/shared catalog policy; production OIDC verification; and independent live allow/deny retest remain open.
+- **PR #128 remains draft and unmerged.** No production settings were changed.
+
+### Exact next action
+Complete the current documentation-head CI and reconcile the actual registered route table against the manifest. Then continue bounded route-family policy/test batches; after each batch rerun the relevant acceptance suites and independently review failures before updating this board. Do not deploy or merge until the canonical production target and all safety/evidence gates are resolved.
