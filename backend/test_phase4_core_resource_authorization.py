@@ -207,6 +207,44 @@ def test_actual_create_assessment_denies_cross_tenant_before_athlete_read_or_wri
     assert writes == []
 
 
+def test_actual_create_assessment_denies_minor_without_active_consent_before_read_or_write(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(authz, "get_resource_tenant", lambda **_: "academy-a")
+    monkeypatch.setattr(authz, "get_verified_age_classification", lambda **_: "minor")
+    monkeypatch.setattr(authz, "has_active_minor_consent", lambda **_: False)
+    reads, writes = [], []
+    monkeypatch.setattr(main.persistence, "get_athlete", lambda athlete_id: reads.append(athlete_id) or {"athlete_id": athlete_id})
+    monkeypatch.setattr(main.persistence, "upsert_assessment", lambda item: writes.append(item))
+    response = client.post(
+        "/api/v1/assessments",
+        json={"athlete_id": "minor-athlete", "template_id": "TPL", "measurements": {"x": 1}, "recorded_by": "coach"},
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 403
+    assert "guardian consent" in response.text.lower()
+    assert reads == []
+    assert writes == []
+
+
+def test_actual_get_athlete_denies_missing_verified_age_classification(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(authz, "get_resource_tenant", lambda **_: "academy-a")
+    monkeypatch.setattr(authz, "get_verified_age_classification", lambda **_: None)
+    reads = []
+    monkeypatch.setattr(main.persistence, "get_athlete", lambda athlete_id: reads.append(athlete_id) or {"athlete_id": athlete_id})
+    response = client.get(
+        "/api/v1/athletes/athlete-without-age-classification",
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 403
+    assert "age classification" in response.text.lower()
+    assert reads == []
+
+
 def test_core_routes_fail_closed_when_oidc_gate_is_disabled(monkeypatch):
     monkeypatch.delenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", raising=False)
     response = client.get("/api/v1/athletes/any-id")
