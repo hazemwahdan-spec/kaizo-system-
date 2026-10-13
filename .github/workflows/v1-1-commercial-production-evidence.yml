@@ -84,6 +84,20 @@ jobs:
           print("OIDC_LIVE_VERIFICATION: PASS")
           PY
 
+      - name: Verify invalid bearer is rejected by production OIDC endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/oidc-negative.json -w "%{http_code}" \
+            -H "Authorization: Bearer kaizo-phase4-invalid-token" \
+            "${KAIZO_PRODUCTION_BASE_URL}/api/v1/product/auth/oidc/verify")
+          if [ "$code" != "401" ]; then
+            echo "OIDC_INVALID_BEARER_REJECTION: FAIL (expected HTTP 401, got $code)"
+            echo "Response body omitted."
+            exit 1
+          fi
+          echo "OIDC_INVALID_BEARER_REJECTION: PASS (HTTP 401)"
+
       - name: Verify production health
         shell: bash
         run: |
