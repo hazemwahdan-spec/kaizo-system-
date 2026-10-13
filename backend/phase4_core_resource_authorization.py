@@ -325,6 +325,7 @@ def bind_new_resource(
     resource_id: str,
     principal: Principal,
     resource_data: dict | None = None,
+    correlation_id: str | None = None,
 ) -> None:
     """Persist ownership with the Core resource in one transaction when data is supplied."""
     from phase4_identity_store import bind_resource_to_tenant
@@ -350,7 +351,7 @@ def bind_new_resource(
         _audit_authorization(
             principal=principal, resource_type=resource_type, resource_id=resource_id,
             action="create", decision="deny", reason_code="RESOURCE_BINDING_WRITE_FAILED",
-            request_route=f"/api/v1/{resource_type}s",
+            request_route=f"/api/v1/{resource_type}s", correlation_id=correlation_id,
         )
         raise HTTPException(
             status_code=503,
@@ -360,5 +361,5 @@ def bind_new_resource(
     _audit_authorization(
         principal=principal, resource_type=resource_type, resource_id=resource_id,
         action="create", decision="allow", reason_code="RESOURCE_CREATED_AND_BOUND",
-        request_route=f"/api/v1/{resource_type}s",
+        request_route=f"/api/v1/{resource_type}s", correlation_id=correlation_id,
     )
