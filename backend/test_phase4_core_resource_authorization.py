@@ -415,3 +415,51 @@ def test_core_routes_fail_closed_when_oidc_gate_is_disabled(monkeypatch):
     monkeypatch.delenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", raising=False)
     response = client.get("/api/v1/athletes/any-id")
     assert response.status_code == 503
+
+
+
+def test_generated_feature_create_fails_closed_until_feature_record_scope_policy_exists(monkeypatch):
+    """An arbitrary nested athlete_id must not authorize a feature-record write."""
+    import backend.feature_runtime as feature_runtime
+
+    principal = _principal()
+    main.app.dependency_overrides[authz.require_core_actor] = lambda: principal
+    audit_events = []
+    monkeypatch.setattr(
+        authz, "_audit_authorization",
+        lambda **kwargs: audit_events.append(kwargs),
+    )
+    writes = []
+    monkeypatch.setattr(
+        feature_runtime, "_create",
+        lambda *args, **kwargs: writes.append((args, kwargs)),
+    )
+    try:
+        response = client.post(
+            "/api/v1/features/feat-071/athlete-progress-report",
+            json={
+                "subject_id": "unbound-subject",
+                "actor_id": "caller-supplied-actor",
+                "payload": {
+                    "athlete_id": "same-academy-athlete",
+                    "period": "2026-10",
+                    "progress": {"state": "STABLE"},
+                },
+                "evidence_refs": [],
+                "coach_final_authority": True,
+                "execution_authorized": False,
+            },
+            headers={"Authorization": "Bearer signed-test-token", "X-Correlation-ID": "phase4-feature-scope-deny"},
+        )
+    finally:
+        main.app.dependency_overrides.pop(authz.require_core_actor, None)
+
+    assert response.status_code == 503
+    assert writes == []
+    assert any(
+        item.get("resource_type") == "feature_record"
+        and item.get("decision") == "deny"
+        and item.get("reason_code") == "RESOURCE_SCOPE_POLICY_NOT_CONFIGURED"
+        and item.get("correlation_id") == "phase4-feature-scope-deny"
+        for item in audit_events
+    )
