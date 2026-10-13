@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import test_core_auth_overrides  # feature acceptance only; identity security has separate tests
 import os, uuid
 
 os.environ["KAIZO_PERSISTENCE_MODE"]="postgres"
