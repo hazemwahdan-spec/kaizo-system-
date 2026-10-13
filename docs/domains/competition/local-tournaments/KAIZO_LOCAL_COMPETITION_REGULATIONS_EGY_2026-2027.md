@@ -30,7 +30,7 @@ Preserve Coach Final Authority, Human Oversight, SSOT, Safety/HOLD, auditability
 - Weigh-in instructions are announced 72 hours before the tournament.
 - The weighing list must match the previously submitted list and be signed/stamped as specified in the source.
 - The athlete must present the renewed Federation card; the document says electronic images of the card are not accepted.
-- Dan grade is evidenced by the Federation card or the original certificate issued by the Egyptian Judo Federation.
+- Belt grade is evidenced by the Federation card or the original certificate issued by the Egyptian Judo Federation.
 - A committee appointed by the Higher Referees Committee oversees weighing; the responsible officials sign the weigh-in sheets.
 - Each athlete is weighed once. The source states that a mismatch between the registered and measured weight results in removal from the list/draw.
 - The source permits a coach to request a correction during the trial weighing, with the correction recorded in the notes before the sheet is handed to the weighing referee. It says there is no later increase/decrease after that handover.
