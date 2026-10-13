@@ -796,3 +796,39 @@ def test_unmapped_mounted_routes_fail_closed_before_handler_write(
     assert response.status_code == 503
     assert "No approved" in response.json()["detail"] or "policy" in response.json()["detail"].lower()
     assert sentinel not in knowledge_runtime.MEMORY_ITEMS
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("post", "/api/v1/knowledge-runtime/feat-048/lifecycle"),
+        ("post", "/api/v1/knowledge-runtime/feat-049/retrieve"),
+        ("post", "/api/v1/knowledge-runtime/feat-050/link"),
+        ("post", "/api/v1/evidence-safety/feat-057/evidence-quality"),
+        ("post", "/api/v1/evidence-safety/feat-058/provenance"),
+        ("post", "/api/v1/evidence-safety/feat-059/block"),
+        ("post", "/api/v1/evidence-safety/feat-060/escalate"),
+        ("post", "/api/v1/reporting/academy-dashboard"),
+        ("post", "/api/v1/reporting/coach-summary"),
+        ("get", "/api/v1/reporting/export/report-phase4-unmapped"),
+        ("post", "/api/v1/reporting/kpi-trend"),
+        ("post", "/api/v1/reporting/progress"),
+    ],
+)
+def test_remaining_unmapped_mounted_route_families_remain_default_deny(
+    monkeypatch, method, path
+):
+    """Routes without an approved route-specific policy cannot reach handlers."""
+    principal = _principal()
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+
+    response = getattr(client, method)(
+        path,
+        json={} if method == "post" else None,
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+
+    assert response.status_code == 503
+    assert "policy" in response.json()["detail"].lower()
