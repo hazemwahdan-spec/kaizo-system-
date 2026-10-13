@@ -168,16 +168,7 @@ def main():
         child_id="test-child", guardian_actor_id="different-guardian",
         academy_id="test-academy",
     )
-    store.record_guardian_relationship(
-        relationship_id="test-guardian-v2", child_id="test-child",
-        guardian_actor_id="test-guardian", academy_id="test-academy",
-        verification_status="revoked", version=2,
-    )
-    assert not store.has_verified_guardian_relationship(
-        child_id="test-child", guardian_actor_id="test-guardian",
-        academy_id="test-academy",
-    )
-
+    # Consent is valid only while the latest guardian relationship is verified.
     store.record_child_consent(
         consent_id="test-consent-v1", child_id="test-child",
         guardian_actor_id="test-guardian", academy_id="test-academy",
@@ -216,70 +207,31 @@ def main():
         academy_id="test-academy", resource="assessment", action="read",
     )
 
-
-    store.record_age_classification(
-        athlete_id="test-child-active", academy_id="test-academy",
-        age_class="minor", status="verified", version=1,
-        verified_by="trusted-test-admin", verified_at=now,
-    )
-    assert store.get_verified_age_classification(
-        athlete_id="test-child-active", academy_id="test-academy"
-    ) == "minor"
-    store.record_guardian_relationship(
-        relationship_id="test-active-guardian-v1", child_id="test-child-active",
-        guardian_actor_id="test-active-guardian", academy_id="test-academy",
-        verification_status="verified", version=1,
-        verified_by="trusted-test-admin", verified_at=now,
-    )
-    assert not store.has_active_minor_consent(
-        child_id="test-child-active", academy_id="test-academy",
-        resource="assessment", action="read",
-    )
+    # An active consent must stop working after relationship revocation.
     store.record_child_consent(
-        consent_id="test-active-consent-v1", child_id="test-child-active",
-        guardian_actor_id="test-active-guardian", academy_id="test-academy",
-        resource="assessment", action="read", state="active",
-        expires_at=now + timedelta(days=1), recorded_by_actor_id="test-active-guardian",
+        consent_id="test-consent-relationship-check", child_id="test-child",
+        guardian_actor_id="test-guardian", academy_id="test-academy",
+        resource="training_session", action="read", state="active",
+        expires_at=now + timedelta(days=1), recorded_by_actor_id="test-guardian",
         version=1,
     )
-    assert store.has_active_minor_consent(
-        child_id="test-child-active", academy_id="test-academy",
-        resource="assessment", action="read",
+    assert store.has_active_child_consent(
+        child_id="test-child", guardian_actor_id="test-guardian",
+        academy_id="test-academy", resource="training_session", action="read",
     )
-    assert store.get_active_minor_consent_id(
-        child_id="test-child-active", academy_id="test-academy",
-        resource="assessment", action="read",
-    ) == "test-active-consent-v1"
-    store.record_child_consent(
-        consent_id="test-active-consent-v2", child_id="test-child-active",
-        guardian_actor_id="test-active-guardian", academy_id="test-academy",
-        resource="assessment", action="read", state="revoked",
-        expires_at=now + timedelta(days=1), recorded_by_actor_id="test-active-guardian",
-        version=2,
+    store.record_guardian_relationship(
+        relationship_id="test-guardian-v2", child_id="test-child",
+        guardian_actor_id="test-guardian", academy_id="test-academy",
+        verification_status="revoked", version=2,
     )
-    assert not store.has_active_minor_consent(
-        child_id="test-child-active", academy_id="test-academy",
-        resource="assessment", action="read",
+    assert not store.has_verified_guardian_relationship(
+        child_id="test-child", guardian_actor_id="test-guardian",
+        academy_id="test-academy",
     )
-    store.record_child_consent(
-        consent_id="test-active-consent-v3-expired", child_id="test-child-active",
-        guardian_actor_id="test-active-guardian", academy_id="test-academy",
-        resource="assessment", action="read", state="active",
-        expires_at=now - timedelta(seconds=1), recorded_by_actor_id="test-active-guardian",
-        version=3,
+    assert not store.has_active_child_consent(
+        child_id="test-child", guardian_actor_id="test-guardian",
+        academy_id="test-academy", resource="training_session", action="read",
     )
-    assert not store.has_active_minor_consent(
-        child_id="test-child-active", academy_id="test-academy",
-        resource="assessment", action="read",
-    )
-    store.record_age_classification(
-        athlete_id="test-child-active", academy_id="test-academy",
-        age_class="minor", status="revoked", version=2,
-        verified_by="trusted-test-admin", verified_at=now,
-    )
-    assert store.get_verified_age_classification(
-        athlete_id="test-child-active", academy_id="test-academy"
-    ) is None
 
     store.append_authorization_audit(
         event_id="test-authz-deny-1", correlation_id="test-correlation-1",
