@@ -141,6 +141,15 @@ MOUNTED_ROUTE_SCOPE_POLICIES: dict[tuple[str, str], dict[str, Any]] = {
         "consent_resource": "decision_record",
         "consent_action": "read",
     },
+    ("POST", "/api/v1/state-cycle/feat-042/digital-twin-state"): {
+        "roles": ("coach", "academy"),
+        "required_bindings": {"entity_id": "athlete", "case_id": "case"},
+        "actor_fields": ("updated_by",),
+        "consent_resource": "digital_twin_state",
+        "consent_action": "write",
+        "consent_resource_by_type": {"case": "digital_twin_state", "evidence": "evidence"},
+        "consent_action_by_type": {"case": "write", "evidence": "read"},
+    },
     ("POST", "/api/v1/state-cycle/feat-044/decision-state-link"): {
         "roles": ("coach", "academy"),
         "required_bindings": {"decision_id": "decision_record", "entity_id": "athlete"},
@@ -265,7 +274,12 @@ async def require_router_resource_scope(
             return
         for key, nested in items:
             declared_values.setdefault(key, []).append(nested)
-            if key in field_types and isinstance(nested, (str, int)) and str(nested).strip():
+            if key == "evidence_refs" and isinstance(nested, list):
+                for item in nested:
+                    if isinstance(item, (str, int)) and str(item).strip():
+                        references.append(("evidence", str(item)))
+                        declared_bindings.append((key, "evidence", str(item)))
+            elif key in field_types and isinstance(nested, (str, int)) and str(nested).strip():
                 resource_type = field_types[key]
                 resource_id = str(nested)
                 references.append((resource_type, resource_id))
@@ -330,18 +344,25 @@ async def require_router_resource_scope(
         )
 
     seen: set[tuple[str, str]] = set()
+    resolved_athlete_id: Optional[str] = None
     for resource_type, resource_id in references:
         ref = (resource_type, resource_id)
         if ref in seen:
             continue
         seen.add(ref)
         if resource_type == "case":
-            _assert_case_scope(
-                resource_id, principal, resource="mounted_route", action=request.method.lower(),
+            athlete_id = _assert_case_scope(
+                resource_id,
+                principal,
+                resource=route_policy.get("consent_resource_by_type", {}).get(
+                    "case", route_policy["consent_resource"]
+                ),
+                action=route_policy.get("consent_action_by_type", {}).get(
+                    "case", route_policy["consent_action"]
+                ),
                 request_route=request.url.path,
             )
-            continue
-        if resource_type == "assessment":
+        elif resource_type == "assessment":
             athlete_id = assert_assessment_tenant(
                 assessment_id=resource_id, principal=principal,
                 request_route=request.url.path, action=request.method.lower(),
@@ -354,6 +375,15 @@ async def require_router_resource_scope(
             athlete_id = _resolve_athlete_id(resource_type, resource_id)
         if not athlete_id:
             raise HTTPException(status_code=403, detail="Mounted route resource has no verified athlete ownership chain")
+        if resolved_athlete_id and resolved_athlete_id != athlete_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Mounted route resources must resolve to the same athlete owner",
+            )
+        resolved_athlete_id = athlete_id
+        if resource_type == "case":
+            # _assert_case_scope already verified tenant, owner chain and consent.
+            continue
         consent_resource = route_policy.get("consent_resource_by_type", {}).get(
             resource_type, route_policy["consent_resource"]
         )
