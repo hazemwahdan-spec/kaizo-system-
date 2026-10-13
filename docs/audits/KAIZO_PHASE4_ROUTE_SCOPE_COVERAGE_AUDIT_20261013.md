@@ -2,7 +2,7 @@
 
 Date: 2026-10-13  
 PR: [#128 — Phase 4 Core resource authorization](https://github.com/hazemwahdan-spec/kaizo-system-/pull/128)  
-Validated code head: `458eb1641adb8c10e9f54cefb702f4759e4b13df`  
+Validated code head: `0b945e96aaeb36bc756cbf202c114af86458dd6a`  
 Disposition: **BLOCKED — CI is green, production security proof remains incomplete**
 
 ## Evidence examined
@@ -16,7 +16,7 @@ Disposition: **BLOCKED — CI is green, production security proof remains incomp
 
 ## Current CI evidence
 
-The current candidate head `458eb1641adb8c10e9f54cefb702f4759e4b13df` has **20/20 retrieved workflow runs completed successfully**, including:
+The prior candidate head `458eb1641adb8c10e9f54cefb702f4759e4b13df` had **20/20 retrieved workflow runs completed successfully**, including:
 
 - [Persistence Adapter Validation](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280138) — compilation, existing feature acceptance suite, canonical identity/consent integration, and actual Core resource authorization HTTP tests.
 - [Phase 4 Actual Core Route Inventory](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280190) — registered non-product routes have the identity gate; mounted/generated routes have the fail-closed scope guard.
@@ -94,10 +94,18 @@ The manifest refresh confirms 99 source-declared decorator routes after removal 
 **Disposition remains BLOCKED — P4-REQ-011 OPEN / NOT PROVEN.** The generic mounted-route guard is not a substitute for explicit per-route policy. No production settings were changed, no PR was merged, and no live OIDC activation claim is made.
 
 
-## Duplicate route correction — 2026-10-13 (CI pending)
+## Duplicate route correction and guardian-consent hardening — 2026-10-13 (validated code head)
 
 - Removed the second declarations of `GET /api/v1/problem-library`, `POST /api/v1/problem-library/selections`, and `GET /api/v1/problem-library/selections/{selection_id}` from `backend/main.py` in commit `afd498b62caf53f267ddc8dcfdd027f4bc497b23`.
 - Added actual-app route-inventory regression assertions requiring exactly one registered route for each of those method/path pairs in commit `035a4987f1ffb8bb8f7b0a732fa83bac6ceff46d`.
 - Refreshed the source-derived route manifest to 99 static decorator routes in commit `5f18a36395b7d75612097b9602df0d1005428829`.
-- **Verification state for these newer commits: NOT YET VERIFIED.** Existing green runs for code head `c2df6b61ec66e687c4bf6a6cfc58669c954c4d2e` do not prove this route cleanup. Wait for fresh CI on the new PR head.
+- **Verification:** code head `0b945e96aaeb36bc756cbf202c114af86458dd6a` has **21/21 retrieved workflow runs completed successfully**, including the full PostgreSQL persistence suite, actual-app route inventory, commercial security regression, and bounded live health/OpenAPI smoke. See [Persistence Adapter Validation](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295580) and [Actual Core Route Inventory](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295474). The live smoke still does not prove that the candidate branch is deployed or that production OIDC/route allow-deny behavior was independently tested.
 - No production deployment was performed. PR #128 remains draft/unmerged and Phase 4 exit remains blocked.
+
+
+### Guardian-consent relationship binding
+- Code commit `2cba9e81a3cb9e49afaa4b5dd5b5aa6e24908052` changed `has_active_child_consent` so the latest exact-scope consent must be active and unexpired **and** the latest guardian relationship for the same child/guardian/academy must still be verified.
+- Integration test commit `028f92a511132f6188b72af2eacc46f0bc5cc1a6` covers valid consent under a verified relationship, revoked consent, expired consent, and invalidation of an otherwise-active consent after relationship revocation.
+- The first fresh persistence run correctly caught an old acceptance test that expected consent to remain active after the guardian had already been revoked. Test contract was corrected in `0b945e96aaeb36bc756cbf202c114af86458dd6a`.
+- Latest code-head CI: **21/21 retrieved workflows passed**, including [Persistence Adapter Validation](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295580), [Route Inventory](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295474), [Commercial Security Regression](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295416), and [Live Runtime Smoke](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295362).
+- This proves the candidate's automated persistence and regression contracts, **not** a trusted real-world guardian-verification workflow or live production OIDC enforcement. Those remain closure blockers.
