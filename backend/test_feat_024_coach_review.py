@@ -9,6 +9,7 @@ os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaiz
 from fastapi.testclient import TestClient
 import main
 import persistence
+import test_core_auth_overrides  # explicit test-only auth bypass; process-scoped
 
 persistence.initialize()
 client = TestClient(main.app)
