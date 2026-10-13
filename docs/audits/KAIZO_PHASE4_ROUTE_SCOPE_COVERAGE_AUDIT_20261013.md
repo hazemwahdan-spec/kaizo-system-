@@ -45,3 +45,11 @@ The candidate includes tenant-bound parent-chain checks and guardian-consent che
 - No production settings were changed and no live identity/authorization activation claim is made.
 
 **Evidence Before Claim.** Do not merge PR #128 or close Phase 4 based on green CI and health/OpenAPI smoke alone.
+
+## Follow-up code inspection — OIDC endpoint proof boundary
+
+The candidate implementation at [productization/product_api.py](https://github.com/hazemwahdan-spec/kaizo-system-/blob/feat/phase4-core-resource-authorization/productization/product_api.py) mounts `GET /api/v1/product/auth/oidc/verify` and delegates to `verify_bearer_token`. [productization/identity.py](https://github.com/hazemwahdan-spec/kaizo-system-/blob/feat/phase4-core-resource-authorization/productization/identity.py) requires runtime configuration `KAIZO_OIDC_ISSUER`, `KAIZO_OIDC_AUDIENCE`, and `KAIZO_OIDC_JWKS_URL`; missing configuration causes the route to return HTTP 401. It validates RS256 signature, issuer, audience, and required `sub`/`iss`/`aud`/`exp` claims.
+
+**Important limitation:** this verification endpoint returns `verified=true` and `source=oidc_jwt` after standard JWT verification, but it does not itself prove KAIZO role/tenant membership, resource ownership, or guardian consent. The separate `resolve_bearer_principal` path additionally requires a valid KAIZO role and tenant claim; live authorization tests must exercise protected resource endpoints and demonstrate both allowed and denied outcomes. An Auth0 token-issuance success alone is not sufficient.
+
+The workflow's fixed Auth0 audience (`https://api.kaizo.system`) must exactly match the deployed service's `KAIZO_OIDC_AUDIENCE`; the issuer must match the Auth0 tenant issuer and JWKS URL must point to that same issuer's JWKS. These values should be checked as presence/consistency without printing secrets. Until host and runtime configuration are confirmed, no production verification run should be inferred from source inspection.
