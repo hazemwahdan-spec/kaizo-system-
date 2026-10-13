@@ -7,6 +7,7 @@ if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
 from fastapi.testclient import TestClient
+import pytest
 
 from backend import main
 import phase4_identity_boundary as boundary
@@ -26,6 +27,60 @@ def _principal(role="coach", tenant_id="academy-a"):
         verified=True,
         source="oidc_jwt",
     )
+
+
+@pytest.fixture(autouse=True)
+def isolate_authorization_tests_from_audit_store(monkeypatch, request):
+    # Route security assertions below use mocked identity/resource stores. The
+    # separate durable-audit tests exercise the real PostgreSQL audit adapter.
+    if request.node.name not in {
+        "test_authorization_decisions_are_durably_audited",
+        "test_authorization_audit_store_failure_fails_closed",
+    }:
+        monkeypatch.setattr(authz, "_audit_authorization", lambda **_: None)
+
+
+def test_authorization_decisions_are_durably_audited():
+    correlation_id = "phase4-authorization-audit-test"
+    principal = _principal()
+    authz._audit_authorization(
+        principal=principal,
+        resource_type="athlete",
+        resource_id="audit-test-athlete",
+        action="read",
+        decision="deny",
+        reason_code="RESOURCE_TENANT_SCOPE_DENIED",
+        request_route="/api/v1/athletes/{athlete_id}",
+        correlation_id=correlation_id,
+    )
+    from phase4_identity_store import list_authorization_audit
+    rows = list_authorization_audit(correlation_id=correlation_id)
+    assert any(
+        row["decision"] == "deny"
+        and row["reason_code"] == "RESOURCE_TENANT_SCOPE_DENIED"
+        and row["resource_id"] == "audit-test-athlete"
+        for row in rows
+    )
+
+
+def test_authorization_audit_store_failure_fails_closed(monkeypatch):
+    import phase4_identity_store
+
+    def unavailable(**_):
+        raise RuntimeError("audit store unavailable")
+
+    monkeypatch.setattr(phase4_identity_store, "append_authorization_audit", unavailable)
+    with pytest.raises(Exception) as error:
+        authz._audit_authorization(
+            principal=_principal(),
+            resource_type="athlete",
+            resource_id="audit-fail-closed",
+            action="read",
+            decision="allow",
+            reason_code="RESOURCE_TENANT_SCOPE_VALID",
+            request_route="/api/v1/athletes/{athlete_id}",
+        )
+    assert getattr(error.value, "status_code", None) == 503
 
 
 def test_actual_create_athlete_rejects_missing_or_invalid_identity_without_write(monkeypatch):
