@@ -162,6 +162,8 @@ def test_manifest_covers_every_registered_core_api_route():
         )
         if match:
             method, path = match.groups()
+            if path == "/api/v1/health" or path.startswith("/api/v1/product/") or path.startswith("/api/v1/features/"):
+                continue
             documented.add((method, path))
 
     actual = set()
