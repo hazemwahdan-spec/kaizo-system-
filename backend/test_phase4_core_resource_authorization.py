@@ -924,3 +924,31 @@ def test_new_training_workflow_policies_allow_only_authenticated_actor_and_check
     assert denied.status_code == 403
     assert writes == []
     assert consent_checks == []
+
+
+def test_actual_route_denies_disallowed_role_before_resource_read_and_records_reason(monkeypatch):
+    """Authenticated identity alone is insufficient without an allowed Core role."""
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    parent = _principal(role="parent", tenant_id="academy-a")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: parent)
+    membership_lookups = []
+    monkeypatch.setattr(authz, "has_active_membership", lambda **kw: membership_lookups.append(kw) or True)
+    reads = []
+    monkeypatch.setattr(main.persistence, "get_athlete", lambda athlete_id: reads.append(athlete_id) or {"athlete_id": athlete_id})
+    audit_events = []
+    monkeypatch.setattr(authz, "_audit_authorization", lambda **event: audit_events.append(event))
+
+    response = client.get(
+        "/api/v1/athletes/role-denied-athlete",
+        headers={"Authorization": "Bearer signed-test-token", "X-Correlation-ID": "phase4-role-denial"},
+    )
+
+    assert response.status_code == 403
+    assert reads == []
+    assert membership_lookups == []
+    assert any(
+        event.get("decision") == "deny"
+        and event.get("reason_code") == "ROLE_NOT_ALLOWED"
+        and event.get("correlation_id") == "phase4-role-denial"
+        for event in audit_events
+    )
