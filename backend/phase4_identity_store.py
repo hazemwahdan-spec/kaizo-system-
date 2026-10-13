@@ -281,3 +281,38 @@ def has_active_minor_consent(
             )
             row = cur.fetchone()
     return bool(row and row[0])
+
+
+def get_active_minor_consent_id(
+    *, child_id: str, academy_id: str, resource: str, action: str,
+) -> str | None:
+    """Return the exact active consent record only when the latest guardian link is verified."""
+    _postgres_required()
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """WITH latest_relationships AS (
+                       SELECT DISTINCT ON (guardian_actor_id)
+                              guardian_actor_id, verification_status
+                       FROM kaizo_guardian_relationships
+                       WHERE child_id=%s AND academy_id=%s
+                       ORDER BY guardian_actor_id, version DESC
+                   ), latest_consents AS (
+                       SELECT DISTINCT ON (guardian_actor_id)
+                              guardian_actor_id, consent_id, state, expires_at
+                       FROM kaizo_child_consents
+                       WHERE child_id=%s AND academy_id=%s
+                         AND resource=%s AND action=%s
+                       ORDER BY guardian_actor_id, version DESC
+                   )
+                   SELECT c.consent_id
+                   FROM latest_relationships r
+                   JOIN latest_consents c USING (guardian_actor_id)
+                   WHERE r.verification_status='verified'
+                     AND c.state='active' AND c.expires_at > NOW()
+                   ORDER BY c.expires_at DESC
+                   LIMIT 1""",
+                (child_id, academy_id, child_id, academy_id, resource, action),
+            )
+            row = cur.fetchone()
+    return str(row[0]) if row else None
