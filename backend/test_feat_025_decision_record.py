@@ -3,6 +3,7 @@ os.environ['KAIZO_PERSISTENCE_MODE']='postgres'
 os.environ['DATABASE_URL']='postgresql://postgres:postgres@localhost:5432/kaizo_test'
 from fastapi.testclient import TestClient
 import main, persistence
+import test_core_auth_overrides  # explicit test-only auth bypass; process-scoped
 persistence.initialize(); client=TestClient(main.app)
 def post(p,x):
  r=client.post(p,json=x); assert r.status_code in (200,201),(r.status_code,r.text); return r.json()
