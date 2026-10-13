@@ -32,6 +32,21 @@ class CoreRuntimeGateway:
         if execution_authorized:
             raise RuntimeAuthorizationError("execution authorization is forbidden")
         from main import DecisionLoopRequest
+        import persistence
+        from productization.identity import Principal
+
+        # Direct in-process calls do not receive FastAPI dependency injection.
+        # In isolated memory-mode tests, use an explicit test principal; in
+        # PostgreSQL-backed runtime, preserve the caller identity and require
+        # the Core case/tenant resolver to verify the persisted resource chain.
+        principal = Principal(
+            actor_id=actor_id,
+            role=role,
+            tenant_id=tenant_id,
+            resource_owner_id=None,
+            verified=True,
+            source="test_override" if not persistence.is_postgres_enabled() else "runtime_adapter",
+        )
         return self._decision_loop(DecisionLoopRequest(
             case_id=str(payload["case_id"]),
             decision=dict(payload["decision"]),
@@ -39,7 +54,7 @@ class CoreRuntimeGateway:
             response_kpi=dict(payload["response_kpi"]),
             retest=dict(payload["retest"]),
             coach_final_authority=True,
-        ))
+        ), principal=principal)
 
     def record_intervention(self, *, actor_id: str, tenant_id: str, role: str,
                             payload: Mapping[str, Any], execution_authorized: bool) -> Any:
