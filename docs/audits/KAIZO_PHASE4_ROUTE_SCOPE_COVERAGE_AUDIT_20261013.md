@@ -15,6 +15,12 @@ The following runs were directly inspected and completed successfully:
 
 **Evidence boundary:** the live smoke does not verify production OIDC issuer/audience/JWKS/claim mapping, does not prove that the candidate branch is deployed, and does not exercise live positive/negative tenant and guardian-consent authorization. CI acceptance tests are candidate-code evidence and are not equivalent to an independent production security retest.
 
+## Newly identified execution blocker — commercial evidence workflow
+
+The existing `.github/workflows/v1-1-commercial-production-evidence.yml` targets `https://kaizo-core-engine-production.up.railway.app` and uses Auth0 client-credentials secrets `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `AUTH0_CLIENT_SECRET`, with audience `https://api.kaizo.system`. The separately documented current FastAPI Cloud deployment is `https://kaizo-system.fastapicloud.dev`. These are distinct deployment targets.
+
+The workflow was inspected in source, but no workflow-dispatch capability is available in this execution context, and no run was initiated. Do not claim that live OIDC verification ran. Before dispatch, an operator must confirm which host is the intended production target, that the Auth0 audience and client are configured for that target, and that the live `/api/v1/product/auth/oidc/verify` route is present there. Do not paste credentials or bearer tokens into chat. A green result against the wrong host would not close the gate.
+
 ## Existing route/resource findings
 
 The source-derived route manifest is [KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md](https://github.com/hazemwahdan-spec/kaizo-system-/blob/feat/phase4-core-resource-authorization/docs/audits/KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md). It records 99 statically declared decorator routes across ten backend files and separately lists three dynamically generated feature-route patterns. It is an audit baseline, not proof that every runtime route has a complete authorization contract.
@@ -29,7 +35,7 @@ The candidate includes tenant-bound parent-chain checks and guardian-consent che
 4. Implement persisted tenant/subject/actor ownership for generated feature records before enabling those routes for production principals.
 5. Define explicit global-versus-academy ownership and role policies for shared catalogs and knowledge ingestion/publication.
 6. Independently verify production OIDC issuer, audience, JWKS, token claims, canonical migrations, and live allow/deny behavior against the exact deployed candidate.
-7. Capture independent retest, rollback/regression, and deployment evidence after an authorized deployment.
+7. Resolve the workflow target/audience configuration, execute live positive/negative authorization tests against the exact intended deployment, and capture independent retest, rollback/regression, and deployment evidence.
 
 ## Governance decision
 
