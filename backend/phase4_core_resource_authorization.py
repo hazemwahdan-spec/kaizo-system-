@@ -196,6 +196,7 @@ def assert_minor_consent(
     resource: str,
     action: str,
     request_route: str,
+    correlation_id: str | None = None,
 ) -> None:
     """Require trusted age classification and exact-scope guardian consent for minors."""
     try:
@@ -206,7 +207,7 @@ def assert_minor_consent(
         _audit_authorization(
             principal=principal, resource_type=resource, resource_id=child_id,
             action=action, decision="deny", reason_code="AGE_CLASSIFICATION_STORE_UNAVAILABLE",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(
             status_code=503, detail="Authoritative age classification store is unavailable"
@@ -271,13 +272,14 @@ def assert_assessment_tenant(
     principal: Principal,
     request_route: str = "unknown",
     action: str = "read",
+    correlation_id: str | None = None,
 ) -> str:
     """Resolve assessment -> athlete -> tenant from PostgreSQL before exposing data."""
     if not persistence.is_postgres_enabled():
         _audit_authorization(
             principal=principal, resource_type="assessment", resource_id=assessment_id,
             action=action, decision="deny", reason_code="DURABLE_SCOPE_REQUIRED",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(status_code=503, detail="Durable resource scope is required")
     try:
@@ -308,7 +310,7 @@ def assert_assessment_tenant(
     athlete_id = str(row[0])
     assert_resource_tenant(
         resource_type="athlete", resource_id=athlete_id, principal=principal,
-        request_route=request_route, action=action,
+        request_route=request_route, action=action, correlation_id=correlation_id,
     )
     assert_resource_tenant(
         resource_type="assessment", resource_id=assessment_id, principal=principal,
