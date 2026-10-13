@@ -525,3 +525,37 @@ def test_declared_body_model_ignores_extra_resource_id(monkeypatch):
     )
     assert response.status_code == 503
     assert writes == []
+
+
+def test_explicit_training_workflow_read_policy_checks_tenant_and_consent(monkeypatch):
+    import backend.training_workflow as training
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda resource_type, resource_id: resource_id)
+    checked = []
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **kw: checked.append(kw))
+    monkeypatch.setattr(training, "_list", lambda feature, athlete_id: [])
+    response = client.get(
+        "/api/v1/training-workflow/athletes/athlete-a",
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 200
+    assert response.json()["athlete_id"] == "athlete-a"
+    assert checked and checked[0]["resource"] == "training_workflow"
+    assert checked[0]["action"] == "read"
+
+
+def test_explicit_training_workflow_read_policy_rejects_parent_role(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal(role="parent"))
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    reads = []
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda resource_type, resource_id: reads.append(resource_id))
+    response = client.get(
+        "/api/v1/training-workflow/athletes/athlete-a",
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 403
+    assert reads == []
