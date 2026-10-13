@@ -244,6 +244,11 @@ def get_resource_tenant(*, resource_type: str, resource_id: str) -> str | None:
     """
     _postgres_required()
     parent_chain_queries = {
+        "assessment": """SELECT b.tenant_id
+            FROM kaizo_assessments r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.assessment_id=%s""",
         "problem_statement": """SELECT b.tenant_id
             FROM kaizo_problem_statements r
             JOIN kaizo_resource_tenant_bindings b
