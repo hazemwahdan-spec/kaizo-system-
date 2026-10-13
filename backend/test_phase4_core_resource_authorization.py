@@ -488,6 +488,14 @@ def test_mounted_route_denies_partial_scope_when_another_identifier_is_unmapped(
     monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
     monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
     monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "MOUNTED_ROUTE_SCOPE_POLICIES", {
+        ("POST", "/api/v1/competition/readiness"): {
+            "roles": ("coach",),
+            "required_bindings": {"athlete_id": "athlete"},
+            "consent_resource": "competition_readiness",
+            "consent_action": "write",
+        }
+    })
     response = client.post(
         "/api/v1/competition/readiness",
         json={
