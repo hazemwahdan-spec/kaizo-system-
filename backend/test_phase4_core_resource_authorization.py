@@ -482,3 +482,21 @@ def test_mounted_route_cannot_use_ignored_extra_field_as_resource_proof(monkeypa
     )
     assert response.status_code == 503
     assert writes == []
+
+
+def test_mounted_route_denies_partial_scope_when_another_identifier_is_unmapped(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    response = client.post(
+        "/api/v1/competition/readiness",
+        json={
+            "athlete_id": "athlete-in-academy-a",
+            "event_id": "event-without-approved-scope",
+            "indicators": {"grip": 0.7},
+            "assessed_by": "coach-a",
+        },
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 503
+    assert "event_id" in response.json()["detail"]
