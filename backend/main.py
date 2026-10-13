@@ -12,6 +12,7 @@ from datetime import datetime
 import persistence
 from phase4_core_resource_authorization import (
     require_core_actor, assert_resource_tenant, assert_assessment_tenant, assert_minor_consent, bind_new_resource,
+    deny_unmapped_resource_scope,
 )
 from productization.identity import Principal
 from phase4_identity_store import get_resource_tenant, list_authorization_audit_for_academy
@@ -116,6 +117,18 @@ async def require_router_resource_scope(
     """
     if principal.source == "test_override":
         return principal
+
+    # Generated feature routes currently lack a proven record-level contract that
+    # binds record_id/subject_id/actor_id to one persisted academy-owned resource.
+    # A nested athlete_id elsewhere in the caller payload is not sufficient proof.
+    # Block this route family before handler execution until that contract and its
+    # route-specific tests are implemented; never allow a payload field to stand in
+    # for ownership of the feature record itself.
+    if request.url.path.startswith("/api/v1/features/"):
+        deny_unmapped_resource_scope(
+            principal=principal, request=request,
+            resource_id=request.path_params.get("record_id"),
+        )
 
     field_types = {
         "athlete_id": "athlete",
