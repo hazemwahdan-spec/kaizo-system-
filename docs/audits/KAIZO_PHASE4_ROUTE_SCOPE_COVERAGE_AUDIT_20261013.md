@@ -63,3 +63,13 @@ However, **green CI is not proof of full production activation**. Some mounted/g
 - PR #128 remains a draft and must not be merged as a phase-closure action until all closure gates above are met.
 
 Evidence Before Claim. This audit records the current candidate boundary; it does not assert that unverified routes are secure or that the candidate is deployed.
+
+
+## Follow-up security hardening — 2026-10-13
+
+- Commit `2ff370ccd23e8f9cf0bd273bff55bcc7a998c289` adds a durable audit-and-deny helper for route families with no configured scope contract.
+- Commit `bd50d154d1b4c54dee78578abfcf98fd5492f994` applies an explicit fail-closed block to all generated `/api/v1/features/*` routes before their handlers run. This closes the identified gap where a caller-supplied nested `athlete_id` could be mistaken for proof that the generated feature record's own `subject_id` and `actor_id` were correctly bound.
+- Commit `a53e7d536beb4ff33d1962948feba6c045465ca5` adds an actual-app HTTP regression test asserting HTTP 503, no handler write, and a deny audit event with the request correlation ID for an unbound feature create attempt.
+- **Verification state: NOT RUN / PENDING CI for the new commits.** The 20 successful workflow runs listed above belong to the prior candidate head and must not be reused as proof for these edits.
+- This is a deliberate availability trade-off: generated feature routes remain unavailable to non-test principals until a route-specific, persisted tenant/subject/actor ownership contract is implemented and tested. Explicit test-only overrides remain isolated from production.
+- The change does not close the remaining mounted-router parent-chain, role-policy, consent-applicability, trusted guardian verification, production OIDC, or independent retest gaps. PR #128 remains draft; Phase 4 exit remains BLOCKED.
