@@ -144,6 +144,8 @@ def parent_progress(
             raise HTTPException(status_code=403, detail="only Parent may use linked-athlete view")
         if principal.tenant_id != resource_tenant_id:
             raise HTTPException(status_code=403, detail="cross-tenant access denied")
+        if principal.resource_owner_id and principal.resource_owner_id != athlete_id:
+            raise HTTPException(status_code=403, detail="explicit athlete linkage required")
 
         # The signed identity's optional resource_owner claim is not the source
         # of truth for parent-child linkage. Require the current durable guardian
