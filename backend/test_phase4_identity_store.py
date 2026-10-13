@@ -117,6 +117,11 @@ def main():
                 "VALUES ('test-academy', 'Phase 4 test academy', 'active') "
                 "ON CONFLICT (tenant_id) DO NOTHING"
             )
+            cur.execute(
+                "INSERT INTO kaizo_tenants (tenant_id, display_name, status) "
+                "VALUES ('academy-a', 'Phase 4 route-test academy', 'active') "
+                "ON CONFLICT (tenant_id) DO NOTHING"
+            )
         conn.commit()
 
     _test_atomic_core_resource_binding()
