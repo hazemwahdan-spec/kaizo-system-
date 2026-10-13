@@ -105,6 +105,93 @@ def _assert_case_scope(
     return athlete_id
 
 
+async def require_router_resource_scope(
+    request: Request, principal: Principal = Depends(require_core_actor),
+) -> Principal:
+    """Default-deny mounted/generated routes until their resource scope is resolvable.
+
+    A matching identity dependency alone is insufficient. This shared guard
+    resolves explicit persisted resource references and checks tenant and child
+    consent before a mounted handler can return or mutate scoped data.
+    """
+    if principal.source == "test_override":
+        return principal
+
+    field_types = {
+        "athlete_id": "athlete",
+        "athleteId": "athlete",
+        "assessment_id": "assessment",
+        "problem_id": "problem_statement",
+        "diagnosis_id": "diagnosis",
+        "candidate_id": "decision_candidate",
+        "decision_id": "decision_record",
+        "plan_id": "training_plan",
+        "session_id": "training_session",
+        "dosage_id": "training_dosage",
+        "snapshot_id": "state_snapshot",
+        "capture_id": "kpi_capture",
+        "selection_id": "problem_library_selection",
+        "evidence_id": "evidence",
+        "entity_id": "athlete",
+        "case_id": "case",
+    }
+    references: list[tuple[str, str]] = []
+
+    def collect(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                if key in field_types and isinstance(nested, (str, int)) and str(nested).strip():
+                    references.append((field_types[key], str(nested)))
+                collect(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                collect(nested)
+
+    collect(request.path_params)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = None
+    collect(payload)
+
+    if not references:
+        raise HTTPException(
+            status_code=503,
+            detail="No approved tenant/resource scope policy is configured for this mounted route",
+        )
+
+    seen: set[tuple[str, str]] = set()
+    for resource_type, resource_id in references:
+        ref = (resource_type, resource_id)
+        if ref in seen:
+            continue
+        seen.add(ref)
+        if resource_type == "case":
+            _assert_case_scope(
+                resource_id, principal, resource="mounted_route", action=request.method.lower(),
+                request_route=request.url.path,
+            )
+            continue
+        if resource_type == "assessment":
+            athlete_id = assert_assessment_tenant(
+                assessment_id=resource_id, principal=principal,
+                request_route=request.url.path, action=request.method.lower(),
+            )
+        else:
+            assert_resource_tenant(
+                resource_type=resource_type, resource_id=resource_id, principal=principal,
+                request_route=request.url.path, action=request.method.lower(),
+            )
+            athlete_id = _resolve_athlete_id(resource_type, resource_id)
+        if not athlete_id:
+            raise HTTPException(status_code=403, detail="Mounted route resource has no verified athlete ownership chain")
+        assert_minor_consent(
+            child_id=athlete_id, principal=principal, resource=resource_type,
+            action=request.method.lower(), request_route=request.url.path,
+        )
+    return principal
+
+
 app = FastAPI(
     title="KAIZO Core Engine API",
     version="2.0.0",
@@ -114,15 +201,15 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-app.include_router(feature_runtime_router, dependencies=[Depends(require_core_actor)])
-app.include_router(training_workflow_router, dependencies=[Depends(require_core_actor)])
-app.include_router(knowledge_runtime_router, dependencies=[Depends(require_core_actor)])
-app.include_router(audit_trace_runtime_router, dependencies=[Depends(require_core_actor)])
-app.include_router(evidence_safety_runtime_router, dependencies=[Depends(require_core_actor)])
-app.include_router(state_cycle_router, dependencies=[Depends(require_core_actor)])
-app.include_router(reporting_runtime_router, dependencies=[Depends(require_core_actor)])
-app.include_router(competition_runtime_router, dependencies=[Depends(require_core_actor)])
-app.include_router(academy_ops_runtime_router, dependencies=[Depends(require_core_actor)])
+app.include_router(feature_runtime_router, dependencies=[Depends(require_core_actor), Depends(require_router_resource_scope)])
+app.include_router(training_workflow_router, dependencies=[Depends(require_core_actor), Depends(require_router_resource_scope)])
+app.include_router(knowledge_runtime_router, dependencies=[Depends(require_core_actor), Depends(require_router_resource_scope)])
+app.include_router(audit_trace_runtime_router, dependencies=[Depends(require_core_actor), Depends(require_router_resource_scope)])
+app.include_router(evidence_safety_runtime_router, dependencies=[Depends(require_core_actor), Depends(require_router_resource_scope)])
+app.include_router(state_cycle_router, dependencies=[Depends(require_core_actor), Depends(require_router_resource_scope)])
+app.include_router(reporting_runtime_router, dependencies=[Depends(require_core_actor), Depends(require_router_resource_scope)])
+app.include_router(competition_runtime_router, dependencies=[Depends(require_core_actor), Depends(require_router_resource_scope)])
+app.include_router(academy_ops_runtime_router, dependencies=[Depends(require_core_actor), Depends(require_router_resource_scope)])
 
 app.add_middleware(
     CORSMiddleware,
