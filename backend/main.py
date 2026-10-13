@@ -141,6 +141,15 @@ MOUNTED_ROUTE_SCOPE_POLICIES: dict[tuple[str, str], dict[str, Any]] = {
         "consent_resource": "decision_record",
         "consent_action": "read",
     },
+    ("POST", "/api/v1/state-cycle/feat-045/next-state"): {
+        "roles": ("coach", "academy"),
+        "required_bindings": {"athlete_id": "athlete"},
+        "actor_fields": ("requested_by",),
+        "consent_resource": "digital_twin_state",
+        "consent_action": "read",
+        "consent_resource_by_type": {"decision_record": "decision_record"},
+        "consent_action_by_type": {"decision_record": "read"},
+    },
 }
 
 
@@ -201,16 +210,6 @@ async def require_router_resource_scope(
             resource_type="mounted_route",
             required_role="/".join(route_policy["roles"]),
         )
-    for field_name, expected_resource_type in route_policy["required_bindings"].items():
-        field_value = request.path_params.get(field_name)
-        if not field_value:
-            deny_unmapped_resource_scope(
-                principal=principal,
-                request=request,
-                resource_type=expected_resource_type,
-                resource_id=field_value,
-                detail=f"Required route binding {field_name} is missing",
-            )
     self_scope_param = route_policy.get("self_scope_param")
     if principal.role == "athlete" and self_scope_param:
         requested_athlete = str(request.path_params.get(self_scope_param) or "")
@@ -241,6 +240,8 @@ async def require_router_resource_scope(
         "case_id": "case",
     }
     references: list[tuple[str, str]] = []
+    declared_bindings: list[tuple[str, str, str]] = []
+    declared_values: dict[str, list[Any]] = {}
     unmapped_identifiers: list[str] = []
 
     def collect_declared_fields(value: Any) -> None:
@@ -254,8 +255,12 @@ async def require_router_resource_scope(
         else:
             return
         for key, nested in items:
+            declared_values.setdefault(key, []).append(nested)
             if key in field_types and isinstance(nested, (str, int)) and str(nested).strip():
-                references.append((field_types[key], str(nested)))
+                resource_type = field_types[key]
+                resource_id = str(nested)
+                references.append((resource_type, resource_id))
+                declared_bindings.append((key, resource_type, resource_id))
             elif key != "actor_id" and key.endswith(("_id", "_ids")) and (
                 (isinstance(nested, (str, int)) and str(nested).strip())
                 or (isinstance(nested, list) and any(str(item).strip() for item in nested))
@@ -279,25 +284,34 @@ async def require_router_resource_scope(
             raise HTTPException(status_code=422, detail="Mounted route body is invalid")
         collect_declared_fields(payload)
 
+    for field_name, expected_resource_type in route_policy["required_bindings"].items():
+        if not any(
+            name == field_name and resource_type == expected_resource_type
+            for name, resource_type, _ in declared_bindings
+        ):
+            deny_unmapped_resource_scope(
+                principal=principal,
+                request=request,
+                resource_type=expected_resource_type,
+                resource_id=None,
+                detail=f"Required route binding {field_name} is missing or not a declared resource field",
+            )
+
+    for actor_field in route_policy.get("actor_fields", ()):
+        values = declared_values.get(actor_field, [])
+        if not values or any(str(value) != principal.actor_id for value in values):
+            deny_role_access(
+                principal=principal,
+                request=request,
+                resource_type="actor_identity",
+                required_role=f"authenticated actor must match {actor_field}",
+            )
+
     if unmapped_identifiers:
         raise HTTPException(
             status_code=503,
             detail="No approved resource-scope policy for identifier field(s): "
             + ", ".join(sorted(set(unmapped_identifiers))),
-        )
-
-    observed_references = set(references)
-    required_references = {
-        (resource_type, str(request.path_params[field_name]))
-        for field_name, resource_type in route_policy["required_bindings"].items()
-    }
-    if not required_references.issubset(observed_references):
-        deny_unmapped_resource_scope(
-            principal=principal,
-            request=request,
-            resource_type="mounted_route",
-            resource_id=None,
-            detail="Required route resource binding was not present in the validated request",
         )
 
     if not references:
@@ -331,11 +345,17 @@ async def require_router_resource_scope(
             athlete_id = _resolve_athlete_id(resource_type, resource_id)
         if not athlete_id:
             raise HTTPException(status_code=403, detail="Mounted route resource has no verified athlete ownership chain")
+        consent_resource = route_policy.get("consent_resource_by_type", {}).get(
+            resource_type, route_policy["consent_resource"]
+        )
+        consent_action = route_policy.get("consent_action_by_type", {}).get(
+            resource_type, route_policy["consent_action"]
+        )
         assert_minor_consent(
             child_id=athlete_id,
             principal=principal,
-            resource=route_policy["consent_resource"],
-            action=route_policy["consent_action"],
+            resource=consent_resource,
+            action=consent_action,
             request_route=request.url.path,
         )
     return principal
