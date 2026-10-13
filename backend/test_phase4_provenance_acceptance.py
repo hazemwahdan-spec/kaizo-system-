@@ -6,11 +6,27 @@ os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
 
 from fastapi.testclient import TestClient
+import main
 from main import app
 import knowledge_runtime
 import persistence
+from phase4_core_resource_authorization import require_core_actor
+from productization.identity import Principal
 
 persistence.initialize()
+# This file validates provenance/lifecycle business rules. Route identity and
+# tenant denial are independently tested against the real app in
+# test_phase4_core_resource_authorization.py. Keep this functional fixture
+# scoped to this process and never change production configuration.
+_TEST_PRINCIPAL = Principal(
+    actor_id="phase4-provenance-test",
+    role="coach",
+    tenant_id="phase4-test-academy",
+    resource_owner_id=None,
+    verified=True,
+    source="test_override",
+)
+app.dependency_overrides[require_core_actor] = lambda: _TEST_PRINCIPAL
 client = TestClient(app)
 BASE = "/api/v1/knowledge-runtime"
 
