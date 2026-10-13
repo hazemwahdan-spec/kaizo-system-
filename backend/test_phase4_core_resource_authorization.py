@@ -567,3 +567,23 @@ def test_explicit_training_workflow_read_policy_rejects_parent_role(monkeypatch)
     )
     assert response.status_code == 403
     assert reads == []
+
+
+def test_explicit_decision_state_link_read_policy_checks_decision_owner_and_consent(monkeypatch):
+    import backend.state_cycle as state_cycle
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda resource_type, resource_id: "athlete-a")
+    checked = []
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **kw: checked.append(kw))
+    monkeypatch.setattr(state_cycle, "_latest_link", lambda decision_id: {"decision_id": decision_id})
+    response = client.get(
+        "/api/v1/state-cycle/feat-044/decision-state-link/decision-a",
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 200
+    assert response.json()["decision_id"] == "decision-a"
+    assert checked and checked[0]["resource"] == "decision_record"
+    assert checked[0]["action"] == "read"
