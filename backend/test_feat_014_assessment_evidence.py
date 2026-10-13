@@ -19,6 +19,7 @@ class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
             patch("main.assert_resource_tenant"),
             patch("main.assert_assessment_tenant"),
             patch("main.assert_minor_consent"),
+            patch("main.assert_minor_consent"),
         ]
         for item in self._authorization_patches:
             item.start()
