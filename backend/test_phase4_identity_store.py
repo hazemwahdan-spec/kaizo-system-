@@ -12,6 +12,19 @@ def _test_atomic_core_resource_binding():
     """Resource rows and ownership bindings commit or roll back together."""
     athlete_id = "atomic-athlete-" + uuid.uuid4().hex
     tenant_id = "atomic-academy"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO kaizo_tenants (tenant_id, display_name, status) "
+                "VALUES (%s, %s, 'active') ON CONFLICT (tenant_id) DO NOTHING",
+                (tenant_id, "Atomic test academy"),
+            )
+            cur.execute(
+                "INSERT INTO kaizo_tenants (tenant_id, display_name, status) "
+                "VALUES ('different-academy', 'Different academy', 'active') "
+                "ON CONFLICT (tenant_id) DO NOTHING"
+            )
+        conn.commit()
     athlete = {
         "athlete_id": athlete_id, "display_name": "Atomic test athlete",
         "status": "ACTIVE", "metadata": {}, "created_at": "2026-10-13T00:00:00",
@@ -64,9 +77,11 @@ def _test_atomic_core_resource_binding():
 def main():
     assert persistence.is_postgres_enabled()
     migration = Path("migrations/0001_phase4_identity_consent.sql").read_text()
+    canonical_migration = Path("migrations/20261012_phase4_identity_consent_canonical.sql").read_text()
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(migration)
+            cur.execute(canonical_migration)
         conn.commit()
 
     _test_atomic_core_resource_binding()
