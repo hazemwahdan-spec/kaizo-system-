@@ -106,6 +106,38 @@ def _assert_case_scope(
     return athlete_id
 
 
+MOUNTED_ROUTE_SCOPE_POLICIES: dict[tuple[str, str], dict[str, Any]] = {
+    ("GET", "/api/v1/training-workflow/athletes/{athlete_id}"): {
+        "roles": ("coach", "academy", "athlete"),
+        "required_bindings": {"athlete_id": "athlete"},
+        "self_scope_param": "athlete_id",
+        "consent_resource": "training_workflow",
+        "consent_action": "read",
+    },
+    ("GET", "/api/v1/competition/trend/{athlete_id}"): {
+        "roles": ("coach", "academy", "athlete"),
+        "required_bindings": {"athlete_id": "athlete"},
+        "self_scope_param": "athlete_id",
+        "consent_resource": "competition_trend",
+        "consent_action": "read",
+    },
+    ("GET", "/api/v1/state-cycle/feat-042/digital-twin-state/{entity_id}"): {
+        "roles": ("coach", "academy", "athlete"),
+        "required_bindings": {"entity_id": "athlete"},
+        "self_scope_param": "entity_id",
+        "consent_resource": "digital_twin_state",
+        "consent_action": "read",
+    },
+    ("GET", "/api/v1/state-cycle/feat-043/state-history/{entity_id}"): {
+        "roles": ("coach", "academy", "athlete"),
+        "required_bindings": {"entity_id": "athlete"},
+        "self_scope_param": "entity_id",
+        "consent_resource": "digital_twin_state",
+        "consent_action": "read",
+    },
+}
+
+
 async def require_router_resource_scope(
     request: Request, principal: Principal = Depends(require_core_actor),
 ) -> Principal:
@@ -144,6 +176,45 @@ async def require_router_resource_scope(
             principal=principal, request=request,
             resource_id=request.path_params.get("record_id"),
         )
+
+    route = request.scope.get("route")
+    route_template = getattr(route, "path", "")
+    route_policy = MOUNTED_ROUTE_SCOPE_POLICIES.get((request.method.upper(), route_template))
+    if route_policy is None:
+        deny_unmapped_resource_scope(
+            principal=principal,
+            request=request,
+            resource_type="mounted_route",
+            resource_id=None,
+            detail="No approved route-specific resource/role/consent policy is configured",
+        )
+    if principal.role not in route_policy["roles"]:
+        deny_role_access(
+            principal=principal,
+            request=request,
+            resource_type="mounted_route",
+            required_role="/".join(route_policy["roles"]),
+        )
+    for field_name, expected_resource_type in route_policy["required_bindings"].items():
+        field_value = request.path_params.get(field_name)
+        if not field_value:
+            deny_unmapped_resource_scope(
+                principal=principal,
+                request=request,
+                resource_type=expected_resource_type,
+                resource_id=field_value,
+                detail=f"Required route binding {field_name} is missing",
+            )
+    self_scope_param = route_policy.get("self_scope_param")
+    if principal.role == "athlete" and self_scope_param:
+        requested_athlete = str(request.path_params.get(self_scope_param) or "")
+        if not principal.resource_owner_id or principal.resource_owner_id != requested_athlete:
+            deny_role_access(
+                principal=principal,
+                request=request,
+                resource_type="athlete",
+                required_role="athlete self-scope",
+            )
 
     field_types = {
         "athlete_id": "athlete",
@@ -209,6 +280,20 @@ async def require_router_resource_scope(
             + ", ".join(sorted(set(unmapped_identifiers))),
         )
 
+    observed_references = set(references)
+    required_references = {
+        (resource_type, str(request.path_params[field_name]))
+        for field_name, resource_type in route_policy["required_bindings"].items()
+    }
+    if not required_references.issubset(observed_references):
+        deny_unmapped_resource_scope(
+            principal=principal,
+            request=request,
+            resource_type="mounted_route",
+            resource_id=None,
+            detail="Required route resource binding was not present in the validated request",
+        )
+
     if not references:
         raise HTTPException(
             status_code=503,
@@ -241,8 +326,11 @@ async def require_router_resource_scope(
         if not athlete_id:
             raise HTTPException(status_code=403, detail="Mounted route resource has no verified athlete ownership chain")
         assert_minor_consent(
-            child_id=athlete_id, principal=principal, resource=resource_type,
-            action=request.method.lower(), request_route=request.url.path,
+            child_id=athlete_id,
+            principal=principal,
+            resource=route_policy["consent_resource"],
+            action=route_policy["consent_action"],
+            request_route=request.url.path,
         )
     return principal
 
