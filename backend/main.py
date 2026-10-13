@@ -82,7 +82,7 @@ def create_athlete(req: AthleteCreateRequest, request: Request, principal: Princ
         "created_at": now,
         "updated_at": now,
     }
-    bind_new_resource(resource_type="athlete", resource_id=athlete["athlete_id"], principal=principal, resource_data=athlete)
+    bind_new_resource(resource_type="athlete", resource_id=athlete["athlete_id"], principal=principal, resource_data=athlete, correlation_id=request.headers.get("x-correlation-id"))
     ATHLETE_RECORDS[athlete["athlete_id"]] = athlete
     persistence.upsert_athlete(athlete)
     log_action(
@@ -179,7 +179,7 @@ def create_assessment(req: AssessmentCreateRequest, request: Request, principal:
         "assessed_at": now,
         "created_at": now,
     }
-    bind_new_resource(resource_type="assessment", resource_id=assessment["assessment_id"], principal=principal, resource_data=assessment)
+    bind_new_resource(resource_type="assessment", resource_id=assessment["assessment_id"], principal=principal, resource_data=assessment, correlation_id=request.headers.get("x-correlation-id"))
     ASSESSMENT_RECORDS[assessment["assessment_id"]] = assessment
     persistence.upsert_assessment(assessment)
     log_action(
