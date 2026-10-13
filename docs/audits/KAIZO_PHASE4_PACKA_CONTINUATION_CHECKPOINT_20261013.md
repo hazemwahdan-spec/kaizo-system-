@@ -35,3 +35,19 @@ Persistence Adapter Validation run `38338964077` failed in `test_phase4_approved
 
 ## Governance
 Evidence Before Claim. A test fixture is not production evidence. Do not reopen earlier phases already closed, and do not claim closure without the required evidence.
+
+## Continuation update — 2026-10-13 03:00 UTC
+
+- User requested that the current state be saved and work continue.
+- Fixed the approved-rule governance test identity mismatch: the test payload actor_id now uses the same generated actor_id as the active tenant membership and verified test dependency override.
+- Commit: `034e2e857f902f9e5df35eed56562aa8181b7089`.
+- PR #124 remains OPEN and DRAFT: https://github.com/hazemwahdan-spec/kaizo-system-/pull/124
+- At the last status check, `Phase 4 Live Runtime Smoke` run `38339770909` completed SUCCESS on commit `034e2e857f902f9e5df35eed56562aa8181b7089`.
+- `Persistence Adapter Validation` run `38339770918` was still IN_PROGRESS. Phase 4 schema migration, durable tenant/consent repository unit tests, Core API tenant/consent route denial tests, PostgreSQL-backed route denial tests, tenant-scoped audit/fail-closed checks, and academy canonical tenant-binding check had completed successfully in that run; later broad acceptance tests were still running. No final conclusion was available yet.
+- Do not interpret smoke success as proof of live OIDC/authenticated identity, production PostgreSQL persistence, or actual production tenant/guardian-consent denial behavior.
+- Production verification and independent security retest remain outstanding. Keep Phase 4, `P4-REQ-011`, and PACK-A OPEN until required production evidence is independently observed and recorded. Do not merge PR #124 or claim closure prematurely.
+- Next resume action: poll run `38339770918`; fix any failing test at its root cause and rerun. Then verify tenant mismatch, missing/revoked/expired guardian consent and audit behavior, and obtain actual production evidence for OIDC, DB persistence, health/OpenAPI, and security denial cases.
+- Direct links:
+  - Persistence validation: https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38339770918
+  - Phase 4 smoke: https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38339770909
+  - PR #124: https://github.com/hazemwahdan-spec/kaizo-system-/pull/124
