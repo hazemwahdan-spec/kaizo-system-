@@ -404,7 +404,7 @@ def test_mounted_knowledge_route_fails_closed_without_resource_scope(monkeypatch
     monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
     response = client.post(
         "/api/v1/knowledge-runtime/feat-049/retrieve",
-        json={"query": "cross-academy data must not be returned"},
+        json={"workflow_context": "coach_review", "query": "cross-academy data must not be returned", "requested_by": "coach-1"},
         headers={"Authorization": "Bearer signed-test-token"},
     )
     assert response.status_code == 503
