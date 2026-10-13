@@ -200,6 +200,10 @@ def main():
         verification_status="verified", version=1,
         verified_by="trusted-test-admin", verified_at=now,
     )
+    assert not store.has_active_minor_consent(
+        child_id="test-child-active", academy_id="test-academy",
+        resource="assessment", action="read",
+    )
     store.record_child_consent(
         consent_id="test-active-consent-v1", child_id="test-child-active",
         guardian_actor_id="test-active-guardian", academy_id="test-academy",
@@ -217,6 +221,17 @@ def main():
         resource="assessment", action="read", state="revoked",
         expires_at=now + timedelta(days=1), recorded_by_actor_id="test-active-guardian",
         version=2,
+    )
+    assert not store.has_active_minor_consent(
+        child_id="test-child-active", academy_id="test-academy",
+        resource="assessment", action="read",
+    )
+    store.record_child_consent(
+        consent_id="test-active-consent-v3-expired", child_id="test-child-active",
+        guardian_actor_id="test-active-guardian", academy_id="test-academy",
+        resource="assessment", action="read", state="active",
+        expires_at=now - timedelta(seconds=1), recorded_by_actor_id="test-active-guardian",
+        version=3,
     )
     assert not store.has_active_minor_consent(
         child_id="test-child-active", academy_id="test-academy",
