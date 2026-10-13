@@ -1,9 +1,11 @@
-"""Fail-closed identity dependency primitives for KAIZO Phase 4 routes.
+"""Fail-closed identity dependency primitives for the bounded Phase 4 Core routes.
 
-This module is intentionally not wired to production routes yet. Route wiring
-requires an approved route/resource map and separately authorized production
-identity configuration. Never treat request-body actor fields or development
-headers as authentication.
+The current candidate wires this gate to selected athlete/assessment handlers.
+That does not mean all sensitive routes are protected or that production OIDC
+configuration has been verified. Keep the enforcement flag disabled until the
+identity provider, issuer/audience/JWKS mapping, memberships, and route coverage
+are independently validated. Never treat request-body actor fields or
+development headers as authentication.
 """
 from __future__ import annotations
 
