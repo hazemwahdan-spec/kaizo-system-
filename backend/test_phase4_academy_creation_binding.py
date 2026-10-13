@@ -1,4 +1,5 @@
 """PostgreSQL integration test for atomic academy creation + tenant binding."""
+from datetime import datetime, timezone
 from uuid import uuid4
 from unittest.mock import patch
 
@@ -106,6 +107,23 @@ def test_academy_create_persists_binding_in_same_transaction():
         kpi_read = client.get(f"/api/v1/kpis/{kpi_id}")
         assert kpi_read.status_code == 200, kpi_read.text
 
+        # FEAT-029 must reference persisted evidence. Seed an isolated, verified
+        # fixture rather than relying on a global evidence ID that may not exist
+        # in the disposable PostgreSQL database.
+        feature_evidence_id = "P4-FEATURE-EVIDENCE-" + suffix
+        persistence.upsert_evidence({
+            "evidence_id": feature_evidence_id,
+            "subject_type": "feature_rule",
+            "subject_id": subject,
+            "evidence_level": "E2",
+            "status": "VERIFIED",
+            "source_ref": "test-fixture://phase4-academy-binding",
+            "claim": "Verified fixture evidence for tenant-binding integration test",
+            "observed_value": {"test_fixture": True, "tenant_id": tenant_id},
+            "verified_by": subject,
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+            "notes": "Disposable PostgreSQL integration-test fixture only",
+        })
         feature_response = client.post(
             "/api/v1/features/feat-029/progression-regression-rules",
             json={
@@ -113,7 +131,7 @@ def test_academy_create_persists_binding_in_same_transaction():
                 "payload": {"metric": "technical_quality", "threshold": 8,
                             "action": "PROGRESS", "adjustment": 1,
                             "rule_version": "1.0.0", "approval_status": "APPROVED"},
-                "evidence_refs": ["P4-FEATURE-EVIDENCE"],
+                "evidence_refs": [feature_evidence_id],
                 "coach_final_authority": True, "execution_authorized": False,
             },
             headers={"X-Trace-Id": "feature-record-create-" + suffix},
