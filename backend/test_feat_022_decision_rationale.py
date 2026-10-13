@@ -11,7 +11,7 @@ class CoreAuthTestOverrides:
     def _install_auth_test_overrides(self):
         self.principal = Principal(actor_id="unit-test-coach", role="coach", tenant_id="unit-test-academy", resource_owner_id=None, verified=True, source="test_override")
         main.app.dependency_overrides[require_core_actor] = lambda: self.principal
-        self._authorization_patches = [patch("main.bind_new_resource"), patch("main.assert_resource_tenant"), patch("main.assert_assessment_tenant")]
+        self._authorization_patches = [patch("main.bind_new_resource"), patch("main.assert_resource_tenant"), patch("main.assert_assessment_tenant"), patch("main.assert_minor_consent")]
         for item in self._authorization_patches: item.start()
         self.addCleanup(self._cleanup_auth_test_overrides)
     def _cleanup_auth_test_overrides(self):
