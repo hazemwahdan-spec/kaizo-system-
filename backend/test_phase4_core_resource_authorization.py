@@ -463,3 +463,22 @@ def test_generated_feature_create_fails_closed_until_feature_record_scope_policy
         and item.get("correlation_id") == "phase4-feature-scope-deny"
         for item in audit_events
     )
+
+
+def test_mounted_route_cannot_use_ignored_extra_field_as_resource_proof(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    writes = []
+    monkeypatch.setattr(main.persistence, "append_audit", lambda **kwargs: writes.append(kwargs))
+    response = client.post(
+        "/api/v1/audit-trace/feat-052/trace",
+        json={
+            "actor_id": "caller-controlled-actor",
+            "action": "test",
+            "athlete_id": "athlete-in-same-tenant-but-not-bound-to-this-route",
+        },
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 503
+    assert writes == []
