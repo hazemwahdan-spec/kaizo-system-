@@ -36,6 +36,7 @@ def isolate_authorization_tests_from_audit_store(monkeypatch, request):
     if request.node.name not in {
         "test_authorization_decisions_are_durably_audited",
         "test_authorization_audit_store_failure_fails_closed",
+        "test_actual_route_auth_denial_is_durably_audited",
     }:
         monkeypatch.setattr(authz, "_audit_authorization", lambda **_: None)
 
@@ -81,6 +82,29 @@ def test_authorization_audit_store_failure_fails_closed(monkeypatch):
             request_route="/api/v1/athletes/{athlete_id}",
         )
     assert getattr(error.value, "status_code", None) == 503
+
+
+def test_actual_route_auth_denial_is_durably_audited(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: False)
+    correlation_id = "phase4-route-auth-denial"
+    response = client.get(
+        "/api/v1/athletes/no-membership",
+        headers={
+            "Authorization": "Bearer signed-test-token",
+            "X-Correlation-ID": correlation_id,
+        },
+    )
+    assert response.status_code == 403
+    from phase4_identity_store import list_authorization_audit
+    rows = list_authorization_audit(correlation_id=correlation_id)
+    assert any(
+        row["decision"] == "deny"
+        and row["reason_code"] == "ACTIVE_MEMBERSHIP_REQUIRED"
+        and row["request_route"] == "/api/v1/athletes/no-membership"
+        for row in rows
+    )
 
 
 def test_actual_create_athlete_rejects_missing_or_invalid_identity_without_write(monkeypatch):
