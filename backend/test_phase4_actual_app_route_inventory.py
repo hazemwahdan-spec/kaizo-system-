@@ -110,7 +110,7 @@ def test_all_mounted_and_generated_routes_require_fail_closed_resource_scope_gua
         "/api/v1/state-cycle",
         "/api/v1/reporting",
         "/api/v1/competition",
-        "/api/v1/academy-ops",
+        "/api/v1/academy",
     )
     missing_scope_guard = []
     for row in rows:
