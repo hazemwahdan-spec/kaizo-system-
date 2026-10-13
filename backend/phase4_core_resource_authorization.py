@@ -310,7 +310,7 @@ def assert_assessment_tenant(
     athlete_id = str(row[0])
     assert_resource_tenant(
         resource_type="athlete", resource_id=athlete_id, principal=principal,
-        request_route=request_route, correlation_id=correlation_id, action=action, correlation_id=correlation_id,
+        request_route=request_route, action=action, correlation_id=correlation_id,
     )
     assert_resource_tenant(
         resource_type="assessment", resource_id=assessment_id, principal=principal,
