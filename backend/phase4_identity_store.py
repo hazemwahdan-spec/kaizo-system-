@@ -215,6 +215,23 @@ def get_resource_tenant(*, resource_type: str, resource_id: str) -> str | None:
             JOIN kaizo_resource_tenant_bindings b
               ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
             WHERE r.problem_id=%s""",
+        "evidence": """SELECT b.tenant_id
+            FROM kaizo_evidence_records e
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete'
+             AND b.resource_id = CASE
+                 WHEN lower(e.subject_type)='athlete' THEN e.subject_id
+                 WHEN lower(e.subject_type)='assessment' THEN
+                     (SELECT athlete_id FROM kaizo_assessments WHERE assessment_id=e.subject_id)
+                 WHEN lower(e.subject_type) IN ('problem', 'problem_statement') THEN
+                     (SELECT athlete_id FROM kaizo_problem_statements WHERE problem_id=e.subject_id)
+                 WHEN lower(e.subject_type)='diagnosis' THEN
+                     (SELECT athlete_id FROM kaizo_evidence_linked_diagnoses WHERE diagnosis_id=e.subject_id)
+                 WHEN lower(e.subject_type) IN ('candidate', 'decision_candidate') THEN
+                     (SELECT athlete_id FROM kaizo_decision_candidates WHERE candidate_id=e.subject_id)
+                 ELSE NULL
+             END
+            WHERE e.evidence_id=%s""",
         "diagnosis": """SELECT b.tenant_id
             FROM kaizo_evidence_linked_diagnoses r
             JOIN kaizo_resource_tenant_bindings b
