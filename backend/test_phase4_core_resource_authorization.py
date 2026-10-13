@@ -889,7 +889,7 @@ def test_remaining_unmapped_mounted_route_families_remain_default_deny(
 def test_new_training_workflow_policies_allow_only_authenticated_actor_and_check_scope(
     monkeypatch, path, payload, actor_field
 ):
-    import backend.training_workflow as training
+    import training_workflow as training
 
     principal = Principal(
         actor_id="coach-1", role="coach", tenant_id="academy-a",
