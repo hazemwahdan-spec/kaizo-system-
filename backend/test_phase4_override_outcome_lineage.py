@@ -1,6 +1,7 @@
 """Phase 4 acceptance for coach override history and decision-to-outcome lineage."""
 import os
 import uuid
+from types import SimpleNamespace
 
 os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
@@ -21,7 +22,7 @@ def isolate_outcome_lineage_business_tests_from_tenant_guard():
     # spoofing behavior is verified in dedicated Phase 4 authorization tests.
     previous = main.app.dependency_overrides.get(require_phase4_domain_access)
     main.app.dependency_overrides[require_phase4_domain_access] = lambda: {
-        "principal": "phase4-outcome-test", "tenant_id": "phase4-outcome-test-tenant"
+        "principal": SimpleNamespace(actor_id="phase4-outcome-test"), "tenant_id": "phase4-outcome-test-tenant"
     }
     try:
         yield
