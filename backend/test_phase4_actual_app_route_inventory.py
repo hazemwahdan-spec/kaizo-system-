@@ -95,3 +95,29 @@ def test_all_sensitive_non_product_api_routes_require_phase4_identity_gate():
         if authz.require_core_actor not in row["dependencies"]:
             unprotected.append((row["methods"], row["path"], row["name"]))
     assert unprotected == [], f"Sensitive API routes without identity gate: {unprotected}"
+
+
+def test_all_mounted_and_generated_routes_require_fail_closed_resource_scope_guard():
+    from backend.main import require_router_resource_scope
+
+    rows = _registered_http_routes()
+    mounted_prefixes = (
+        "/api/v1/features",
+        "/api/v1/training-workflow",
+        "/api/v1/knowledge-runtime",
+        "/api/v1/audit-trace",
+        "/api/v1/evidence-safety",
+        "/api/v1/state-cycle",
+        "/api/v1/reporting",
+        "/api/v1/competition",
+        "/api/v1/academy-ops",
+    )
+    missing_scope_guard = []
+    for row in rows:
+        if any(row["path"].startswith(prefix) for prefix in mounted_prefixes):
+            if require_router_resource_scope not in row["dependencies"]:
+                missing_scope_guard.append((row["methods"], row["path"], row["name"]))
+    assert missing_scope_guard == [], (
+        "Mounted/generated routes without fail-closed resource scope guard: "
+        f"{missing_scope_guard}"
+    )
