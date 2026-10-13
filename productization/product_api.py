@@ -18,8 +18,9 @@ def verify_oidc(
     """Live OIDC verification endpoint for standard JWT validation."""
     try:
         return verify_bearer_token(authorization)
-    except IdentityNotConfiguredError as exc:
-        raise HTTPException(status_code=401, detail=str(exc))
+    except IdentityNotConfiguredError:
+        # Do not disclose issuer, audience, JWKS, or token-validation internals.
+        raise HTTPException(status_code=401, detail="Invalid or unconfigured OIDC bearer token")
 
 _surface: ProductSurface | None = None
 
