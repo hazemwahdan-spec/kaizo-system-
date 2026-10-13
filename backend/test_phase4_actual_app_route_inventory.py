@@ -169,10 +169,29 @@ def test_manifest_covers_every_registered_core_api_route():
         path = row["path"]
         if not path.startswith("/api/v1/"):
             continue
-        if path == "/api/v1/health" or path.startswith("/api/v1/product/"):
+        if (
+            path == "/api/v1/health"
+            or path.startswith("/api/v1/product/")
+            or path.startswith("/api/v1/features/")
+        ):
+            # Generated feature records are dynamically registered; their
+            # security contract is checked against the dedicated pattern table below.
             continue
         for method in row["methods"]:
             actual.add((method, path))
+
+    generated_contracts = (
+        ("POST", "/api/v1/features/{feature_id}/{slug}"),
+        ("GET", "/api/v1/features/{feature_id}/{slug}"),
+        ("GET", "/api/v1/features/{feature_id}/{slug}/{record_id}"),
+    )
+    assert "## Dynamic generated-feature routes" in manifest
+    for method, pattern in generated_contracts:
+        expected = "| " + method + " | `" + pattern + "` |"
+        assert expected in manifest, (
+            "Generated feature route pattern missing from manifest: "
+            + repr((method, pattern))
+        )
 
     missing = sorted(actual - documented)
     stale = sorted(documented - actual)
