@@ -25,6 +25,27 @@ from reporting_runtime import router as reporting_runtime_router
 from competition_runtime import router as competition_runtime_router
 from academy_ops_runtime import router as academy_ops_runtime_router
 
+def _resolve_athlete_id(resource_type: str, resource_id: str) -> Optional[str]:
+    """Resolve the athlete parent only from persisted server-side resource links."""
+    if resource_type == "athlete":
+        return resource_id
+    if resource_type == "assessment":
+        record = persistence.get_assessment(resource_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "problem_statement":
+        record = persistence.get_problem_statement(resource_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "diagnosis":
+        records = persistence.list_evidence_linked_diagnoses_for_id(resource_id) if persistence.is_postgres_enabled() else [
+            item for item in EVIDENCE_LINKED_DIAGNOSES.values() if item.get("diagnosis_id") == resource_id
+        ]
+        return str(records[0]["athlete_id"]) if records and records[0].get("athlete_id") else None
+    if resource_type == "decision_candidate":
+        record = persistence.get_decision_candidate(resource_id) if persistence.is_postgres_enabled() else DECISION_CANDIDATES.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    return None
+
+
 app = FastAPI(
     title="KAIZO Core Engine API",
     version="2.0.0",
@@ -1720,12 +1741,9 @@ def record_evidence(req: EvidenceCreateRequest, principal: Principal = Depends(r
     if resource_type is None:
         raise HTTPException(status_code=400, detail="Evidence subject_type is not covered by the tenant scope policy")
     assert_resource_tenant(resource_type=resource_type, resource_id=req.subject_id, principal=principal, request_route="/api/v1/evidence", action="write")
-    if resource_type == "assessment":
-        athlete_id = assert_assessment_tenant(assessment_id=req.subject_id, principal=principal, request_route="/api/v1/evidence", action="read")
-    elif resource_type == "athlete":
-        athlete_id = req.subject_id
-    else:
-        raise HTTPException(status_code=503, detail="Evidence subject type requires an approved athlete-parent resolver")
+    athlete_id = _resolve_athlete_id(resource_type, req.subject_id)
+    if not athlete_id:
+        raise HTTPException(status_code=403, detail="Evidence subject has no verified athlete ownership chain")
     assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="write", request_route="/api/v1/evidence")
     now = datetime.utcnow().isoformat()
     record = {
@@ -1760,12 +1778,13 @@ def get_evidence(evidence_id: str, principal: Principal = Depends(require_core_a
     if record is None:
         raise HTTPException(status_code=404, detail="evidence not found")
     subject_type = str(record.get("subject_type", "")).strip().lower()
-    if subject_type == "athlete":
-        athlete_id = record["subject_id"]
-    elif subject_type == "assessment":
-        athlete_id = assert_assessment_tenant(assessment_id=record["subject_id"], principal=principal, request_route="/api/v1/evidence/{evidence_id}", action="read")
-    else:
-        raise HTTPException(status_code=503, detail="Evidence subject type requires an approved athlete-parent resolver")
+    scoped_types = {"athlete": "athlete", "assessment": "assessment", "problem": "problem_statement", "problem_statement": "problem_statement", "diagnosis": "diagnosis", "candidate": "decision_candidate", "decision_candidate": "decision_candidate"}
+    resource_type = scoped_types.get(subject_type)
+    if resource_type is None:
+        raise HTTPException(status_code=403, detail="Evidence subject type is not covered by the tenant scope policy")
+    athlete_id = _resolve_athlete_id(resource_type, record["subject_id"])
+    if not athlete_id:
+        raise HTTPException(status_code=403, detail="Evidence subject has no verified athlete ownership chain")
     assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="read", request_route="/api/v1/evidence/{evidence_id}")
     return record
 
@@ -1774,29 +1793,23 @@ def get_evidence(evidence_id: str, principal: Principal = Depends(require_core_a
 def list_evidence(subject_id: Optional[str] = None, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if not subject_id:
         raise HTTPException(status_code=400, detail="subject_id is required for tenant-scoped evidence listing")
-    tenant_id = None
-    subject_type = None
+    matched_types = []
     for candidate_type in ("athlete", "assessment", "problem_statement", "diagnosis", "decision_candidate"):
         try:
-            candidate_tenant = __import__("phase4_identity_store").get_resource_tenant(resource_type=candidate_type, resource_id=subject_id)
-        except Exception:
-            candidate_tenant = None
-        if candidate_tenant:
-            if tenant_id is not None and tenant_id != str(candidate_tenant):
-                raise HTTPException(status_code=403, detail="Ambiguous evidence subject scope")
-            tenant_id = str(candidate_tenant)
-            subject_type = candidate_type
-    if not tenant_id or tenant_id != principal.tenant_id:
-        raise HTTPException(status_code=403, detail="Evidence subject tenant scope denied")
+            assert_resource_tenant(resource_type=candidate_type, resource_id=subject_id, principal=principal, request_route="/api/v1/evidence", action="list")
+            matched_types.append(candidate_type)
+        except HTTPException as exc:
+            if exc.status_code not in {403, 404}:
+                raise
+    if len(matched_types) != 1:
+        raise HTTPException(status_code=403, detail="Evidence subject scope is missing or ambiguous")
+    resource_type = matched_types[0]
+    athlete_id = _resolve_athlete_id(resource_type, subject_id)
+    if not athlete_id:
+        raise HTTPException(status_code=403, detail="Evidence subject has no verified athlete ownership chain")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="read", request_route="/api/v1/evidence")
     records = persistence.list_evidence(subject_id) if persistence.is_postgres_enabled() else list(EVIDENCE_RECORDS.values())
     records = [r for r in records if r["subject_id"] == subject_id]
-    if subject_type == "athlete":
-        assert_minor_consent(child_id=subject_id, principal=principal, resource="evidence", action="read", request_route="/api/v1/evidence")
-    elif subject_type == "assessment":
-        athlete_id = assert_assessment_tenant(assessment_id=subject_id, principal=principal, request_route="/api/v1/evidence", action="read")
-        assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="read", request_route="/api/v1/evidence")
-    else:
-        raise HTTPException(status_code=503, detail="Evidence subject type requires an approved athlete-parent resolver")
     return {"total_evidence": len(records), "records": records}
 
 
