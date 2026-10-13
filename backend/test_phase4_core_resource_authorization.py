@@ -245,7 +245,10 @@ def test_actual_create_assessment_denies_cross_tenant_before_athlete_read_or_wri
     assert writes == []
 
 
-def test_actual_create_assessment_denies_minor_without_active_consent_before_read_or_write(monkeypatch):
+@pytest.mark.parametrize("consent_state", ["missing", "revoked"])
+def test_actual_create_assessment_denies_minor_without_active_consent_before_read_or_write(monkeypatch, consent_state):
+    # The authoritative store returns no active consent for both absence and
+    # latest-version revocation; the route must reject before reading/writing.
     monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
     monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
     monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
