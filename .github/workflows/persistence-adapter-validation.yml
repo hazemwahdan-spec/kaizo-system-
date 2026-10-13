@@ -89,6 +89,9 @@ jobs:
         run: PYTHONPATH=..:. python -m unittest test_feat_011_measurements.FEAT046AuditSpineTests
       - name: Run FEAT-051 evidence spine acceptance tests
         run: PYTHONPATH=..:. python test_feat_051_evidence.py
+      - name: Run Phase 4 durable identity and consent store acceptance tests
+        run: PYTHONPATH=..:. python test_phase4_identity_store.py
+
       - name: Run FEAT-041 digital twin state acceptance tests
         run: PYTHONPATH=..:. python test_feat_041_digital_twin.py
       - name: Run FEAT-056 safety/evidence guardrail acceptance tests
@@ -111,9 +114,6 @@ jobs:
 
       - name: Run Phase 4 audit and plan authority acceptance tests
         run: PYTHONPATH=..:. python test_phase4_audit_authority.py
-
-      - name: Run Phase 4 durable identity and consent store acceptance tests
-        run: PYTHONPATH=..:. python test_phase4_identity_store.py
 
       - name: Run Phase 4 canonical migration and identity-store integration acceptance tests
         run: PYTHONPATH=..:. python test_phase4_canonical_identity_consent_integration.py
