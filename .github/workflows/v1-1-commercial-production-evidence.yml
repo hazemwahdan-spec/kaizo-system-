@@ -69,7 +69,17 @@ jobs:
             "${KAIZO_PRODUCTION_BASE_URL}/api/v1/product/auth/oidc/verify")
           if [ "$code" != "200" ]; then
             echo "OIDC_LIVE_VERIFICATION: FAIL (HTTP $code)"
-            echo "Response body omitted to avoid exposing deployment configuration."
+            # Print only the bounded verifier error detail; never print the bearer token,
+            # Auth0 client secret, response headers, or the complete response document.
+            python - <<'PY'
+          import json
+          try:
+              payload = json.load(open('/tmp/oidc.json', encoding='utf-8'))
+              detail = str(payload.get("detail", "no JSON detail returned"))
+          except Exception:
+              detail = "non-JSON error response"
+          print("OIDC_VERIFIER_DIAGNOSTIC:", detail[:240])
+          PY
             exit 1
           fi
           python - <<'PY'
