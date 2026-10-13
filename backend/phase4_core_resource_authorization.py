@@ -372,11 +372,13 @@ def bind_new_resource(
 
 def deny_unmapped_resource_scope(
     *, principal: Principal, request: Request, resource_id: str | None = None,
+    resource_type: str = "feature_record",
+    detail: str = "Route is blocked until its tenant/resource ownership policy is configured",
 ) -> None:
     """Fail closed and durably audit a route family lacking a specific scope contract."""
     _audit_authorization(
         principal=principal,
-        resource_type="feature_record",
+        resource_type=resource_type,
         resource_id=resource_id,
         action=request.method.lower(),
         decision="deny",
@@ -384,7 +386,21 @@ def deny_unmapped_resource_scope(
         request_route=request.url.path,
         correlation_id=request.headers.get("X-Correlation-ID"),
     )
-    raise HTTPException(
-        status_code=503,
-        detail="Feature route is blocked until feature-record tenant, subject, and actor ownership policy is configured",
+    raise HTTPException(status_code=503, detail=detail)
+
+
+def deny_role_access(
+    *, principal: Principal, request: Request, resource_type: str, required_role: str,
+) -> None:
+    """Fail closed when a route requires a role the verified principal does not hold."""
+    _audit_authorization(
+        principal=principal,
+        resource_type=resource_type,
+        resource_id=request.path_params.get("academy_id"),
+        action=request.method.lower(),
+        decision="deny",
+        reason_code="REQUIRED_ROLE_NOT_PRESENT",
+        request_route=request.url.path,
+        correlation_id=request.headers.get("X-Correlation-ID"),
     )
+    raise HTTPException(status_code=403, detail=f"{required_role} role required for this route")
