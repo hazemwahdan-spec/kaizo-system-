@@ -107,3 +107,32 @@ def test_parent_progress_requires_durable_guardian_and_consent(monkeypatch):
     assert exc.value.status_code == 403
     assert "verified guardian relationship" in exc.value.detail
     assert calls["authorization"] == "Bearer token"
+
+
+def test_parent_progress_allows_only_verified_scoped_consent(monkeypatch):
+    from productization import product_api
+    from productization.product_surface import ProductSurface
+    from productization.runtime_adapter import RuntimeContext
+    checked = {}
+
+    def fake_ctx(actor_id, role, tenant_id, owner, authorization=None):
+        checked["token"] = authorization
+        return RuntimeContext("parent-1", "parent", "T1", None)
+
+    def relationship(**scope):
+        checked["relationship"] = scope
+        return True
+
+    def consent(**scope):
+        checked["consent"] = scope
+        return True
+
+    monkeypatch.setattr(product_api, "ctx", fake_ctx)
+    monkeypatch.setattr(product_api, "get_surface", lambda: ProductSurface(runtime=None))
+    monkeypatch.setattr(product_api, "has_verified_guardian_relationship", relationship)
+    monkeypatch.setattr(product_api, "has_active_child_consent", consent)
+    result = product_api.parent_progress("athlete-2", "T1", "header-parent", "parent", "T1", None, "Bearer token")
+    assert result["athlete_id"] == "athlete-2"
+    assert checked["token"] == "Bearer token"
+    assert checked["consent"]["resource"] == "athlete_progress"
+    assert checked["consent"]["action"] == "read"
