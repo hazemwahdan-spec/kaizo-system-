@@ -136,3 +136,25 @@ def test_parent_progress_allows_only_verified_scoped_consent(monkeypatch):
     assert checked["token"] == "Bearer token"
     assert checked["consent"]["resource"] == "athlete_progress"
     assert checked["consent"]["action"] == "read"
+
+
+
+def test_oidc_verification_endpoint_does_not_disclose_validation_details(monkeypatch):
+    from fastapi.testclient import TestClient
+    from productization import product_api
+    from productization.identity import IdentityNotConfiguredError
+
+    monkeypatch.setattr(
+        product_api,
+        "verify_bearer_token",
+        lambda _: (_ for _ in ()).throw(
+            IdentityNotConfiguredError("secret JWKS endpoint and issuer diagnostic")
+        ),
+    )
+    response = TestClient(app).get(
+        "/api/v1/product/auth/oidc/verify",
+        headers={"Authorization": "Bearer invalid"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or unconfigured OIDC bearer token"
+    assert "secret JWKS endpoint" not in response.text
