@@ -24,11 +24,11 @@ Mappings are permitted only where an authoritative source explicitly supports th
 | Step | Name | Current status as of 2026-10-13 | Exit condition |
 |---:|---|---|---|
 | 1 | Project state reconstruction | CLOSED WITH DOCUMENTED GAPS | Repository, PRs, workflows, deployment conflicts and resume point captured in the recovery checkpoint. |
-| 2 | Audit previous phases | IN PROGRESS | Every historical closure reconciled against scope, acceptance criteria and current evidence; conflicts remain visible. |
-| 3 | Reconcile roadmaps | IN PROGRESS | Overall board separated from P01–P17, feature backlog, productization phases and governance tracks; source-backed crosswalk published. |
-| 4 | Close/classify conflicts | OPEN | Resolve or explicitly retain conflicts including PACK-A health status, canonical production target, DB-04 evidence scope and stale handover claims. |
-| 5 | Produce canonical roadmap | OPEN | Publish one source-linked phase register with scope, dependencies, acceptance criteria, state and evidence for all 17 steps. |
-| 6 | Phase 4 entry gate | OWNER-APPROVED WITH LIMITATIONS; preserve gate evidence | Owner approval is recorded in the issue #74 history. This authorizes the bounded Digital Brain workstream only; it does not imply exit or production readiness. |
+| 2 | Audit previous phases | CLOSED WITH DOCUMENTED LIMITATIONS | Every historical closure reconciled against scope, acceptance criteria and current evidence; conflicts remain visible. |
+| 3 | Reconcile roadmaps | CLOSED WITH EXPLICIT UNMAPPED RELATIONSHIPS | Overall board separated from P01–P17, feature backlog, productization phases and governance tracks; source-backed crosswalk published. |
+| 4 | Close/classify conflicts | CLOSED WITH ONE OWNER-DECISION BLOCKER | Resolve or explicitly retain conflicts including PACK-A health status, canonical production target, DB-04 evidence scope and stale handover claims. |
+| 5 | Produce canonical roadmap | CLOSED / CANONICAL ROADMAP SAVED WITH BOUNDED BLOCKERS | Publish one source-linked phase register with scope, dependencies, acceptance criteria, state and evidence for all 17 steps. |
+| 6 | Phase 4 entry gate | OWNER PASS RECORDED FOR CONTROLLED SCOPE; EXIT/PRODUCTION GATES REMAIN SEPARATE | Owner approval is recorded in the issue #74 history. This authorizes the bounded Digital Brain workstream only; it does not imply exit or production readiness. |
 | 7 | Execute Phase 4 | IN PROGRESS; EXIT BLOCKED | Complete traceable implementation for approved requirements, including P4-REQ-011 identity/RBAC/tenant/resource/consent boundaries, and prove every acceptance criterion. PR #128 is not authorized to merge while its own audit says DO NOT MERGE. |
 | 8 | Test, validate and red-team Phase 4 | OPEN / NOT COMPLETE | Positive and negative route/resource tests, independent red-team/retest, persistence/audit/consent checks and evidence-linked exit decision. |
 | 9 | Freeze Phase 4 | NOT STARTED | Freeze only after Step 8 passes and an explicit versioned closure decision is recorded. |
@@ -120,10 +120,39 @@ A green CI run, successful health endpoint, merged PR, or historical closure ass
 - Save an exact resume point after each batch and phase.
 
 ## 7. Current resume point
-**Step 2 — Audit previous phases**, with Step 6 gate approval recorded and Step 7 Phase 4 implementation active but exit blocked. Immediate work:
-1. continue recovery/crosswalk and canonical phase register;
-2. inspect PR #128's full route-scope evidence and actual mounted routes;
-3. reconcile DB-04's seven-step proof and the canonical deployment target;
-4. keep production changes and PR merge gated until the relevant contracts and evidence pass.
+**Step 7 — Execute Phase 4 (active; exit blocked). Batch A is complete for currently available repository evidence. Immediate work:
+1. continue route/resource/identity/tenant/guardian-consent coverage and negative tests;
+2. keep PR #128 unmerged until its route-scope audit and independent evidence gates pass;
+3. reconcile DB-04's seven-step proof and canonical production target in parallel;
+4. preserve the 48-item binary transfer gap and the open V1.1 Knowledge Foundation SSOT gap;
+5. save exact commit/run evidence and resume point after the batch.
 
 This board is an execution control document, not a claim that any open step has been completed.
+
+
+## 8. Execution checkpoint — Batch A audit and governance refresh (2026-10-13)
+
+**Disposition: BATCH A COMPLETE FOR AVAILABLE REPOSITORY EVIDENCE; ORIGINAL-SOURCE RECOVERY LIMITATION RETAINED.**
+
+This update reconciles the earlier status snapshot against source-linked records already present in the repository. Historical closure records are preserved, not rewritten or reopened.
+
+### Verified step dispositions
+- **Step 2 — CLOSED WITH DOCUMENTED LIMITATIONS:** [audit](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/audits/KAIZO_MASTER_BOARD_STEP2_PREVIOUS_PHASE_AUDIT_20261011.md), PR #92. Strategic phases 1–3 audited; source-library completeness remains partial.
+- **Step 3 — CLOSED WITH EXPLICIT UNMAPPED RELATIONSHIPS:** [crosswalk](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/audits/KAIZO_MASTER_BOARD_STEP3_ROADMAP_CROSSWALK_20261011.md), PR #93. The 17-step board, five strategic phases, productization phases, P01–P24, FEAT-001–075 and governance tracks remain separate taxonomies unless an authoritative crosswalk exists.
+- **Step 4 — CLOSED WITH ONE OWNER-DECISION BLOCKER:** [conflict register](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/audits/KAIZO_MASTER_BOARD_STEP4_CONFLICT_CLASSIFICATION_20261011.md), PR #94. Conflicts are classified; the canonical live production target remains unresolved. Historical PACK-A closure is preserved, but current production health is not claimed.
+- **Step 5 — CANONICAL ROADMAP SAVED:** [reconciled roadmap](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/roadmaps/KAIZO_MASTER_EXECUTION_ROADMAP_RECONCILED_20261011.md).
+- **Step 6 — OWNER PASS FOR CONTROLLED IMPLEMENTATION:** [owner decision](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/governance/KAIZO_PHASE4_OWNER_GATE_PASS_20261011.md). This authorizes the defined Digital Brain scope only, not production changes or Phase 4 closure.
+- **Step 7 — ACTIVE / EXIT BLOCKED:** [PR #128](https://github.com/hazemwahdan-spec/kaizo-system-/pull/128) route/resource audit says P4-REQ-011 remains OPEN / NOT PROVEN. Do not merge PR #128 until route/resource/identity/consent and independent evidence gates pass.
+
+### Remaining Batch A source-recovery limitation
+The exact original pasted 17-step board has not been recovered byte-for-byte as a standalone artifact. This board remains a source-labelled reconstruction. No completion percentage is inferred from the historical “seven phases complete” statement.
+
+### Parallel closure-changing gaps retained
+1. **DB-04:** [issue #73](https://github.com/hazemwahdan-spec/kaizo-system-/issues/73) is historically closed, but its own body requires seven evidence steps. The reviewed records do not establish the complete sequence; do not assert all seven are proven without linked evidence.
+2. **Canonical production target:** the governed workflow targets Railway, while the user-provided live endpoint is FastAPI Cloud. No deployment-authority artifact resolves the conflict; do not run production evidence against a guessed target.
+3. **Library integrity:** [transfer register](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/audits/complete-library-transfer-status.md) identifies 69 source artifacts; 48 binary/document/archive items remain pending exact-byte SHA-256 verification, and text mirrors require review.
+4. **Knowledge Foundation:** [V1.1 closure package](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/governance/KAIZO-V1.1-KNOWLEDGE-FOUNDATION-CLOSURE-PACKAGE-20261008.md) remains open for an authoritative machine-readable Unified Vocabulary SSOT. This does not reopen frozen V1.0/Core/K14–K17.
+
+### Next execution batch
+Proceed with **Batch B — Phase 4 identity and resource safety** using existing implementation before rebuilding: enumerate actual registered routes, map each protected resource to tenant/owner/role/consent/audit policy, close missing route-family negative tests, then run CI and independent retest. Keep production OIDC/live verification separate until the canonical target is resolved. Do not expose secrets or use real athlete/minor data for test records.
+
