@@ -7,10 +7,13 @@ jobs:
   production-evidence:
     runs-on: ubuntu-latest
     env:
-      KAIZO_PRODUCTION_BASE_URL: https://kaizo-core-engine-production.up.railway.app
+      # Canonical target is recorded in Gate A decision register (commit 974a999).
+      # Railway remains historical/secondary for this workstream.
+      KAIZO_PRODUCTION_BASE_URL: https://kaizo-system.fastapicloud.dev
       AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
       AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
       AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+      # Must match KAIZO_OIDC_AUDIENCE on the selected deployment.
       AUTH0_AUDIENCE: https://api.kaizo.system
     steps:
       - uses: actions/checkout@v4
@@ -98,4 +101,5 @@ jobs:
         run: |
           echo "Short-lived Auth0 access token was requested at runtime and masked."
           echo "No token value is printed or persisted as a repository artifact."
-          echo "Full commercial activation remains gated until live positive/negative RBAC, tenant, intervention, audit and independent retest evidence is collected."
+          echo "This workflow checks live OIDC verification and health only; it does not prove route-level RBAC, tenant isolation, guardian consent, durable audit, or full commercial activation."
+          echo "Full commercial activation remains gated until live positive/negative authorization and independent retest evidence is collected."
