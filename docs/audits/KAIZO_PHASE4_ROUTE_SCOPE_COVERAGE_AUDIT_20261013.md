@@ -1,56 +1,65 @@
 # KAIZO Phase 4 — Route/Resource Scope Coverage Audit
 
 Date: 2026-10-13  
-PR: #128 — `feat/phase4-core-resource-authorization`  
-Reviewed head before this audit: `12a27cb88c12e3c2a085333a6b9a3953768d678d`  
-Disposition: **BLOCKED — inventory is not authorization proof**
+PR: [#128 — Phase 4 Core resource authorization](https://github.com/hazemwahdan-spec/kaizo-system-/pull/128)  
+Validated code head: `458eb1641adb8c10e9f54cefb702f4759e4b13df`  
+Disposition: **BLOCKED — CI is green, production security proof remains incomplete**
 
 ## Evidence examined
 
-- Actual registered FastAPI route inventory test: `backend/test_phase4_actual_app_route_inventory.py`.
-- Core route authorization implementation: `backend/phase4_core_resource_authorization.py`.
-- Actual app handlers and router mounts: `backend/main.py`.
+- Actual registered FastAPI route inventory: `backend/test_phase4_actual_app_route_inventory.py`.
+- Core authorization and identity/consent adapters: `backend/phase4_core_resource_authorization.py`, `backend/phase4_identity_store.py`.
+- Core handlers and router mounts: `backend/main.py`.
 - Mounted routers: training workflow, knowledge runtime, audit trace runtime, evidence safety runtime, state cycle, reporting runtime, competition runtime, academy operations, and generated feature runtime.
 - HTTP acceptance tests: `backend/test_phase4_core_resource_authorization.py`.
-- Canonical identity/consent migration and adapter: `backend/migrations/20261012_phase4_identity_consent_canonical.sql`, `backend/phase4_identity_store.py`.
+- Canonical identity/consent migration and integration test: `backend/migrations/20261012_phase4_identity_consent_canonical.sql`, `backend/test_phase4_canonical_identity_consent_integration.py`.
 
-## What is evidenced
+## Current CI evidence
 
-1. The actual-app inventory test imports `backend.main:app` and walks registered `APIRoute` dependency trees, including mounted and generated routes.
-2. Mounted routers are registered with `Depends(require_core_actor)`; this proves an identity/membership gate is attached, not that resource ownership is checked.
-3. The current resource authorization implementation provides database-backed tenant binding, membership, verified age classification, scoped guardian-consent lookup, and durable allow/deny audit primitives.
-4. The route-level HTTP tests cover fail-closed identity, membership denial, cross-tenant denial before athlete/assessment reads, missing age classification, missing minor consent, and audit-store failure in the tested scenarios.
-5. The latest retrieved workflow set for head `12a27cb88c12e3c2a085333a6b9a3953768d678d` reports success for the Phase 4 Actual Core Route Inventory, Phase 4 Live Runtime Smoke, and Persistence Adapter Validation. This is CI evidence only; it is not independent production OIDC verification.
+The current candidate head `458eb1641adb8c10e9f54cefb702f4759e4b13df` has **20/20 retrieved workflow runs completed successfully**, including:
+
+- [Persistence Adapter Validation](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280138) — compilation, existing feature acceptance suite, canonical identity/consent integration, and actual Core resource authorization HTTP tests.
+- [Phase 4 Actual Core Route Inventory](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280190) — registered non-product routes have the identity gate; mounted/generated routes have the fail-closed scope guard.
+- [Phase 4 Live Runtime Smoke](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280179) — bounded deployed health/OpenAPI smoke only; it does **not** prove that this branch is deployed or that production OIDC and every protected route have been independently verified.
+- [Phase 7 Runtime Adapter](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280148) — internal direct Core invocation updated to pass an explicit principal.
+- [Commercial Security Regression](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280185).
 
 ## Route coverage matrix
 
-| Route/resource family | Identity gate evidence | Tenant/resource ownership evidence | Consent evidence | Disposition |
-|---|---|---|---|---|
-| Athlete create/read/update | Present in actual Core handlers | Binding/check primitives and HTTP negative tests exist | Read/write checks call age/consent guard | Partial; production identity not independently verified |
-| Assessment create/read | Present in actual Core handlers | Athlete and assessment binding checks exist; negative HTTP tests cover cross-tenant cases | Exact resource/action guard called | Partial; production identity not independently verified |
-| Assessment evidence attach/list | Identity dependency declared | No equivalent end-to-end tenant-chain proof recorded in this audit | No route-level consent proof recorded | Open |
-| Problem statements, diagnosis, cause context | Identity dependency declared | Must resolve problem -> athlete and assessment -> same athlete; complete negative HTTP matrix not evidenced | Must inherit child consent scope | Open |
-| Decision candidates, rationale, comparisons, coach review, decision records | Identity dependency declared | Must resolve decision -> diagnosis -> problem -> athlete and enforce academy/coach assignment | Must inherit applicable consent | Open |
-| Training plans, sessions, dosage | Identity dependency declared | Must resolve plan/session/dosage ownership through persisted parent chain | Must enforce exact child/resource/action consent | Open |
-| KPI definitions/captures, evidence, state snapshots, digital twin, decision loop/adapt | Identity dependency declared | Per-resource tenant binding and no-read/no-write tests not evidenced for every route | Consent applicability not evidenced route-by-route | Open |
-| Rules, safety evaluation, knowledge ingest, audit log listing | Identity dependency declared | Tenant-scoped read/write and privileged audit-read policy need explicit tests | Consent applicability must be classified explicitly | Open |
-| Mounted training/knowledge/audit/evidence-safety/state/reporting/competition/academy-ops routers | Router-level identity dependency attached | Router-by-router resource ownership/academy isolation matrix not complete | Consent and guardian relationship matrix not complete | Open |
-| Generated feature create/get/list routes | Router-level identity dependency attached | Every generated route and underlying feature record needs scope policy; inventory alone is insufficient | Consent applicability must be explicit per feature/resource | Open |
-| Health and governed commercial-product endpoints | Explicitly excluded from the non-product identity inventory rule | Separate public/product governance applies | Not covered by this Phase 4 resource matrix | Separate policy |
+| Route/resource family | Candidate guard/evidence | Remaining proof |
+|---|---|---|
+| Athlete create/read/update | Atomic athlete tenant binding on create; tenant + age/consent checks on read/update | Production OIDC identity and live allow/deny retest |
+| Assessment create/read | Parent athlete and assessment tenant checks; atomic persistence/binding/audit; consent checks | Production OIDC identity and live allow/deny retest |
+| Problem statements and scoped lists | Parent-chain tenant resolution; read/write and consent guards; unscoped list requests fail closed | Exhaustive per-route cross-tenant and no-read/no-write matrix |
+| Diagnosis, candidates, rationale, comparisons, coach review, decision records | Parent-chain resolver; tenant and consent guards; evidence ownership checks before evidence reads | Full per-route wrong-parent/forged-link matrix |
+| Training plans, sessions, dosage, cause context, problem-library selections | Tenant and consent guards tied to athlete/decision/problem parent chains | Full route-by-route regression and cross-parent mismatch matrix |
+| KPI captures and state snapshots | Athlete/assessment/capture tenant checks and child consent; unscoped list requests fail closed | KPI definition remains a shared/global catalog and needs an explicit governance/role policy |
+| Evidence create/read/list | Scoped subject types resolve to a persisted athlete parent; unsupported production subject types deny; feature/rule fixtures are exempt only for explicit test principals | Explicit policy for every production evidence subject type and per-type negative tests |
+| Audit log endpoint | Production reads only durable authorization events filtered by authenticated academy; global legacy audit log is exposed only to explicit test principals | Verify production data retention/operations and audit completeness for all runtimes |
+| Digital Twin, rules, safety, decision loop/adapt | Tenant/consent checks added; case IDs must resolve to one same-academy persisted resource; unknown cases deny | Verify all case/resource mappings and ensure every state transition is linked to an authoritative parent |
+| Mounted and generated feature routers | Shared `require_router_resource_scope` gate attached to every mounted router; it fails closed if no supported persisted resource reference can be resolved | The generic gate is a safety backstop, not a substitute for route-specific role, parent-link, consent, and audit policies. Some unsupported/global routes intentionally remain unavailable until classified |
+| Shared problem library / KPI catalog / knowledge ingest | Identity gate present | Explicit classification of global vs academy-owned data, publisher role policy, and tenant-safe mutation/read contract |
+| Health and governed commercial-product endpoints | Separate policy boundary | Not covered by this Core Phase 4 resource matrix |
+
+## Important implementation boundary
+
+The candidate now does more than attach an identity dependency: it resolves supported child-resource ownership through persisted parent chains, checks child consent on covered Core handlers, denies unscoped list operations, adds a default-deny scope dependency to mounted/generated routers, and scopes production audit-log reads to the authenticated academy.
+
+However, **green CI is not proof of full production activation**. Some mounted/global endpoints are intentionally denied when the generic guard cannot establish ownership. The route-specific policy matrix, supported subject/resource inventory, and live production allow/deny cases still need independent verification.
 
 ## Required closure work
 
-1. Build an exhaustive machine-readable route manifest from the deployed OpenAPI and the actual registered app routes at the same commit. Include method, path, router, resource type, parent chain, identity gate, role policy, tenant resolver, consent policy, audit event, and test evidence.
-2. For every protected resource family, bind ownership atomically with creation and derive nested ownership from persisted parent records. Do not trust tenant/actor/guardian fields supplied by the client.
-3. Add real HTTP acceptance tests per route family for unauthenticated/invalid identity, inactive membership, cross-academy access, no-read/no-write denial, wrong parent linkage, missing/revoked/expired consent, and durable audit. Unsupported or unbound resources must fail closed.
-4. Define and execute the trusted operational process for verifying age classifications and guardian relationships. The persistence primitives do not themselves prove who is authorized to attest those facts.
-5. Independently verify production OIDC issuer, audience, JWKS, claim mapping, canonical migrations, and live allow/deny behavior. Keep production secrets/configuration untouched unless separately authorized.
-6. Run independent retest plus regression/rollback evidence against the exact candidate commit.
+1. Complete the machine-readable manifest for every registered and deployed route: method/path, router, resource type, parent chain, identity/role gate, tenant resolver, consent applicability, audit event, and test evidence.
+2. Replace the generic backstop with explicit route-family policies for every mounted/generated route; verify no route silently relies on client-supplied tenant, actor, guardian, or parent identifiers.
+3. Add/execute cross-tenant no-read/no-write, wrong-parent, missing/revoked/expired-consent, and durable-audit tests for every sensitive resource family—not just representative routes.
+4. Define and execute the trusted operational process for age classification and guardian relationship verification. Persistence primitives alone do not prove who may attest those facts.
+5. Independently verify production OIDC issuer, audience, JWKS, token/claim mapping, canonical migrations, and live allow/deny behavior against the exact deployed commit.
+6. Capture independent retest, regression, rollback, and production health evidence after a separately authorized deployment.
 
 ## Governance decision
 
 - `P4-REQ-011 = OPEN / NOT PROVEN`
 - `Phase 4 EXIT = BLOCKED`
-- PR #128 remains a draft and must not be merged as a phase-closure action until the route/resource matrix and independent production evidence satisfy the exit gates.
+- PR #128 remains a draft and must not be merged as a phase-closure action until all closure gates above are met.
 
-Evidence Before Claim. This document records the audit boundary; it does not claim that untested routes are secure.
+Evidence Before Claim. This audit records the current candidate boundary; it does not assert that unverified routes are secure or that the candidate is deployed.
