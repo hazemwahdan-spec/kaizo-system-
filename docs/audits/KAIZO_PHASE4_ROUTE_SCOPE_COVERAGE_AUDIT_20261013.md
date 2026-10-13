@@ -73,3 +73,22 @@ Evidence Before Claim. This audit records the current candidate boundary; it doe
 - **Verification state: NOT RUN / PENDING CI for the new commits.** The 20 successful workflow runs listed above belong to the prior candidate head and must not be reused as proof for these edits.
 - This is a deliberate availability trade-off: generated feature routes remain unavailable to non-test principals until a route-specific, persisted tenant/subject/actor ownership contract is implemented and tested. Explicit test-only overrides remain isolated from production.
 - The change does not close the remaining mounted-router parent-chain, role-policy, consent-applicability, trusted guardian verification, production OIDC, or independent retest gaps. PR #128 remains draft; Phase 4 exit remains BLOCKED.
+
+
+## Route manifest follow-up — 2026-10-13
+
+A source-derived route/resource authorization manifest has been added:
+[KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md](https://github.com/hazemwahdan-spec/kaizo-system-/blob/feat/phase4-core-resource-authorization/docs/audits/KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md).
+
+It records 102 statically declared decorator routes across ten backend files and separately lists the three generated feature route patterns. It classifies each route as core-guarded/retest-required, mounted-generic-guard/not-proven, shared-policy-blocker, or public health. The source-derived list is an audit baseline, not a claim of full runtime inventory or security. CI route-inventory verification must be rerun after any route change; dynamic feature routes are handled separately.
+
+### Latest candidate CI snapshot
+Candidate head at this checkpoint: `c2df6b61ec66e687c4bf6a6cfc58669c954c4d2e`.
+- [Actual Core Route Inventory run 38347760415](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760415): PASS.
+- [Commercial Security Regression run 38347760371](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760371): PASS.
+- [Live Runtime Smoke run 38347760456](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760456): PASS for deployed health/OpenAPI only; no proof the candidate code is deployed or that production OIDC/route allow-deny behavior was independently tested.
+- [Persistence Adapter Validation run 38347760408](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760408): in progress at the last check; compile, persistence integration, and PostgreSQL-mode import passed; later acceptance steps were still running/pending. Do not mark the full suite green until the final job conclusion is success.
+
+The route manifest also flags duplicate source declarations for `/api/v1/problem-library` and `/api/v1/problem-library/selections...`; these must be reconciled against the actual FastAPI route table before Phase 4 exit.
+
+**Disposition remains BLOCKED — P4-REQ-011 OPEN / NOT PROVEN.** The generic mounted-route guard is not a substitute for explicit per-route policy. No production settings were changed, no PR was merged, and no live OIDC activation claim is made.
