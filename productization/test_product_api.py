@@ -84,3 +84,26 @@ def test_product_api_fails_closed_without_production_identity(monkeypatch):
         },
     )
     assert response.status_code == 503
+
+
+def test_parent_progress_requires_durable_guardian_and_consent(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    from productization import product_api
+    from productization.product_surface import ProductSurface
+    from productization.runtime_adapter import RuntimeContext
+    calls = {}
+
+    def fake_ctx(actor_id, role, tenant_id, owner, authorization=None):
+        calls["authorization"] = authorization
+        return RuntimeContext("verified-parent", "parent", "T1", None)
+
+    monkeypatch.setattr(product_api, "ctx", fake_ctx)
+    monkeypatch.setattr(product_api, "get_surface", lambda: ProductSurface(runtime=None))
+    monkeypatch.setattr(product_api, "has_verified_guardian_relationship", lambda **kw: False)
+
+    with pytest.raises(HTTPException) as exc:
+        product_api.parent_progress("athlete-2", "T1", "header-parent", "parent", "T1", None, "Bearer token")
+    assert exc.value.status_code == 403
+    assert "verified guardian relationship" in exc.value.detail
+    assert calls["authorization"] == "Bearer token"
