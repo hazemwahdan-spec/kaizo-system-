@@ -186,7 +186,7 @@ async def require_router_resource_scope(
             request=request,
             resource_type="mounted_route",
             resource_id=None,
-            detail="No approved route-specific resource/role/consent policy is configured",
+            detail="No approved tenant/resource scope policy is configured for this mounted route; route-specific role/consent policy is required",
         )
     if principal.role not in route_policy["roles"]:
         deny_role_access(
