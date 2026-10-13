@@ -1,6 +1,7 @@
 """Phase 4 acceptance for versioned, approved rule governance."""
 import os
 from types import SimpleNamespace
+from uuid import uuid4
 
 os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
@@ -19,11 +20,26 @@ RULE_URL = "/api/v1/features/feat-029/progression-regression-rules"
 
 @pytest.fixture(autouse=True)
 def isolate_domain_authorization_from_rule_contract_tests():
-    # These tests validate the rule handler contract; live identity/tenant
-    # authorization is covered by dedicated Phase 4 security regressions.
+    # Stub only verified identity resolution; the durable tenant-membership
+    # check in feature_runtime remains real and must pass against PostgreSQL.
+    actor_id = "phase4-rule-test-" + uuid4().hex
+    tenant_id = "phase4-rule-tenant-" + uuid4().hex
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO kaizo_tenants(tenant_id,display_name) VALUES (%s,%s)",
+                (tenant_id, tenant_id),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_tenant_memberships(tenant_id,subject_id,role,status)
+                   VALUES (%s,%s,'coach','ACTIVE')""",
+                (tenant_id, actor_id),
+            )
+        conn.commit()
+
     previous = main.app.dependency_overrides.get(require_phase4_domain_access)
     main.app.dependency_overrides[require_phase4_domain_access] = lambda: {
-        "principal": SimpleNamespace(actor_id="phase4-rule-test"), "tenant_id": "phase4-rule-test-tenant"
+        "principal": SimpleNamespace(actor_id=actor_id), "tenant_id": tenant_id
     }
     try:
         yield
