@@ -821,13 +821,19 @@ def test_unmapped_mounted_routes_fail_closed_before_handler_write(
 def test_remaining_unmapped_mounted_route_families_remain_default_deny(
     monkeypatch, method, path
 ):
-    """Routes without an approved route-specific policy cannot reach handlers."""
+    """Unmapped routes deny before handlers and emit a correlated deny audit."""
     principal = _principal()
     monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
     monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
     monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    audit_events = []
+    monkeypatch.setattr(authz, "_audit_authorization", lambda **event: audit_events.append(event))
 
-    headers = {"Authorization": "Bearer signed-test-token"}
+    correlation_id = "phase4-unmapped-route-correlation"
+    headers = {
+        "Authorization": "Bearer signed-test-token",
+        "X-Correlation-ID": correlation_id,
+    }
     if method == "post":
         response = client.post(path, json={}, headers=headers)
     else:
@@ -835,3 +841,8 @@ def test_remaining_unmapped_mounted_route_families_remain_default_deny(
 
     assert response.status_code == 503
     assert "policy" in response.json()["detail"].lower()
+    assert len(audit_events) == 1
+    assert audit_events[0]["decision"] == "deny"
+    assert audit_events[0]["reason_code"] == "RESOURCE_SCOPE_POLICY_NOT_CONFIGURED"
+    assert audit_events[0]["correlation_id"] == correlation_id
+    assert audit_events[0]["request_route"] == path
