@@ -2,6 +2,9 @@ name: KAIZO V1.1 Commercial Production Evidence
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/phase4-core-resource-authorization
 
 jobs:
   production-evidence:
