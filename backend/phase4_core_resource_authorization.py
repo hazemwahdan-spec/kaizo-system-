@@ -12,7 +12,12 @@ from fastapi import HTTPException, Request
 
 import persistence
 from phase4_identity_boundary import require_phase4_principal
-from phase4_identity_store import get_resource_tenant, has_active_membership
+from phase4_identity_store import (
+    get_resource_tenant,
+    get_verified_age_classification,
+    has_active_membership,
+    has_active_minor_consent,
+)
 from productization.identity import Principal
 
 
@@ -179,6 +184,81 @@ def assert_resource_tenant(
     _audit_authorization(
         principal=principal, resource_type=resource_type, resource_id=resource_id,
         action=action, decision="allow", reason_code="RESOURCE_TENANT_SCOPE_VALID",
+        request_route=request_route,
+    )
+
+
+def assert_minor_consent(
+    *,
+    child_id: str,
+    principal: Principal,
+    resource: str,
+    action: str,
+    request_route: str,
+) -> None:
+    """Require trusted age classification and exact-scope guardian consent for minors."""
+    try:
+        age_class = get_verified_age_classification(
+            athlete_id=child_id, academy_id=principal.tenant_id
+        )
+    except Exception as exc:
+        _audit_authorization(
+            principal=principal, resource_type=resource, resource_id=child_id,
+            action=action, decision="deny", reason_code="AGE_CLASSIFICATION_STORE_UNAVAILABLE",
+            request_route=request_route,
+        )
+        raise HTTPException(
+            status_code=503, detail="Authoritative age classification store is unavailable"
+        ) from exc
+
+    if age_class is None:
+        _audit_authorization(
+            principal=principal, resource_type=resource, resource_id=child_id,
+            action=action, decision="deny", reason_code="VERIFIED_AGE_CLASSIFICATION_REQUIRED",
+            request_route=request_route,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Verified age classification is required before accessing protected athlete data",
+        )
+
+    if age_class == "adult":
+        _audit_authorization(
+            principal=principal, resource_type=resource, resource_id=child_id,
+            action=action, decision="allow", reason_code="VERIFIED_ADULT_CLASSIFICATION",
+            request_route=request_route,
+        )
+        return
+
+    try:
+        active_consent = has_active_minor_consent(
+            child_id=child_id, academy_id=principal.tenant_id,
+            resource=resource, action=action,
+        )
+    except Exception as exc:
+        _audit_authorization(
+            principal=principal, resource_type=resource, resource_id=child_id,
+            action=action, decision="deny", reason_code="MINOR_CONSENT_STORE_UNAVAILABLE",
+            request_route=request_route,
+        )
+        raise HTTPException(
+            status_code=503, detail="Authoritative guardian consent store is unavailable"
+        ) from exc
+
+    if not active_consent:
+        _audit_authorization(
+            principal=principal, resource_type=resource, resource_id=child_id,
+            action=action, decision="deny", reason_code="ACTIVE_GUARDIAN_CONSENT_REQUIRED",
+            request_route=request_route,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Active, unexpired guardian consent for this resource and action is required",
+        )
+
+    _audit_authorization(
+        principal=principal, resource_type=resource, resource_id=child_id,
+        action=action, decision="allow", reason_code="ACTIVE_GUARDIAN_CONSENT_VALID",
         request_route=request_route,
     )
 
