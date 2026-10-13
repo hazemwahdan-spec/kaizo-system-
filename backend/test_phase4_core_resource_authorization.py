@@ -99,6 +99,59 @@ def test_actual_get_assessment_denies_cross_tenant_before_assessment_read(monkey
     assert reads == []
 
 
+def test_actual_create_assessment_rejects_invalid_identity_without_write(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(
+        boundary, "resolve_bearer_principal",
+        lambda _: (_ for _ in ()).throw(IdentityNotConfiguredError("invalid bearer")),
+    )
+    writes = []
+    monkeypatch.setattr(main.persistence, "upsert_assessment", lambda item: writes.append(item))
+    response = client.post(
+        "/api/v1/assessments",
+        json={"athlete_id": "athlete-1", "template_id": "TPL", "measurements": {"x": 1}, "recorded_by": "coach"},
+        headers={"Authorization": "Bearer invalid"},
+    )
+    assert response.status_code == 401
+    assert writes == []
+
+
+def test_actual_patch_athlete_denies_wrong_tenant_before_read_or_write(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(authz, "get_resource_tenant", lambda **_: "academy-b")
+    reads, writes = [], []
+    monkeypatch.setattr(main.persistence, "get_athlete", lambda athlete_id: reads.append(athlete_id) or {"athlete_id": athlete_id})
+    monkeypatch.setattr(main.persistence, "upsert_athlete", lambda item: writes.append(item))
+    response = client.patch(
+        "/api/v1/athletes/athlete-from-other-academy",
+        json={"display_name": "Unauthorized update"},
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 403
+    assert reads == []
+    assert writes == []
+
+
+def test_actual_create_assessment_denies_cross_tenant_before_athlete_read_or_write(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(authz, "get_resource_tenant", lambda **_: "academy-b")
+    reads, writes = [], []
+    monkeypatch.setattr(main.persistence, "get_athlete", lambda athlete_id: reads.append(athlete_id) or {"athlete_id": athlete_id})
+    monkeypatch.setattr(main.persistence, "upsert_assessment", lambda item: writes.append(item))
+    response = client.post(
+        "/api/v1/assessments",
+        json={"athlete_id": "athlete-from-other-academy", "template_id": "TPL", "measurements": {"x": 1}, "recorded_by": "coach"},
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 403
+    assert reads == []
+    assert writes == []
+
+
 def test_core_routes_fail_closed_when_oidc_gate_is_disabled(monkeypatch):
     monkeypatch.delenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", raising=False)
     response = client.get("/api/v1/athletes/any-id")
