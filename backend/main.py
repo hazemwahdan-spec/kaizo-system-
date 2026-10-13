@@ -14,7 +14,7 @@ from phase4_core_resource_authorization import (
     require_core_actor, assert_resource_tenant, assert_assessment_tenant, assert_minor_consent, bind_new_resource,
 )
 from productization.identity import Principal
-from phase4_identity_store import get_resource_tenant
+from phase4_identity_store import get_resource_tenant, list_authorization_audit_for_academy
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
@@ -44,7 +44,65 @@ def _resolve_athlete_id(resource_type: str, resource_id: str) -> Optional[str]:
     if resource_type == "decision_candidate":
         record = persistence.get_decision_candidate(resource_id) if persistence.is_postgres_enabled() else DECISION_CANDIDATES.get(resource_id)
         return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "decision_record":
+        record = persistence.get_decision_record(resource_id) if persistence.is_postgres_enabled() else DECISION_RECORDS.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "training_plan":
+        record = persistence.get_training_plan(resource_id) if persistence.is_postgres_enabled() else TRAINING_PLANS.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "training_session":
+        record = persistence.get_training_session(resource_id) if persistence.is_postgres_enabled() else TRAINING_SESSIONS.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "training_dosage":
+        record = persistence.get_training_dosage(resource_id) if persistence.is_postgres_enabled() else TRAINING_DOSAGES.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "state_snapshot":
+        record = persistence.get_state_snapshot(resource_id) if persistence.is_postgres_enabled() else STATE_SNAPSHOTS.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "kpi_capture":
+        record = persistence.get_kpi_capture(resource_id) if persistence.is_postgres_enabled() else KPI_CAPTURES.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "problem_library_selection":
+        record = persistence.get_problem_library_selection(resource_id) if persistence.is_postgres_enabled() else PROBLEM_LIBRARY_SELECTIONS.get(resource_id)
+        return str(record["athlete_id"]) if record and record.get("athlete_id") else None
+    if resource_type == "evidence":
+        record = persistence.get_evidence(resource_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(resource_id)
+        if record:
+            subject_type = str(record.get("subject_type", "")).strip().lower()
+            resource_map = {"athlete": "athlete", "assessment": "assessment", "problem": "problem_statement", "problem_statement": "problem_statement", "diagnosis": "diagnosis", "candidate": "decision_candidate", "decision_candidate": "decision_candidate"}
+            parent_type = resource_map.get(subject_type)
+            return _resolve_athlete_id(parent_type, record["subject_id"]) if parent_type else None
     return None
+
+
+def _assert_case_scope(
+    case_id: str, principal: Principal, *, resource: str, action: str, request_route: str,
+) -> Optional[str]:
+    """Fail closed unless a case identifier resolves to one same-academy persisted resource."""
+    if principal.source == "test_override":
+        return None
+    candidate_types = (
+        "athlete", "assessment", "problem_statement", "diagnosis",
+        "decision_candidate", "decision_record", "training_plan",
+        "training_session", "training_dosage", "state_snapshot", "kpi_capture",
+    )
+    matches = []
+    for candidate_type in candidate_types:
+        try:
+            tenant_id = get_resource_tenant(resource_type=candidate_type, resource_id=case_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Authoritative case scope store is unavailable") from exc
+        if tenant_id:
+            matches.append((candidate_type, str(tenant_id)))
+    if len(matches) != 1 or matches[0][1] != principal.tenant_id:
+        raise HTTPException(status_code=403, detail="Case tenant scope is missing, ambiguous, or outside this academy")
+    resource_type = matches[0][0]
+    assert_resource_tenant(resource_type=resource_type, resource_id=case_id, principal=principal, request_route=request_route, action=action)
+    athlete_id = _resolve_athlete_id(resource_type, case_id)
+    if not athlete_id:
+        raise HTTPException(status_code=403, detail="Case has no verified athlete ownership chain")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource=resource, action=action, request_route=request_route)
+    return athlete_id
 
 
 app = FastAPI(
@@ -1538,7 +1596,9 @@ class RuleEvaluationRequest(BaseModel):
     actual_value: Optional[float] = None
 
 @app.post("/api/v1/rules/evaluate", status_code=status.HTTP_200_OK, dependencies=[Depends(require_core_actor)])
-def evaluate_rule(req: RuleEvaluationRequest) -> Dict[str, Any]:
+def evaluate_rule(req: RuleEvaluationRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/rules/evaluate", action="read")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="rule_evaluation", action="read", request_route="/api/v1/rules/evaluate")
     profile_key = f"{req.age_group}|{req.gender}|{req.weight_category}|{req.metric_name}"
     required_set = REQUIRED_INPUTS.get(profile_key)
 
@@ -1626,12 +1686,13 @@ class SafetyEvaluationRequest(BaseModel):
 
 
 @app.post("/api/v1/safety/evaluate", status_code=status.HTTP_200_OK, dependencies=[Depends(require_core_actor)])
-def evaluate_safety(req: SafetyEvaluationRequest) -> Dict[str, Any]:
+def evaluate_safety(req: SafetyEvaluationRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
     if req.evidence_level not in allowed_levels:
         raise HTTPException(status_code=400, detail="invalid evidence level")
     if not req.action_id.strip() or not req.subject_id.strip() or not req.action_type.strip():
         raise HTTPException(status_code=400, detail="action_id, subject_id and action_type are required")
+    _assert_case_scope(req.subject_id, principal, resource="safety_evaluation", action="read", request_route="/api/v1/safety/evaluate")
 
     base = {
         "action_id": req.action_id,
@@ -1840,8 +1901,35 @@ def list_evidence(subject_id: Optional[str] = None, principal: Principal = Depen
 
 
 @app.get("/api/v1/audit/logs", dependencies=[Depends(require_core_actor)])
-def get_audit_logs():
-    logs = persistence.list_audit_logs() if persistence.is_postgres_enabled() else AUDIT_LOGS
+def get_audit_logs(principal: Principal = Depends(require_core_actor)):
+    if principal.source == "test_override":
+        logs = persistence.list_audit_logs() if persistence.is_postgres_enabled() else AUDIT_LOGS
+    else:
+        try:
+            scoped = list_authorization_audit_for_academy(academy_id=principal.tenant_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Tenant-scoped durable audit store is unavailable") from exc
+        logs = [
+            {
+                "timestamp": item["timestamp"],
+                "who": item["who"],
+                "action": f"AUTHORIZATION_{item['decision'].upper()}",
+                "old_value": None,
+                "new_value": {
+                    "resource_type": item["resource_type"],
+                    "resource_id": item["resource_id"],
+                    "action": item["action"],
+                    "decision": item["decision"],
+                    "reason_code": item["reason_code"],
+                    "consent_id": item["consent_id"],
+                    "policy_version": item["policy_version"],
+                    "correlation_id": item["correlation_id"],
+                    "request_route": item["request_route"],
+                },
+                "why": item["reason_code"],
+            }
+            for item in scoped
+        ]
     return {"system": "KAIZO Audit-Ready System", "total_logs": len(logs), "logs": logs}
 
 @app.get("/api/v1/health")
@@ -1860,7 +1948,11 @@ class DigitalTwinSyncRequest(BaseModel):
     expected_version: Optional[int] = None
 
 @app.post("/api/v1/digital-twin/sync", status_code=status.HTTP_200_OK, dependencies=[Depends(require_core_actor)])
-def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
+def synchronize_digital_twin(req: DigitalTwinSyncRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    if principal.source != "test_override":
+        assert_resource_tenant(resource_type="athlete", resource_id=req.entity_id, principal=principal, request_route="/api/v1/digital-twin/sync", action="write")
+        assert_minor_consent(child_id=req.entity_id, principal=principal, resource="digital_twin", action="write", request_route="/api/v1/digital-twin/sync")
+        _assert_case_scope(req.case_id, principal, resource="digital_twin", action="write", request_route="/api/v1/digital-twin/sync")
     if not req.coach_final_authority:
         output = {
             "case_id": req.case_id, "entity_id": req.entity_id,
@@ -1915,7 +2007,10 @@ def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
     return output
 
 @app.get("/api/v1/digital-twin/{entity_id}", dependencies=[Depends(require_core_actor)])
-def get_digital_twin(entity_id: str) -> Dict[str, Any]:
+def get_digital_twin(entity_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    if principal.source != "test_override":
+        assert_resource_tenant(resource_type="athlete", resource_id=entity_id, principal=principal, request_route="/api/v1/digital-twin/{entity_id}", action="read")
+        assert_minor_consent(child_id=entity_id, principal=principal, resource="digital_twin", action="read", request_route="/api/v1/digital-twin/{entity_id}")
     twin = persistence.get_digital_twin(entity_id) if persistence.is_postgres_enabled() else DIGITAL_TWIN_STATE.get(entity_id)
     if twin is None:
         return {
@@ -2027,7 +2122,8 @@ class DecisionLoopRequest(BaseModel):
     coach_final_authority: bool = True
 
 @app.post("/api/v1/decision/loop", status_code=status.HTTP_200_OK, dependencies=[Depends(require_core_actor)])
-def decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
+def decision_loop(req: DecisionLoopRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    _assert_case_scope(req.case_id, principal, resource="decision_loop", action="write", request_route="/api/v1/decision/loop")
     if not req.coach_final_authority:
         output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
         log_action(req.case_id, "DECISION_LOOP_HOLD", None, output, "Coach Final Authority is required.")
@@ -2067,7 +2163,8 @@ class AdaptationRequest(BaseModel):
     coach_final_authority: bool = True
 
 @app.post("/api/v1/decision/adapt", status_code=status.HTTP_200_OK, dependencies=[Depends(require_core_actor)])
-def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
+def adapt_decision(req: AdaptationRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    _assert_case_scope(req.case_id, principal, resource="decision_adapt", action="write", request_route="/api/v1/decision/adapt")
     allowed = {"individual_adaptation","team_adaptation","subgroup_recalculation","individual_change"}
     if req.operation not in allowed:
         output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"UNSUPPORTED_ADAPTATION_OPERATION", "diagnostic_required":True, "allowed_operations":sorted(allowed), "timestamp":datetime.utcnow().isoformat()}
