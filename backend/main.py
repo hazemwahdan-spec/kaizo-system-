@@ -311,6 +311,9 @@ def create_problem_statement(req: ProblemStatementCreateRequest, principal: Prin
     assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/problem-statements", action="read")
     assert_resource_tenant(resource_type="assessment", resource_id=req.assessment_id, principal=principal, request_route="/api/v1/problem-statements", action="read")
     assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="problem_statement", action="write", request_route="/api/v1/problem-statements")
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/problem-library/selections", action="write")
+    assert_resource_tenant(resource_type="assessment", resource_id=req.assessment_id, principal=principal, request_route="/api/v1/problem-library/selections", action="read")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="problem_library_selection", action="write", request_route="/api/v1/problem-library/selections")
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -1172,6 +1175,7 @@ def get_problem_cause_context(problem_id: str, principal: Principal = Depends(re
     problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
         raise HTTPException(status_code=404, detail="problem statement not found")
+    assert_minor_consent(child_id=problem["athlete_id"], principal=principal, resource="cause_context", action="read", request_route="/api/v1/problem-statements/{problem_id}/cause-context")
     framings = persistence.list_cause_context_framings(problem_id) if persistence.is_postgres_enabled() else [
         value for value in CAUSE_CONTEXT_FRAMINGS.values() if value["problem_id"] == problem_id
     ]
@@ -1211,12 +1215,15 @@ def list_problem_library(query: Optional[str] = None, limit: int = 50) -> Dict[s
 
 
 @app.post("/api/v1/problem-library/selections", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def select_problem_from_library(req: ProblemLibrarySelectionRequest) -> Dict[str, Any]:
+def select_problem_from_library(req: ProblemLibrarySelectionRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.library_item_id.strip():
         raise HTTPException(status_code=400, detail="athlete_id, assessment_id and library_item_id are required")
     if not req.selected_by.strip():
         raise HTTPException(status_code=400, detail="selected_by is required")
 
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/problem-library/selections", action="write")
+    assert_resource_tenant(resource_type="assessment", resource_id=req.assessment_id, principal=principal, request_route="/api/v1/problem-library/selections", action="read")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="problem_library_selection", action="write", request_route="/api/v1/problem-library/selections")
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -1255,7 +1262,8 @@ def select_problem_from_library(req: ProblemLibrarySelectionRequest) -> Dict[str
 
 
 @app.get("/api/v1/problem-library/selections/{selection_id}", dependencies=[Depends(require_core_actor)])
-def get_problem_library_selection(selection_id: str) -> Dict[str, Any]:
+def get_problem_library_selection(selection_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="problem_library_selection", resource_id=selection_id, principal=principal, request_route="/api/v1/problem-library/selections/{selection_id}", action="read")
     selection = (
         persistence.get_problem_library_selection(selection_id)
         if persistence.is_postgres_enabled()
@@ -1263,6 +1271,7 @@ def get_problem_library_selection(selection_id: str) -> Dict[str, Any]:
     )
     if selection is None:
         raise HTTPException(status_code=404, detail="problem library selection not found")
+    assert_minor_consent(child_id=selection["athlete_id"], principal=principal, resource="problem_library_selection", action="read", request_route="/api/v1/problem-library/selections/{selection_id}")
     return selection
 
 
@@ -1299,11 +1308,14 @@ def list_problem_library(query: Optional[str] = None, limit: int = 50) -> Dict[s
 
 
 @app.post("/api/v1/problem-library/selections", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def select_problem_from_library(req: ProblemLibrarySelectionRequest) -> Dict[str, Any]:
+def select_problem_from_library(req: ProblemLibrarySelectionRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.library_item_id.strip():
         raise HTTPException(status_code=400, detail="athlete_id, assessment_id and library_item_id are required")
     if not req.selected_by.strip():
         raise HTTPException(status_code=400, detail="selected_by is required")
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/problem-library/selections", action="write")
+    assert_resource_tenant(resource_type="assessment", resource_id=req.assessment_id, principal=principal, request_route="/api/v1/problem-library/selections", action="read")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="problem_library_selection", action="write", request_route="/api/v1/problem-library/selections")
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -1924,6 +1936,9 @@ def create_state_snapshot(req: StateSnapshotCreateRequest, principal: Principal 
     assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/state-snapshots", action="write")
     assert_resource_tenant(resource_type="assessment", resource_id=req.assessment_id, principal=principal, request_route="/api/v1/state-snapshots", action="read")
     assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="state_snapshot", action="write", request_route="/api/v1/state-snapshots")
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/problem-library/selections", action="write")
+    assert_resource_tenant(resource_type="assessment", resource_id=req.assessment_id, principal=principal, request_route="/api/v1/problem-library/selections", action="read")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="problem_library_selection", action="write", request_route="/api/v1/problem-library/selections")
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
