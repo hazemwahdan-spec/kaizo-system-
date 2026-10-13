@@ -300,7 +300,7 @@ def test_academy_create_persists_binding_in_same_transaction():
             else:
                 main.app.dependency_overrides[require_phase4_principal] = previous_override
         assert foreign_read.status_code == 403
-        assert foreign_read.json()["detail"]["reason_code"] == "resource_tenant_binding_missing"
+        assert foreign_read.json()["detail"]["reason_code"] == "resource_tenant_binding_missing_or_mismatched"
 
         foreign_kpi_id = "KPI-FOREIGN-" + suffix
         foreign_kpi = {
