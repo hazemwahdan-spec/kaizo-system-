@@ -141,6 +141,15 @@ MOUNTED_ROUTE_SCOPE_POLICIES: dict[tuple[str, str], dict[str, Any]] = {
         "consent_resource": "decision_record",
         "consent_action": "read",
     },
+    ("POST", "/api/v1/state-cycle/feat-044/decision-state-link"): {
+        "roles": ("coach", "academy"),
+        "required_bindings": {"decision_id": "decision_record", "entity_id": "athlete"},
+        "actor_fields": ("linked_by",),
+        "consent_resource": "decision_state_link",
+        "consent_action": "write",
+        "consent_resource_by_type": {"decision_record": "decision_record"},
+        "consent_action_by_type": {"decision_record": "read"},
+    },
     ("POST", "/api/v1/state-cycle/feat-045/next-state"): {
         "roles": ("coach", "academy"),
         "required_bindings": {"athlete_id": "athlete"},
