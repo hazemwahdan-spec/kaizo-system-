@@ -22,7 +22,7 @@ def isolate_outcome_lineage_business_tests_from_tenant_guard():
     # spoofing behavior is verified in dedicated Phase 4 authorization tests.
     previous = main.app.dependency_overrides.get(require_phase4_domain_access)
     main.app.dependency_overrides[require_phase4_domain_access] = lambda: {
-        "principal": SimpleNamespace(actor_id="phase4-outcome-test"), "tenant_id": "phase4-outcome-test-tenant"
+        "principal": SimpleNamespace(actor_id="phase4-outcome-test", role="coach"), "tenant_id": "phase4-outcome-test-tenant"
     }
     with persistence.connection() as conn:
         with conn.cursor() as cur:
