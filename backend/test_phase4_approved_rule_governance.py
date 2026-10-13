@@ -15,6 +15,7 @@ from progression_rules import ProgressionRegressionRule
 
 persistence.initialize()
 client = TestClient(main.app)
+_TEST_ACTOR_ID = "phase4-rule-test"
 RULE_URL = "/api/v1/features/feat-029/progression-regression-rules"
 
 
@@ -22,7 +23,9 @@ RULE_URL = "/api/v1/features/feat-029/progression-regression-rules"
 def isolate_domain_authorization_from_rule_contract_tests():
     # Stub only verified identity resolution; the durable tenant-membership
     # check in feature_runtime remains real and must pass against PostgreSQL.
+    global _TEST_ACTOR_ID
     actor_id = "phase4-rule-test-" + uuid4().hex
+    _TEST_ACTOR_ID = actor_id
     tenant_id = "phase4-rule-tenant-" + uuid4().hex
     with persistence.connection() as conn:
         with conn.cursor() as cur:
@@ -63,7 +66,7 @@ def payload(evidence_refs=None, **overrides):
     body.update(overrides)
     return {
         "subject_id": "P4-RULE-SUBJECT",
-        "actor_id": "phase4-rule-test",
+        "actor_id": _TEST_ACTOR_ID,
         "payload": body,
         "evidence_refs": evidence_refs if evidence_refs is not None else ["P4-RULE-SOURCE-001"],
         "coach_final_authority": True,
