@@ -277,11 +277,14 @@ PROBLEM_STATEMENTS: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/problem-statements", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def create_problem_statement(req: ProblemStatementCreateRequest) -> Dict[str, Any]:
+def create_problem_statement(req: ProblemStatementCreateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.statement.strip():
         raise HTTPException(status_code=400, detail="athlete_id, assessment_id and statement are required")
     if not req.problem_type.strip() or not req.created_by.strip():
         raise HTTPException(status_code=400, detail="problem_type and created_by are required")
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/problem-statements", action="read")
+    assert_resource_tenant(resource_type="assessment", resource_id=req.assessment_id, principal=principal, request_route="/api/v1/problem-statements", action="read")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="problem_statement", action="write", request_route="/api/v1/problem-statements")
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -304,18 +307,23 @@ def create_problem_statement(req: ProblemStatementCreateRequest) -> Dict[str, An
 
 
 @app.get("/api/v1/problem-statements/{problem_id}", dependencies=[Depends(require_core_actor)])
-def get_problem_statement(problem_id: str) -> Dict[str, Any]:
+def get_problem_statement(problem_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="problem_statement", resource_id=problem_id, principal=principal, request_route="/api/v1/problem-statements/{problem_id}", action="read")
     problem=persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
         raise HTTPException(status_code=404, detail="problem statement not found")
+    assert_minor_consent(child_id=problem["athlete_id"], principal=principal, resource="problem_statement", action="read", request_route="/api/v1/problem-statements/{problem_id}")
     return problem
 
 
 @app.get("/api/v1/problem-statements", dependencies=[Depends(require_core_actor)])
-def list_problem_statements(athlete_id: Optional[str]=None) -> Dict[str, Any]:
+def list_problem_statements(athlete_id: Optional[str]=None, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    if not athlete_id:
+        raise HTTPException(status_code=400, detail="athlete_id is required for tenant-scoped problem listing")
+    assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal, request_route="/api/v1/problem-statements", action="list")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="problem_statement", action="read", request_route="/api/v1/problem-statements")
     problems=persistence.list_problem_statements(athlete_id) if persistence.is_postgres_enabled() else list(PROBLEM_STATEMENTS.values())
-    if athlete_id:
-        problems=[item for item in problems if item["athlete_id"]==athlete_id]
+    problems=[item for item in problems if item["athlete_id"]==athlete_id]
     return {"total_problem_statements":len(problems),"problem_statements":problems}
 
 
@@ -332,7 +340,7 @@ EVIDENCE_LINKED_DIAGNOSES: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/problem-statements/{problem_id}/diagnosis", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnosisRequest) -> Dict[str, Any]:
+def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnosisRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if problem_id != req.problem_id:
         raise HTTPException(status_code=400, detail="problem_id mismatch")
     if not req.diagnosis.strip() or not req.diagnosed_by.strip():
@@ -345,10 +353,13 @@ def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnos
     allowed_resolution_states = {"UNRESOLVED", "RESOLVED"}
     if req.resolution_state.upper() not in allowed_resolution_states:
         raise HTTPException(status_code=400, detail="resolution_state must be UNRESOLVED or RESOLVED")
+    assert_resource_tenant(resource_type="problem_statement", resource_id=problem_id, principal=principal, request_route="/api/v1/problem-statements/{problem_id}/diagnosis", action="write")
     problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
         raise HTTPException(status_code=404, detail="problem statement not found")
+    assert_minor_consent(child_id=problem["athlete_id"], principal=principal, resource="diagnosis", action="write", request_route="/api/v1/problem-statements/{problem_id}/diagnosis")
     for evidence_id in req.evidence_ids:
+        assert_resource_tenant(resource_type="evidence", resource_id=evidence_id, principal=principal, request_route="/api/v1/problem-statements/{problem_id}/diagnosis", action="read")
         evidence = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
         if evidence is None:
             raise HTTPException(status_code=404, detail={"decision_state": "HOLD", "blocked": f"evidence not found: {evidence_id}"})
@@ -379,10 +390,12 @@ def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnos
 
 
 @app.get("/api/v1/problem-statements/{problem_id}/diagnosis", dependencies=[Depends(require_core_actor)])
-def list_evidence_linked_diagnoses(problem_id: str) -> Dict[str, Any]:
+def list_evidence_linked_diagnoses(problem_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="problem_statement", resource_id=problem_id, principal=principal, request_route="/api/v1/problem-statements/{problem_id}/diagnosis", action="read")
     problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
         raise HTTPException(status_code=404, detail="problem statement not found")
+    assert_minor_consent(child_id=problem["athlete_id"], principal=principal, resource="diagnosis", action="read", request_route="/api/v1/problem-statements/{problem_id}/diagnosis")
     diagnoses = persistence.list_evidence_linked_diagnoses(problem_id) if persistence.is_postgres_enabled() else [
         item for item in EVIDENCE_LINKED_DIAGNOSES.values() if item["problem_id"] == problem_id]
     return {"problem_id": problem_id, "diagnoses": diagnoses}
@@ -398,13 +411,14 @@ DECISION_CANDIDATES: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/api/v1/diagnoses/{diagnosis_id}/decision-candidates", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
 def generate_decision_candidates(
-    diagnosis_id: str, req: DecisionCandidateGenerationRequest
+    diagnosis_id: str, req: DecisionCandidateGenerationRequest, principal: Principal = Depends(require_core_actor)
 ) -> Dict[str, Any]:
     if diagnosis_id != req.diagnosis_id:
         raise HTTPException(status_code=400, detail="diagnosis_id mismatch")
     if not req.requested_by.strip():
         raise HTTPException(status_code=400, detail="requested_by is required")
 
+    assert_resource_tenant(resource_type="diagnosis", resource_id=diagnosis_id, principal=principal, request_route="/api/v1/diagnoses/{diagnosis_id}/decision-candidates", action="write")
     diagnoses = (
         persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
         if persistence.is_postgres_enabled()
@@ -413,10 +427,12 @@ def generate_decision_candidates(
     if not diagnoses:
         raise HTTPException(status_code=404, detail="diagnosis not found")
     diagnosis = diagnoses[0]
+    assert_minor_consent(child_id=diagnosis["athlete_id"], principal=principal, resource="decision_candidate", action="write", request_route="/api/v1/diagnoses/{diagnosis_id}/decision-candidates")
 
     # Revalidate evidence at decision time as persisted diagnoses may predate
     # the current fail-closed ingestion policy or their evidence may have changed.
     for evidence_id in diagnosis.get("evidence_ids", []):
+        assert_resource_tenant(resource_type="evidence", resource_id=evidence_id, principal=principal, request_route="/api/v1/diagnoses/{diagnosis_id}/decision-candidates", action="read")
         evidence = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
         if evidence is None:
             raise HTTPException(
@@ -480,7 +496,8 @@ def generate_decision_candidates(
 
 
 @app.get("/api/v1/diagnoses/{diagnosis_id}/decision-candidates", dependencies=[Depends(require_core_actor)])
-def list_decision_candidates(diagnosis_id: str) -> Dict[str, Any]:
+def list_decision_candidates(diagnosis_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="diagnosis", resource_id=diagnosis_id, principal=principal, request_route="/api/v1/diagnoses/{diagnosis_id}/decision-candidates", action="read")
     diagnoses = (
         persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
         if persistence.is_postgres_enabled()
@@ -488,6 +505,7 @@ def list_decision_candidates(diagnosis_id: str) -> Dict[str, Any]:
     )
     if not diagnoses:
         raise HTTPException(status_code=404, detail="diagnosis not found")
+    assert_minor_consent(child_id=diagnoses[0]["athlete_id"], principal=principal, resource="decision_candidate", action="read", request_route="/api/v1/diagnoses/{diagnosis_id}/decision-candidates")
     candidates = (
         persistence.list_decision_candidates(diagnosis_id)
         if persistence.is_postgres_enabled()
@@ -507,7 +525,7 @@ DECISION_RATIONALES: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/decision-candidates/{candidate_id}/rationale", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceRequest) -> Dict[str, Any]:
+def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if candidate_id != req.candidate_id:
         raise HTTPException(status_code=400, detail="candidate_id mismatch")
     if not req.rationale.strip() or not req.recorded_by.strip():
@@ -515,6 +533,7 @@ def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceR
     if not req.evidence_ids:
         raise HTTPException(status_code=400, detail={"decision_state": "HOLD", "blocked": "at least one evidence_id is required"})
 
+    assert_resource_tenant(resource_type="decision_candidate", resource_id=candidate_id, principal=principal, request_route="/api/v1/decision-candidates/{candidate_id}/rationale", action="write")
     candidate = (
         persistence.get_decision_candidate(candidate_id)
         if persistence.is_postgres_enabled()
@@ -522,9 +541,11 @@ def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceR
     )
     if candidate is None:
         raise HTTPException(status_code=404, detail="decision candidate not found")
+    assert_minor_consent(child_id=candidate["athlete_id"], principal=principal, resource="decision_rationale", action="write", request_route="/api/v1/decision-candidates/{candidate_id}/rationale")
 
     evidence_records = []
     for evidence_id in req.evidence_ids:
+        assert_resource_tenant(resource_type="evidence", resource_id=evidence_id, principal=principal, request_route="/api/v1/decision-candidates/{candidate_id}/rationale", action="read")
         evidence = (
             persistence.get_evidence(evidence_id)
             if persistence.is_postgres_enabled()
@@ -574,7 +595,8 @@ def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceR
 
 
 @app.get("/api/v1/decision-candidates/{candidate_id}/rationale", dependencies=[Depends(require_core_actor)])
-def list_decision_rationales(candidate_id: str) -> Dict[str, Any]:
+def list_decision_rationales(candidate_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="decision_candidate", resource_id=candidate_id, principal=principal, request_route="/api/v1/decision-candidates/{candidate_id}/rationale", action="read")
     candidate = (
         persistence.get_decision_candidate(candidate_id)
         if persistence.is_postgres_enabled()
@@ -582,6 +604,7 @@ def list_decision_rationales(candidate_id: str) -> Dict[str, Any]:
     )
     if candidate is None:
         raise HTTPException(status_code=404, detail="decision candidate not found")
+    assert_minor_consent(child_id=candidate["athlete_id"], principal=principal, resource="decision_rationale", action="read", request_route="/api/v1/decision-candidates/{candidate_id}/rationale")
     rationales = (
         persistence.list_decision_rationales(candidate_id)
         if persistence.is_postgres_enabled()
@@ -609,7 +632,7 @@ DECISION_COMPARISONS: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
 def compare_decision_alternatives(
-    diagnosis_id: str, req: DecisionAlternativeComparisonRequest
+    diagnosis_id: str, req: DecisionAlternativeComparisonRequest, principal: Principal = Depends(require_core_actor)
 ) -> Dict[str, Any]:
     if diagnosis_id != req.diagnosis_id:
         raise HTTPException(status_code=400, detail="diagnosis_id mismatch")
@@ -620,6 +643,7 @@ def compare_decision_alternatives(
     if len(set(req.candidate_ids)) != len(req.candidate_ids):
         raise HTTPException(status_code=400, detail="candidate_ids must be distinct")
 
+    assert_resource_tenant(resource_type="diagnosis", resource_id=diagnosis_id, principal=principal, request_route="/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", action="write")
     diagnoses = (
         persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
         if persistence.is_postgres_enabled()
@@ -627,9 +651,11 @@ def compare_decision_alternatives(
     )
     if not diagnoses:
         raise HTTPException(status_code=404, detail="diagnosis not found")
+    assert_minor_consent(child_id=diagnoses[0]["athlete_id"], principal=principal, resource="decision_comparison", action="write", request_route="/api/v1/diagnoses/{diagnosis_id}/decision-comparisons")
 
     alternatives = []
     for candidate_id in req.candidate_ids:
+        assert_resource_tenant(resource_type="decision_candidate", resource_id=candidate_id, principal=principal, request_route="/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", action="read")
         candidate = (
             persistence.get_decision_candidate(candidate_id)
             if persistence.is_postgres_enabled()
@@ -671,7 +697,8 @@ def compare_decision_alternatives(
 
 
 @app.get("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", dependencies=[Depends(require_core_actor)])
-def list_decision_comparisons(diagnosis_id: str) -> Dict[str, Any]:
+def list_decision_comparisons(diagnosis_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="diagnosis", resource_id=diagnosis_id, principal=principal, request_route="/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", action="read")
     diagnoses = (
         persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
         if persistence.is_postgres_enabled()
@@ -679,6 +706,7 @@ def list_decision_comparisons(diagnosis_id: str) -> Dict[str, Any]:
     )
     if not diagnoses:
         raise HTTPException(status_code=404, detail="diagnosis not found")
+    assert_minor_consent(child_id=diagnoses[0]["athlete_id"], principal=principal, resource="decision_comparison", action="read", request_route="/api/v1/diagnoses/{diagnosis_id}/decision-comparisons")
     comparisons = (
         persistence.list_decision_comparisons(diagnosis_id)
         if persistence.is_postgres_enabled()
