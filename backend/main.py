@@ -216,12 +216,15 @@ class AssessmentEvidenceAttachmentRequest(BaseModel):
 
 
 @app.post("/api/v1/assessments/{assessment_id}/evidence", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def attach_assessment_evidence(assessment_id: str, req: AssessmentEvidenceAttachmentRequest) -> Dict[str, Any]:
+def attach_assessment_evidence(assessment_id: str, req: AssessmentEvidenceAttachmentRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if assessment_id != req.assessment_id:
         raise HTTPException(status_code=400, detail="assessment_id mismatch")
     if not req.evidence_id.strip() or not req.attached_by.strip():
         raise HTTPException(status_code=400, detail="evidence_id and attached_by are required")
 
+    athlete_id = assert_assessment_tenant(assessment_id=assessment_id, principal=principal, request_route="/api/v1/assessments/{assessment_id}/evidence", action="write")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="assessment_evidence", action="write", request_route="/api/v1/assessments/{assessment_id}/evidence")
+    assert_resource_tenant(resource_type="evidence", resource_id=req.evidence_id, principal=principal, request_route="/api/v1/assessments/{assessment_id}/evidence", action="read")
     assessment = persistence.get_assessment(assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(assessment_id)
     if assessment is None:
         raise HTTPException(status_code=404, detail="assessment not found")
@@ -251,7 +254,9 @@ def attach_assessment_evidence(assessment_id: str, req: AssessmentEvidenceAttach
 
 
 @app.get("/api/v1/assessments/{assessment_id}/evidence", dependencies=[Depends(require_core_actor)])
-def list_assessment_evidence(assessment_id: str) -> Dict[str, Any]:
+def list_assessment_evidence(assessment_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    athlete_id = assert_assessment_tenant(assessment_id=assessment_id, principal=principal, request_route="/api/v1/assessments/{assessment_id}/evidence", action="read")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="assessment_evidence", action="read", request_route="/api/v1/assessments/{assessment_id}/evidence")
     assessment = persistence.get_assessment(assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(assessment_id)
     if assessment is None:
         raise HTTPException(status_code=404, detail="assessment not found")
@@ -1370,9 +1375,13 @@ def get_kpi(kpi_id: str) -> Dict[str, Any]:
     return definition
 
 @app.post("/api/v1/kpis/captures", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def capture_kpi(req: KPICaptureRequest) -> Dict[str, Any]:
+def capture_kpi(req: KPICaptureRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.kpi_id.strip() or not req.captured_by.strip():
         raise HTTPException(status_code=400, detail="athlete_id, kpi_id and captured_by are required")
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/kpis/captures", action="write")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="kpi_capture", action="write", request_route="/api/v1/kpis/captures")
+    if req.assessment_id:
+        assert_resource_tenant(resource_type="assessment", resource_id=req.assessment_id, principal=principal, request_route="/api/v1/kpis/captures", action="read")
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -1397,10 +1406,12 @@ def capture_kpi(req: KPICaptureRequest) -> Dict[str, Any]:
     return capture
 
 @app.get("/api/v1/kpis/captures/{capture_id}", dependencies=[Depends(require_core_actor)])
-def get_kpi_capture(capture_id: str) -> Dict[str, Any]:
+def get_kpi_capture(capture_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="kpi_capture", resource_id=capture_id, principal=principal, request_route="/api/v1/kpis/captures/{capture_id}", action="read")
     capture = persistence.get_kpi_capture(capture_id) if persistence.is_postgres_enabled() else KPI_CAPTURES.get(capture_id)
     if capture is None:
         raise HTTPException(status_code=404, detail="KPI capture not found")
+    assert_minor_consent(child_id=capture["athlete_id"], principal=principal, resource="kpi_capture", action="read", request_route="/api/v1/kpis/captures/{capture_id}")
     return capture
 
 
@@ -1691,7 +1702,7 @@ class EvidenceCreateRequest(BaseModel):
 
 
 @app.post("/api/v1/evidence", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
+def record_evidence(req: EvidenceCreateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
     if req.evidence_level not in allowed_levels:
         raise HTTPException(status_code=400, detail="invalid evidence level")
@@ -1703,6 +1714,19 @@ def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="evidence_id, subject_id and claim are required")
     if not req.verified_by.strip():
         raise HTTPException(status_code=400, detail="verified_by is required")
+    subject_type = req.subject_type.strip().lower()
+    scoped_types = {"athlete": "athlete", "assessment": "assessment", "problem": "problem_statement", "problem_statement": "problem_statement", "diagnosis": "diagnosis", "candidate": "decision_candidate", "decision_candidate": "decision_candidate"}
+    resource_type = scoped_types.get(subject_type)
+    if resource_type is None:
+        raise HTTPException(status_code=400, detail="Evidence subject_type is not covered by the tenant scope policy")
+    assert_resource_tenant(resource_type=resource_type, resource_id=req.subject_id, principal=principal, request_route="/api/v1/evidence", action="write")
+    if resource_type == "assessment":
+        athlete_id = assert_assessment_tenant(assessment_id=req.subject_id, principal=principal, request_route="/api/v1/evidence", action="read")
+    elif resource_type == "athlete":
+        athlete_id = req.subject_id
+    else:
+        raise HTTPException(status_code=503, detail="Evidence subject type requires an approved athlete-parent resolver")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="write", request_route="/api/v1/evidence")
     now = datetime.utcnow().isoformat()
     record = {
         "evidence_id": req.evidence_id,
@@ -1730,18 +1754,49 @@ def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
 
 
 @app.get("/api/v1/evidence/{evidence_id}", dependencies=[Depends(require_core_actor)])
-def get_evidence(evidence_id: str) -> Dict[str, Any]:
+def get_evidence(evidence_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="evidence", resource_id=evidence_id, principal=principal, request_route="/api/v1/evidence/{evidence_id}", action="read")
     record = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
     if record is None:
         raise HTTPException(status_code=404, detail="evidence not found")
+    subject_type = str(record.get("subject_type", "")).strip().lower()
+    if subject_type == "athlete":
+        athlete_id = record["subject_id"]
+    elif subject_type == "assessment":
+        athlete_id = assert_assessment_tenant(assessment_id=record["subject_id"], principal=principal, request_route="/api/v1/evidence/{evidence_id}", action="read")
+    else:
+        raise HTTPException(status_code=503, detail="Evidence subject type requires an approved athlete-parent resolver")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="read", request_route="/api/v1/evidence/{evidence_id}")
     return record
 
 
 @app.get("/api/v1/evidence", dependencies=[Depends(require_core_actor)])
-def list_evidence(subject_id: Optional[str] = None) -> Dict[str, Any]:
+def list_evidence(subject_id: Optional[str] = None, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    if not subject_id:
+        raise HTTPException(status_code=400, detail="subject_id is required for tenant-scoped evidence listing")
+    tenant_id = None
+    subject_type = None
+    for candidate_type in ("athlete", "assessment", "problem_statement", "diagnosis", "decision_candidate"):
+        try:
+            candidate_tenant = __import__("phase4_identity_store").get_resource_tenant(resource_type=candidate_type, resource_id=subject_id)
+        except Exception:
+            candidate_tenant = None
+        if candidate_tenant:
+            if tenant_id is not None and tenant_id != str(candidate_tenant):
+                raise HTTPException(status_code=403, detail="Ambiguous evidence subject scope")
+            tenant_id = str(candidate_tenant)
+            subject_type = candidate_type
+    if not tenant_id or tenant_id != principal.tenant_id:
+        raise HTTPException(status_code=403, detail="Evidence subject tenant scope denied")
     records = persistence.list_evidence(subject_id) if persistence.is_postgres_enabled() else list(EVIDENCE_RECORDS.values())
-    if subject_id:
-        records = [r for r in records if r["subject_id"] == subject_id]
+    records = [r for r in records if r["subject_id"] == subject_id]
+    if subject_type == "athlete":
+        assert_minor_consent(child_id=subject_id, principal=principal, resource="evidence", action="read", request_route="/api/v1/evidence")
+    elif subject_type == "assessment":
+        athlete_id = assert_assessment_tenant(assessment_id=subject_id, principal=principal, request_route="/api/v1/evidence", action="read")
+        assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="read", request_route="/api/v1/evidence")
+    else:
+        raise HTTPException(status_code=503, detail="Evidence subject type requires an approved athlete-parent resolver")
     return {"total_evidence": len(records), "records": records}
 
 
@@ -1845,7 +1900,7 @@ STATE_SNAPSHOTS: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/state-snapshots", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def create_state_snapshot(req: StateSnapshotCreateRequest) -> Dict[str, Any]:
+def create_state_snapshot(req: StateSnapshotCreateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if req.snapshot_type not in {"baseline", "current_state"}:
         raise HTTPException(status_code=400, detail="snapshot_type must be baseline or current_state")
     if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.captured_by.strip():
@@ -1853,6 +1908,9 @@ def create_state_snapshot(req: StateSnapshotCreateRequest) -> Dict[str, Any]:
     if not req.kpi_capture_ids:
         raise HTTPException(status_code=400, detail="at least one KPI capture is required")
 
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/state-snapshots", action="write")
+    assert_resource_tenant(resource_type="assessment", resource_id=req.assessment_id, principal=principal, request_route="/api/v1/state-snapshots", action="read")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="state_snapshot", action="write", request_route="/api/v1/state-snapshots")
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -1864,6 +1922,7 @@ def create_state_snapshot(req: StateSnapshotCreateRequest) -> Dict[str, Any]:
 
     kpis = []
     for capture_id in req.kpi_capture_ids:
+        assert_resource_tenant(resource_type="kpi_capture", resource_id=capture_id, principal=principal, request_route="/api/v1/state-snapshots", action="read")
         capture = persistence.get_kpi_capture(capture_id) if persistence.is_postgres_enabled() else KPI_CAPTURES.get(capture_id)
         if capture is None:
             raise HTTPException(status_code=404, detail=f"KPI capture not found: {capture_id}")
@@ -1897,18 +1956,23 @@ def create_state_snapshot(req: StateSnapshotCreateRequest) -> Dict[str, Any]:
 
 
 @app.get("/api/v1/state-snapshots/{snapshot_id}", dependencies=[Depends(require_core_actor)])
-def get_state_snapshot(snapshot_id: str) -> Dict[str, Any]:
+def get_state_snapshot(snapshot_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="state_snapshot", resource_id=snapshot_id, principal=principal, request_route="/api/v1/state-snapshots/{snapshot_id}", action="read")
     snapshot = persistence.get_state_snapshot(snapshot_id) if persistence.is_postgres_enabled() else STATE_SNAPSHOTS.get(snapshot_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail="state snapshot not found")
+    assert_minor_consent(child_id=snapshot["athlete_id"], principal=principal, resource="state_snapshot", action="read", request_route="/api/v1/state-snapshots/{snapshot_id}")
     return snapshot
 
 
 @app.get("/api/v1/state-snapshots", dependencies=[Depends(require_core_actor)])
-def list_state_snapshots(athlete_id: Optional[str] = None) -> Dict[str, Any]:
+def list_state_snapshots(athlete_id: Optional[str] = None, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    if not athlete_id:
+        raise HTTPException(status_code=400, detail="athlete_id is required for tenant-scoped state snapshot listing")
+    assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal, request_route="/api/v1/state-snapshots", action="list")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="state_snapshot", action="read", request_route="/api/v1/state-snapshots")
     snapshots = persistence.list_state_snapshots(athlete_id) if persistence.is_postgres_enabled() else list(STATE_SNAPSHOTS.values())
-    if athlete_id:
-        snapshots = [item for item in snapshots if item["athlete_id"] == athlete_id]
+    snapshots = [item for item in snapshots if item["athlete_id"] == athlete_id]
     return {"total_snapshots": len(snapshots), "snapshots": snapshots}
 
 
