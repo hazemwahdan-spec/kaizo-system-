@@ -64,7 +64,7 @@ def post(path, payload, expected=(200, 201)):
 
 def test_phase4_override_preserves_candidate_and_audit_history():
     suffix = uuid.uuid4().hex[:8]
-    coach = f"phase4-override-{suffix}"
+    coach = "phase4-outcome-test"
     athlete = post("/api/v1/athletes", {"display_name": f"Phase4 Override {suffix}"})
     assessment = post("/api/v1/assessments", {
         "athlete_id": athlete["athlete_id"],
@@ -144,7 +144,7 @@ def test_phase4_override_preserves_candidate_and_audit_history():
 
 def test_phase4_decision_plan_kpi_retest_lineage_keeps_baseline():
     suffix = uuid.uuid4().hex[:8]
-    coach = f"phase4-lineage-{suffix}"
+    coach = "phase4-outcome-test"
     athlete = post("/api/v1/athletes", {"display_name": f"Phase4 Lineage {suffix}"})
     baseline = post("/api/v1/assessments", {
         "athlete_id": athlete["athlete_id"],
