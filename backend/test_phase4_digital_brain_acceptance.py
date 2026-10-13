@@ -11,6 +11,7 @@ os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaiz
 
 from fastapi.testclient import TestClient
 import main
+import test_core_auth_overrides  # test-only override; identity security has separate tests
 import persistence
 
 persistence.initialize()

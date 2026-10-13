@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, verify_bearer_token
+from phase4_identity_store import has_active_child_consent, has_verified_guardian_relationship
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -17,8 +18,9 @@ def verify_oidc(
     """Live OIDC verification endpoint for standard JWT validation."""
     try:
         return verify_bearer_token(authorization)
-    except IdentityNotConfiguredError as exc:
-        raise HTTPException(status_code=401, detail=str(exc))
+    except IdentityNotConfiguredError:
+        # Do not disclose issuer, audience, JWKS, or token-validation internals.
+        raise HTTPException(status_code=401, detail="Invalid or unconfigured OIDC bearer token")
 
 _surface: ProductSurface | None = None
 
@@ -135,6 +137,57 @@ def parent_progress(
     authorization: str | None = Header(None, alias="Authorization"),
 ):
     try:
-        return get_surface().parent_progress(ctx(actor_id, role, tenant_id, owner), resource_tenant_id, athlete_id, [])
+        # Never trust caller-supplied role/owner headers as proof of guardianship.
+        # ctx() resolves the principal from the configured identity provider; in
+        # production/OIDC mode the bearer token is mandatory and verified.
+        principal = ctx(actor_id, role, tenant_id, owner, authorization)
+        if principal.role != "parent":
+            raise HTTPException(status_code=403, detail="only Parent may use linked-athlete view")
+        if principal.tenant_id != resource_tenant_id:
+            raise HTTPException(status_code=403, detail="cross-tenant access denied")
+        if principal.resource_owner_id and principal.resource_owner_id != athlete_id:
+            raise HTTPException(status_code=403, detail="explicit athlete linkage required")
+
+        # The signed identity's optional resource_owner claim is not the source
+        # of truth for parent-child linkage. Require the current durable guardian
+        # relationship and exact-scope consent before any parent progress is read.
+        try:
+            linked = has_verified_guardian_relationship(
+                child_id=athlete_id,
+                guardian_actor_id=principal.actor_id,
+                academy_id=resource_tenant_id,
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Authoritative guardian relationship store is unavailable",
+            ) from exc
+        if not linked:
+            raise HTTPException(status_code=403, detail="verified guardian relationship required")
+
+        try:
+            consent = has_active_child_consent(
+                child_id=athlete_id,
+                guardian_actor_id=principal.actor_id,
+                academy_id=resource_tenant_id,
+                resource="athlete_progress",
+                action="read",
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Authoritative guardian consent store is unavailable",
+            ) from exc
+        if not consent:
+            raise HTTPException(status_code=403, detail="active guardian consent for athlete progress is required")
+
+        # Bind the already database-verified child to the product-surface scope.
+        scoped_parent = RuntimeContext(
+            actor_id=principal.actor_id,
+            role=principal.role,
+            tenant_id=principal.tenant_id,
+            resource_owner_id=athlete_id,
+        )
+        return get_surface().parent_progress(scoped_parent, resource_tenant_id, athlete_id, [])
     except RuntimeAuthorizationError as exc:
         deny(exc)

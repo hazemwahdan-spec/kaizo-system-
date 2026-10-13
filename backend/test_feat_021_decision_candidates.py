@@ -1,16 +1,33 @@
 import unittest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 import main
 import persistence
+from phase4_core_resource_authorization import require_core_actor
+from productization.identity import Principal
 
 
-class FEAT021DecisionCandidateGenerationTests(unittest.TestCase):
+class CoreAuthTestOverrides:
+    def _install_auth_test_overrides(self):
+        self.principal = Principal(actor_id="unit-test-coach", role="coach", tenant_id="unit-test-academy", resource_owner_id=None, verified=True, source="test_override")
+        main.app.dependency_overrides[require_core_actor] = lambda: self.principal
+        self._authorization_patches = [patch("main.bind_new_resource"), patch("main.assert_resource_tenant"), patch("main.assert_assessment_tenant"), patch("main.assert_minor_consent")]
+        for item in self._authorization_patches: item.start()
+        self.addCleanup(self._cleanup_auth_test_overrides)
+    def _cleanup_auth_test_overrides(self):
+        main.app.dependency_overrides.pop(require_core_actor, None)
+        for item in reversed(self._authorization_patches): item.stop()
+
+
+class FEAT021DecisionCandidateGenerationTests(CoreAuthTestOverrides, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         persistence.initialize()
         cls.client = TestClient(main.app)
 
     def setUp(self):
+        self._install_auth_test_overrides()
+        self._install_auth_test_overrides()
         athlete = self.client.post("/api/v1/athletes", json={"display_name":"FEAT-021 Athlete","metadata":{}})
         self.assertEqual(athlete.status_code, 201)
         self.athlete_id = athlete.json()["athlete_id"]

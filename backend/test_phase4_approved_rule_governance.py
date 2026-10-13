@@ -1,5 +1,6 @@
 """Phase 4 acceptance for versioned, approved rule governance."""
 import os
+from unittest.mock import patch
 
 os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
@@ -8,6 +9,24 @@ from fastapi.testclient import TestClient
 import main
 import persistence
 from progression_rules import ProgressionRegressionRule
+from phase4_core_resource_authorization import require_core_actor
+from productization.identity import Principal
+
+# Test-only fixture: governance acceptance tests exercise rule contracts, not
+# production OIDC configuration. Dedicated Phase 4 security tests verify the
+# real identity boundary and fail-closed behavior independently.
+_TEST_PRINCIPAL = Principal(
+    actor_id="phase4-rule-test", role="coach", tenant_id="phase4-test-academy",
+    resource_owner_id=None, verified=True, source="test_override",
+)
+main.app.dependency_overrides[require_core_actor] = lambda: _TEST_PRINCIPAL
+_TEST_AUTH_PATCHES = [
+    patch("main.bind_new_resource"),
+    patch("main.assert_resource_tenant"),
+    patch("main.assert_assessment_tenant"),
+]
+for _patch in _TEST_AUTH_PATCHES:
+    _patch.start()
 
 persistence.initialize()
 client = TestClient(main.app)
@@ -144,3 +163,6 @@ if __name__ == "__main__":
     test_authority_and_execution_flags_cannot_be_bypassed()
     test_rule_rejects_missing_unverified_or_e0_evidence()
     print("Phase 4 approved-rule governance acceptance passed")
+    main.app.dependency_overrides.pop(require_core_actor, None)
+    for _patch in reversed(_TEST_AUTH_PATCHES):
+        _patch.stop()

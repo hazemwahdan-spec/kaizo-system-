@@ -2,15 +2,21 @@ name: KAIZO V1.1 Commercial Production Evidence
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/phase4-core-resource-authorization
 
 jobs:
   production-evidence:
     runs-on: ubuntu-latest
     env:
-      KAIZO_PRODUCTION_BASE_URL: https://kaizo-core-engine-production.up.railway.app
+      # Canonical target is recorded in Gate A decision register (commit 974a999).
+      # Railway remains historical/secondary for this workstream.
+      KAIZO_PRODUCTION_BASE_URL: https://kaizo-system.fastapicloud.dev
       AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
       AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
       AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+      # Must match KAIZO_OIDC_AUDIENCE on the selected deployment.
       AUTH0_AUDIENCE: https://api.kaizo.system
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +44,7 @@ jobs:
             echo "INVALID_AUTH0_DOMAIN_FORMAT: set AUTH0_DOMAIN to kaizo-system.us.auth0.com (domain only)"
             exit 1
           fi
-          response=$(curl -fsS --retry 2 --retry-delay 1 \
+          response=$(curl -fsS --connect-timeout 5 --max-time 20 --retry 2 --retry-delay 1 \
             -X POST "https://${auth0_domain}/oauth/token" \
             -H "content-type: application/x-www-form-urlencoded" \
             --data-urlencode "grant_type=client_credentials" \
@@ -58,18 +64,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /tmp/oidc.json -w "%{http_code}" \
+          code=$(curl -sS --connect-timeout 5 --max-time 15 -o /tmp/oidc.json -w "%{http_code}" \
             -H "Authorization: Bearer ${KAIZO_OIDC_BEARER_TOKEN}" \
             "${KAIZO_PRODUCTION_BASE_URL}/api/v1/product/auth/oidc/verify")
           if [ "$code" != "200" ]; then
             echo "OIDC_LIVE_VERIFICATION: FAIL (HTTP $code)"
+            # Print only the bounded verifier error detail; never print the bearer token,
+            # Auth0 client secret, response headers, or the complete response document.
             python - <<'PY'
           import json
           try:
-              d=json.load(open('/tmp/oidc.json'))
-              print("Response detail:", d.get("detail", "non-JSON error response"))
+              payload = json.load(open('/tmp/oidc.json', encoding='utf-8'))
+              detail = str(payload.get("detail", "no JSON detail returned"))
           except Exception:
-              print("Response body was not valid JSON; body omitted.")
+              detail = "non-JSON error response"
+          print("OIDC_VERIFIER_DIAGNOSTIC:", detail[:240])
           PY
             exit 1
           fi
@@ -81,11 +90,25 @@ jobs:
           print("OIDC_LIVE_VERIFICATION: PASS")
           PY
 
+      - name: Verify invalid bearer is rejected by production OIDC endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS --connect-timeout 5 --max-time 15 -o /tmp/oidc-negative.json -w "%{http_code}" \
+            -H "Authorization: Bearer kaizo-phase4-invalid-token" \
+            "${KAIZO_PRODUCTION_BASE_URL}/api/v1/product/auth/oidc/verify")
+          if [ "$code" != "401" ]; then
+            echo "OIDC_INVALID_BEARER_REJECTION: FAIL (expected HTTP 401, got $code)"
+            echo "Response body omitted."
+            exit 1
+          fi
+          echo "OIDC_INVALID_BEARER_REJECTION: PASS (HTTP 401)"
+
       - name: Verify production health
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
+          curl -fsS --connect-timeout 5 --max-time 15 "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
           python - <<'PY'
           import json
           d=json.load(open('/tmp/health.json'))
@@ -98,4 +121,5 @@ jobs:
         run: |
           echo "Short-lived Auth0 access token was requested at runtime and masked."
           echo "No token value is printed or persisted as a repository artifact."
-          echo "Full commercial activation remains gated until live positive/negative RBAC, tenant, intervention, audit and independent retest evidence is collected."
+          echo "This workflow checks live OIDC verification and health only; it does not prove route-level RBAC, tenant isolation, guardian consent, durable audit, or full commercial activation."
+          echo "Full commercial activation remains gated until live positive/negative authorization and independent retest evidence is collected."

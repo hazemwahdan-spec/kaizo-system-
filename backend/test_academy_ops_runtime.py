@@ -1,3 +1,4 @@
+import test_core_auth_overrides  # domain tests; auth/security has separate coverage
 from fastapi.testclient import TestClient
 
 import academy_ops_runtime as academy

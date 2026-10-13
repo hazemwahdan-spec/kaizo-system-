@@ -2,6 +2,7 @@ import os
 os.environ["KAIZO_PERSISTENCE_MODE"]="memory"
 
 from fastapi.testclient import TestClient
+import test_core_auth_overrides  # feature runtime acceptance; security tests remain separate
 from main import app
 from feature_runtime import CONTRACTS
 
