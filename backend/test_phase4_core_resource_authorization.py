@@ -853,3 +853,74 @@ def test_remaining_unmapped_mounted_route_families_remain_default_deny(
     assert policy_denials
     assert all(event["correlation_id"] == correlation_id for event in policy_denials)
     assert all(event["request_route"] == path for event in policy_denials)
+
+
+
+@pytest.mark.parametrize(
+    ("path", "payload", "actor_field"),
+    [
+        (
+            "/api/v1/training-workflow/feat-033/decision-drill",
+            {"athlete_id": "athlete-a", "decision_id": "decision-a", "drill_id": "drill-a", "rationale": "specific rationale", "evidence_refs": ["evidence-a"], "selected_by": "coach-1", "coach_final_authority": True},
+            "selected_by",
+        ),
+        (
+            "/api/v1/training-workflow/feat-034/drill-prescription",
+            {"athlete_id": "athlete-a", "decision_id": "decision-a", "session_id": "session-a", "drill_id": "drill-a", "objective": "entry timing", "dosage": {"sets": 2, "reps": 3}, "prescribed_by": "coach-1", "coach_final_authority": True},
+            "prescribed_by",
+        ),
+        (
+            "/api/v1/training-workflow/feat-035/execution-cues",
+            {"athlete_id": "athlete-a", "session_id": "session-a", "drill_id": "drill-a", "cues": ["enter on movement"], "checklist": ["balanced entry"], "created_by": "coach-1", "coach_final_authority": True},
+            "created_by",
+        ),
+        (
+            "/api/v1/training-workflow/feat-037/retest",
+            {"athlete_id": "athlete-a", "session_id": "session-a", "baseline_reference": "baseline-a", "retest_values": {"score": 2}, "evidence_refs": ["evidence-a"], "retested_by": "coach-1", "coach_final_authority": True},
+            "retested_by",
+        ),
+        (
+            "/api/v1/training-workflow/feat-040/next-decision-trigger",
+            {"athlete_id": "athlete-a", "session_id": "session-a", "trigger_type": "kpi_threshold", "trigger_reason": "retest below target", "required_evidence": ["evidence-a"], "created_by": "coach-1", "coach_final_authority": True},
+            "created_by",
+        ),
+    ],
+)
+def test_new_training_workflow_policies_allow_only_authenticated_actor_and_check_scope(
+    monkeypatch, path, payload, actor_field
+):
+    import backend.training_workflow as training
+
+    principal = Principal(
+        actor_id="coach-1", role="coach", tenant_id="academy-a",
+        resource_owner_id=None, verified=True, source="oidc_jwt",
+    )
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda resource_type, resource_id: "athlete-a")
+    consent_checks = []
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **kwargs: consent_checks.append(kwargs))
+    writes = []
+    monkeypatch.setattr(training, "_save", lambda *args, **kwargs: writes.append((args, kwargs)) or {"record_id": "record-a", "athlete_id": "athlete-a"})
+
+    response = client.post(
+        path, json=payload,
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 201
+    assert writes
+    assert any(item["resource"] == "training_workflow" and item["action"] == "write" for item in consent_checks)
+
+    writes.clear()
+    consent_checks.clear()
+    invalid_payload = dict(payload)
+    invalid_payload[actor_field] = "caller-controlled-other-actor"
+    denied = client.post(
+        path, json=invalid_payload,
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert denied.status_code == 403
+    assert writes == []
+    assert consent_checks == []
