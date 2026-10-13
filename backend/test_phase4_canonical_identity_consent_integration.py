@@ -23,6 +23,47 @@ def main() -> None:
                 "VALUES (%s, %s) ON CONFLICT (tenant_id) DO NOTHING",
                 ("phase4-it-academy", "Phase 4 integration test academy"),
             )
+            now_text = datetime.now(timezone.utc).isoformat()
+            cur.execute(
+                """INSERT INTO kaizo_athletes
+                   (athlete_id, display_name, status, metadata, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+                   ON CONFLICT (athlete_id) DO NOTHING""",
+                ("phase4-it-athlete", "Phase 4 tenant resolver test", "ACTIVE", "{}", now_text, now_text),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_resource_tenant_bindings
+                   (resource_type, resource_id, tenant_id, bound_by_actor_id)
+                   VALUES ('athlete', %s, %s, %s)
+                   ON CONFLICT (resource_type, resource_id) DO UPDATE
+                   SET tenant_id=EXCLUDED.tenant_id""",
+                ("phase4-it-athlete", "phase4-it-academy", "phase4-it-coach"),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_assessments
+                   (assessment_id, athlete_id, template_id, measurements, recorded_by, assessed_at, created_at)
+                   VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s)
+                   ON CONFLICT (assessment_id) DO NOTHING""",
+                ("phase4-it-assessment", "phase4-it-athlete", "PHASE4-IT", "{}", "phase4-it-coach", now_text, now_text),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_resource_tenant_bindings
+                   (resource_type, resource_id, tenant_id, bound_by_actor_id)
+                   VALUES ('assessment', %s, %s, %s)
+                   ON CONFLICT (resource_type, resource_id) DO UPDATE
+                   SET tenant_id=EXCLUDED.tenant_id""",
+                ("phase4-it-assessment", "phase4-it-academy", "phase4-it-coach"),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_problem_statements
+                   (problem_id, athlete_id, assessment_id, statement, problem_type, impact,
+                    context, structured_fields, status, created_by, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s)
+                   ON CONFLICT (problem_id) DO NOTHING""",
+                ("phase4-it-problem", "phase4-it-athlete", "phase4-it-assessment",
+                 "Resolver test problem", "test", None, "{}", "{}", "OPEN",
+                 "phase4-it-coach", now_text, now_text),
+            )
         conn.commit()
 
     try:
@@ -45,6 +86,15 @@ def main() -> None:
         assert not store.has_active_membership(
             actor_id="phase4-it-coach", academy_id="phase4-it-academy", role="coach"
         )
+
+        # Tenant ownership for nested resources must come from the persisted
+        # athlete parent chain, not a client-supplied tenant field.
+        assert store.get_resource_tenant(
+            resource_type="problem_statement", resource_id="phase4-it-problem"
+        ) == "phase4-it-academy"
+        assert store.get_resource_tenant(
+            resource_type="assessment", resource_id="phase4-it-assessment"
+        ) == "phase4-it-academy"
 
         now = datetime.now(timezone.utc)
         store.record_guardian_relationship(
@@ -133,6 +183,10 @@ def main() -> None:
                     "DELETE FROM kaizo_tenant_memberships WHERE actor_id=%s",
                     ("phase4-it-coach",),
                 )
+                cur.execute("DELETE FROM kaizo_problem_statements WHERE problem_id=%s", ("phase4-it-problem",))
+                cur.execute("DELETE FROM kaizo_assessments WHERE assessment_id=%s", ("phase4-it-assessment",))
+                cur.execute("DELETE FROM kaizo_resource_tenant_bindings WHERE resource_id IN (%s, %s)", ("phase4-it-athlete", "phase4-it-assessment"))
+                cur.execute("DELETE FROM kaizo_athletes WHERE athlete_id=%s", ("phase4-it-athlete",))
                 cur.execute(
                     "DELETE FROM kaizo_tenants WHERE tenant_id=%s",
                     ("phase4-it-academy",),
