@@ -65,6 +65,14 @@ def _payload_resource_ids(request: Request, payload: dict[str, Any]) -> list[tup
             pair = (inferred, str(value))
             if pair not in values:
                 values.append(pair)
+    # Feature record reads address a persisted record_id, not one of the
+    # generic resource ID fields above. Resolve it as a tenant-bound resource
+    # so single-record GETs are authorized against the canonical DB binding.
+    record_id = request.path_params.get("record_id")
+    if record_id and request.url.path.startswith("/api/v1/features/"):
+        pair = ("feature_record", str(record_id))
+        if pair not in values:
+            values.append(pair)
     return values
 
 
