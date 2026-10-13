@@ -11,6 +11,7 @@ import pytest
 import main
 import persistence
 from phase4_domain_authorization import require_phase4_domain_access
+from phase4_route_guard import require_phase4_route_access, require_phase4_tenant_member
 
 persistence.initialize()
 client = TestClient(main.app)
@@ -20,10 +21,20 @@ client = TestClient(main.app)
 def isolate_outcome_lineage_business_tests_from_tenant_guard():
     # These tests assert override/audit lineage; actual tenant and actor
     # spoofing behavior is verified in dedicated Phase 4 authorization tests.
-    previous = main.app.dependency_overrides.get(require_phase4_domain_access)
-    main.app.dependency_overrides[require_phase4_domain_access] = lambda: {
-        "principal": SimpleNamespace(actor_id="phase4-outcome-test", role="coach"), "tenant_id": "phase4-outcome-test-tenant"
+    test_access = {
+        "principal": SimpleNamespace(actor_id="phase4-outcome-test", role="coach"),
+        "tenant_id": "phase4-outcome-test-tenant",
+        "athlete_id": None,
+        "authorization": {"allowed": True, "reason_code": "isolated_business_lineage_test"},
     }
+    dependencies = (
+        require_phase4_domain_access,
+        require_phase4_route_access,
+        require_phase4_tenant_member,
+    )
+    previous = {dependency: main.app.dependency_overrides.get(dependency) for dependency in dependencies}
+    for dependency in dependencies:
+        main.app.dependency_overrides[dependency] = lambda access=test_access: access
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -38,10 +49,11 @@ def isolate_outcome_lineage_business_tests_from_tenant_guard():
     try:
         yield
     finally:
-        if previous is None:
-            main.app.dependency_overrides.pop(require_phase4_domain_access, None)
-        else:
-            main.app.dependency_overrides[require_phase4_domain_access] = previous
+        for dependency, prior_override in previous.items():
+            if prior_override is None:
+                main.app.dependency_overrides.pop(dependency, None)
+            else:
+                main.app.dependency_overrides[dependency] = prior_override
 
 
 def post(path, payload, expected=(200, 201)):
