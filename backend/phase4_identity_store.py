@@ -273,6 +273,11 @@ def get_resource_tenant(*, resource_type: str, resource_id: str) -> str | None:
             JOIN kaizo_resource_tenant_bindings b
               ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
             WHERE r.session_id=%s""",
+        "training_dosage": """SELECT b.tenant_id
+            FROM kaizo_training_dosages r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.dosage_id=%s""",
         "cause_context": """SELECT b.tenant_id
             FROM kaizo_cause_context_framings r
             JOIN kaizo_resource_tenant_bindings b
