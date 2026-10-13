@@ -135,6 +135,12 @@ MOUNTED_ROUTE_SCOPE_POLICIES: dict[tuple[str, str], dict[str, Any]] = {
         "consent_resource": "digital_twin_state",
         "consent_action": "read",
     },
+    ("GET", "/api/v1/state-cycle/feat-044/decision-state-link/{decision_id}"): {
+        "roles": ("coach", "academy"),
+        "required_bindings": {"decision_id": "decision_record"},
+        "consent_resource": "decision_record",
+        "consent_action": "read",
+    },
 }
 
 
