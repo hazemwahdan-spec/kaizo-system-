@@ -107,16 +107,7 @@ def main() -> None:
             child_id="phase4-it-child", guardian_actor_id="phase4-it-guardian",
             academy_id="phase4-it-academy",
         )
-        store.record_guardian_relationship(
-            relationship_id="phase4-it-guardian-v2", child_id="phase4-it-child",
-            guardian_actor_id="phase4-it-guardian", academy_id="phase4-it-academy",
-            verification_status="revoked", version=2,
-        )
-        assert not store.has_verified_guardian_relationship(
-            child_id="phase4-it-child", guardian_actor_id="phase4-it-guardian",
-            academy_id="phase4-it-academy",
-        )
-
+        # A current verified guardian relationship is a prerequisite for consent.
         store.record_child_consent(
             consent_id="phase4-it-consent-v1", child_id="phase4-it-child",
             guardian_actor_id="phase4-it-guardian", academy_id="phase4-it-academy",
@@ -128,6 +119,8 @@ def main() -> None:
             child_id="phase4-it-child", guardian_actor_id="phase4-it-guardian",
             academy_id="phase4-it-academy", resource="training_plan", action="read",
         )
+
+        # Revocation of the consent itself must deny the exact resource/action.
         store.record_child_consent(
             consent_id="phase4-it-consent-v2", child_id="phase4-it-child",
             guardian_actor_id="phase4-it-guardian", academy_id="phase4-it-academy",
@@ -139,6 +132,8 @@ def main() -> None:
             child_id="phase4-it-child", guardian_actor_id="phase4-it-guardian",
             academy_id="phase4-it-academy", resource="training_plan", action="read",
         )
+
+        # Expiry is independently checked while the guardian relationship is still verified.
         store.record_child_consent(
             consent_id="phase4-it-consent-expired", child_id="phase4-it-child",
             guardian_actor_id="phase4-it-guardian", academy_id="phase4-it-academy",
@@ -149,6 +144,33 @@ def main() -> None:
         assert not store.has_active_child_consent(
             child_id="phase4-it-child", guardian_actor_id="phase4-it-guardian",
             academy_id="phase4-it-academy", resource="assessment", action="read",
+        )
+
+        # Even an otherwise-active consent becomes unusable when the latest verified
+        # guardian relationship is revoked. This closes a cross-record trust gap.
+        store.record_child_consent(
+            consent_id="phase4-it-consent-relationship-check", child_id="phase4-it-child",
+            guardian_actor_id="phase4-it-guardian", academy_id="phase4-it-academy",
+            resource="training_session", action="read", state="active",
+            expires_at=now + timedelta(days=1),
+            recorded_by_actor_id="phase4-it-guardian", version=1,
+        )
+        assert store.has_active_child_consent(
+            child_id="phase4-it-child", guardian_actor_id="phase4-it-guardian",
+            academy_id="phase4-it-academy", resource="training_session", action="read",
+        )
+        store.record_guardian_relationship(
+            relationship_id="phase4-it-guardian-v2", child_id="phase4-it-child",
+            guardian_actor_id="phase4-it-guardian", academy_id="phase4-it-academy",
+            verification_status="revoked", version=2,
+        )
+        assert not store.has_verified_guardian_relationship(
+            child_id="phase4-it-child", guardian_actor_id="phase4-it-guardian",
+            academy_id="phase4-it-academy",
+        )
+        assert not store.has_active_child_consent(
+            child_id="phase4-it-child", guardian_actor_id="phase4-it-guardian",
+            academy_id="phase4-it-academy", resource="training_session", action="read",
         )
 
         store.append_authorization_audit(
