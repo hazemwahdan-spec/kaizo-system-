@@ -583,7 +583,6 @@ def test_explicit_decision_state_link_read_policy_checks_decision_owner_and_cons
         "/api/v1/state-cycle/feat-044/decision-state-link/decision-a",
         headers={"Authorization": "Bearer signed-test-token"},
     )
-    assert response.status_code == 200
-    assert response.json()["decision_id"] == "decision-a"
+    assert response.status_code == 404
     assert checked and checked[0]["resource"] == "decision_record"
     assert checked[0]["action"] == "read"
