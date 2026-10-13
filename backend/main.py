@@ -164,6 +164,7 @@ async def require_router_resource_scope(
         "case_id": "case",
     }
     references: list[tuple[str, str]] = []
+    unmapped_identifiers: list[str] = []
 
     def collect_declared_fields(value: Any) -> None:
         # Only direct, declared model/path fields can bind a request to a resource.
@@ -178,6 +179,15 @@ async def require_router_resource_scope(
         for key, nested in items:
             if key in field_types and isinstance(nested, (str, int)) and str(nested).strip():
                 references.append((field_types[key], str(nested)))
+            elif key.endswith(("_id", "_ids")) and (
+                (isinstance(nested, (str, int)) and str(nested).strip())
+                or (isinstance(nested, list) and any(str(item).strip() for item in nested))
+            ):
+                # One recognized athlete ID cannot authorize a request that also
+                # references an unscoped event, academy, coach, knowledge item,
+                # export record, or other resource. Require every direct ID field
+                # to have an approved binding before evaluating any permission.
+                unmapped_identifiers.append(key)
 
     collect_declared_fields(request.path_params)
     route = request.scope.get("route")
@@ -191,6 +201,13 @@ async def require_router_resource_scope(
         if validation_error:
             raise HTTPException(status_code=422, detail="Mounted route body is invalid")
         collect_declared_fields(payload)
+
+    if unmapped_identifiers:
+        raise HTTPException(
+            status_code=503,
+            detail="No approved resource-scope policy for identifier field(s): "
+            + ", ".join(sorted(set(unmapped_identifiers))),
+        )
 
     if not references:
         raise HTTPException(
