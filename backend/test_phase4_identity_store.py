@@ -74,6 +74,24 @@ def _test_atomic_core_resource_binding():
     assert persistence.get_athlete(conflicting_id) is None
     assert store.get_resource_tenant(resource_type="athlete", resource_id=conflicting_id) == "different-academy"
 
+    mismatched_assessment_id = "atomic-assessment-conflict-" + uuid.uuid4().hex
+    mismatched_assessment = {
+        "assessment_id": mismatched_assessment_id, "athlete_id": conflicting_id,
+        "template_id": "ATOMIC-TPL", "measurements": {"score": 1},
+        "recorded_by": "atomic-test-coach", "assessed_at": "2026-10-13T00:00:00",
+        "created_at": "2026-10-13T00:00:00",
+    }
+    try:
+        persistence.persist_core_resource_and_binding(
+            resource_type="assessment", resource=mismatched_assessment,
+            tenant_id=tenant_id, bound_by_actor_id="atomic-test-coach",
+        )
+    except persistence.PersistenceConfigurationError:
+        pass
+    else:
+        raise AssertionError("Assessment cannot cross the parent athlete tenant")
+    assert persistence.get_assessment(mismatched_assessment_id) is None
+
 def main():
     assert persistence.is_postgres_enabled()
     migration = Path("migrations/0001_phase4_identity_consent.sql").read_text()
