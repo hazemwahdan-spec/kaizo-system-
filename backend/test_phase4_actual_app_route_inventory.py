@@ -1,12 +1,11 @@
-"""Actual Core app route inventory for Phase 4 security work.
+"""Actual app route inventory and Phase 4 identity-gate coverage acceptance tests.
 
-This is a diagnostic baseline, not a security acceptance test. It imports the
-real backend.main:app (including mounted routers and dynamically generated
-feature routes), inventories registered HTTP routes and their dependency trees,
-and pins representative sensitive routes as currently missing the Phase 4
-verified-principal dependency. When route enforcement is implemented, replace
-the baseline assertions with positive acceptance assertions for auth, role,
-server-loaded tenant/resource ownership, consent, and no-write-on-deny.
+This imports the real backend.main:app, including mounted routers and dynamic
+feature routes. All non-public API routes outside the separately governed
+Commercial Product router must require the shared fail-closed identity gate.
+Resource ownership and consent coverage are separately tested for the five
+Core athlete/assessment handlers; other routes remain a Phase 4 closure blocker
+until their resource mapping is implemented and independently tested.
 """
 import sys
 from pathlib import Path
@@ -83,3 +82,16 @@ def test_actual_core_app_sensitive_routes_are_wired_to_phase4_identity_and_scope
         authz.require_core_actor in by_route[key]["dependencies"]
         for key in sensitive_baseline
     )
+
+
+def test_all_sensitive_non_product_api_routes_require_phase4_identity_gate():
+    rows = _registered_http_routes()
+    unprotected = []
+    for row in rows:
+        if not row["path"].startswith("/api/v1"):
+            continue
+        if row["path"] == "/api/v1/health" or row["path"].startswith("/api/v1/product/"):
+            continue
+        if authz.require_core_actor not in row["dependencies"]:
+            unprotected.append((row["methods"], row["path"], row["name"]))
+    assert unprotected == [], f"Sensitive API routes without identity gate: {unprotected}"
