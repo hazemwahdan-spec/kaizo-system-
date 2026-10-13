@@ -2,110 +2,40 @@
 
 Date: 2026-10-13  
 PR: [#128 — Phase 4 Core resource authorization](https://github.com/hazemwahdan-spec/kaizo-system-/pull/128)  
-Validated code head: `0b945e96aaeb36bc756cbf202c114af86458dd6a`  
+Validated candidate branch: `feat/phase4-core-resource-authorization`  
 Disposition: **BLOCKED — CI is green, production security proof remains incomplete**
 
-## Evidence examined
+## Latest checkpoint — 2026-10-13
 
-- Actual registered FastAPI route inventory: `backend/test_phase4_actual_app_route_inventory.py`.
-- Core authorization and identity/consent adapters: `backend/phase4_core_resource_authorization.py`, `backend/phase4_identity_store.py`.
-- Core handlers and router mounts: `backend/main.py`.
-- Mounted routers: training workflow, knowledge runtime, audit trace runtime, evidence safety runtime, state cycle, reporting runtime, competition runtime, academy operations, and generated feature runtime.
-- HTTP acceptance tests: `backend/test_phase4_core_resource_authorization.py`.
-- Canonical identity/consent migration and integration test: `backend/migrations/20261012_phase4_identity_consent_canonical.sql`, `backend/test_phase4_canonical_identity_consent_integration.py`.
+The following runs were directly inspected and completed successfully:
 
-## Current CI evidence
+- [Persistence Adapter Validation run 38427546736](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38427546736): PASS. Step 40, “Run Phase 4 actual Core resource authorization HTTP acceptance tests,” completed successfully alongside the persistence and feature acceptance suite.
+- [Phase 4 Actual Core Route Inventory run 38427546657](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38427546657): PASS. This proves the route-inventory assertions and configured identity/scope guard wiring for the candidate tested by that run.
+- [Phase 4 Live Runtime Smoke run 38427546821](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38427546821): PASS for deployed OpenAPI and `GET /api/v1/health` only.
 
-The prior candidate head `458eb1641adb8c10e9f54cefb702f4759e4b13df` had **20/20 retrieved workflow runs completed successfully**, including:
+**Evidence boundary:** the live smoke does not verify production OIDC issuer/audience/JWKS/claim mapping, does not prove that the candidate branch is deployed, and does not exercise live positive/negative tenant and guardian-consent authorization. CI acceptance tests are candidate-code evidence and are not equivalent to an independent production security retest.
 
-- [Persistence Adapter Validation](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280138) — compilation, existing feature acceptance suite, canonical identity/consent integration, and actual Core resource authorization HTTP tests.
-- [Phase 4 Actual Core Route Inventory](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280190) — registered non-product routes have the identity gate; mounted/generated routes have the fail-closed scope guard.
-- [Phase 4 Live Runtime Smoke](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280179) — bounded deployed health/OpenAPI smoke only; it does **not** prove that this branch is deployed or that production OIDC and every protected route have been independently verified.
-- [Phase 7 Runtime Adapter](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280148) — internal direct Core invocation updated to pass an explicit principal.
-- [Commercial Security Regression](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347280185).
+## Existing route/resource findings
 
-## Route coverage matrix
+The source-derived route manifest is [KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md](https://github.com/hazemwahdan-spec/kaizo-system-/blob/feat/phase4-core-resource-authorization/docs/audits/KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md). It records 99 statically declared decorator routes across ten backend files and separately lists three dynamically generated feature-route patterns. It is an audit baseline, not proof that every runtime route has a complete authorization contract.
 
-| Route/resource family | Candidate guard/evidence | Remaining proof |
-|---|---|---|
-| Athlete create/read/update | Atomic athlete tenant binding on create; tenant + age/consent checks on read/update | Production OIDC identity and live allow/deny retest |
-| Assessment create/read | Parent athlete and assessment tenant checks; atomic persistence/binding/audit; consent checks | Production OIDC identity and live allow/deny retest |
-| Problem statements and scoped lists | Parent-chain tenant resolution; read/write and consent guards; unscoped list requests fail closed | Exhaustive per-route cross-tenant and no-read/no-write matrix |
-| Diagnosis, candidates, rationale, comparisons, coach review, decision records | Parent-chain resolver; tenant and consent guards; evidence ownership checks before evidence reads | Full per-route wrong-parent/forged-link matrix |
-| Training plans, sessions, dosage, cause context, problem-library selections | Tenant and consent guards tied to athlete/decision/problem parent chains | Full route-by-route regression and cross-parent mismatch matrix |
-| KPI captures and state snapshots | Athlete/assessment/capture tenant checks and child consent; unscoped list requests fail closed | KPI definition remains a shared/global catalog and needs an explicit governance/role policy |
-| Evidence create/read/list | Scoped subject types resolve to a persisted athlete parent; unsupported production subject types deny; feature/rule fixtures are exempt only for explicit test principals | Explicit policy for every production evidence subject type and per-type negative tests |
-| Audit log endpoint | Production reads only durable authorization events filtered by authenticated academy; global legacy audit log is exposed only to explicit test principals | Verify production data retention/operations and audit completeness for all runtimes |
-| Digital Twin, rules, safety, decision loop/adapt | Tenant/consent checks added; case IDs must resolve to one same-academy persisted resource; unknown cases deny | Verify all case/resource mappings and ensure every state transition is linked to an authoritative parent |
-| Mounted and generated feature routers | Shared `require_router_resource_scope` gate attached to every mounted router; it fails closed if no supported persisted resource reference can be resolved | The generic gate is a safety backstop, not a substitute for route-specific role, parent-link, consent, and audit policies. Some unsupported/global routes intentionally remain unavailable until classified |
-| Shared problem library / KPI catalog / knowledge ingest | Identity gate present | Explicit classification of global vs academy-owned data, publisher role policy, and tenant-safe mutation/read contract |
-| Health and governed commercial-product endpoints | Separate policy boundary | Not covered by this Core Phase 4 resource matrix |
+The candidate includes tenant-bound parent-chain checks and guardian-consent checks for covered Core athlete/assessment resources, durable authorization audit behavior, fail-closed handling for unsupported scope mappings, and a shared backstop for mounted/generated routers. The shared backstop is not a substitute for explicit route-by-route resource, parent, role, consent, and audit policies.
 
-## Important implementation boundary
+## Remaining closure gates
 
-The candidate now does more than attach an identity dependency: it resolves supported child-resource ownership through persisted parent chains, checks child consent on covered Core handlers, denies unscoped list operations, adds a default-deny scope dependency to mounted/generated routers, and scopes production audit-log reads to the authenticated academy.
-
-However, **green CI is not proof of full production activation**. Some mounted/global endpoints are intentionally denied when the generic guard cannot establish ownership. The route-specific policy matrix, supported subject/resource inventory, and live production allow/deny cases still need independent verification.
-
-## Required closure work
-
-1. Complete the machine-readable manifest for every registered and deployed route: method/path, router, resource type, parent chain, identity/role gate, tenant resolver, consent applicability, audit event, and test evidence.
-2. Replace the generic backstop with explicit route-family policies for every mounted/generated route; verify no route silently relies on client-supplied tenant, actor, guardian, or parent identifiers.
-3. Add/execute cross-tenant no-read/no-write, wrong-parent, missing/revoked/expired-consent, and durable-audit tests for every sensitive resource family—not just representative routes.
-4. Define and execute the trusted operational process for age classification and guardian relationship verification. Persistence primitives alone do not prove who may attest those facts.
-5. Independently verify production OIDC issuer, audience, JWKS, token/claim mapping, canonical migrations, and live allow/deny behavior against the exact deployed commit.
-6. Capture independent retest, regression, rollback, and production health evidence after a separately authorized deployment.
+1. Complete explicit per-route policy mapping and reconcile the manifest against the actual registered/deployed route table.
+2. Complete route-by-route wrong-parent and cross-tenant no-read/no-write tests, missing/revoked/expired consent tests, and durable-audit verification.
+3. Establish a trusted operational process for age classification and guardian-relationship verification; database records alone do not prove attestation trust.
+4. Implement persisted tenant/subject/actor ownership for generated feature records before enabling those routes for production principals.
+5. Define explicit global-versus-academy ownership and role policies for shared catalogs and knowledge ingestion/publication.
+6. Independently verify production OIDC issuer, audience, JWKS, token claims, canonical migrations, and live allow/deny behavior against the exact deployed candidate.
+7. Capture independent retest, rollback/regression, and deployment evidence after an authorized deployment.
 
 ## Governance decision
 
 - `P4-REQ-011 = OPEN / NOT PROVEN`
 - `Phase 4 EXIT = BLOCKED`
-- PR #128 remains a draft and must not be merged as a phase-closure action until all closure gates above are met.
+- PR #128 remains draft/open/unmerged.
+- No production settings were changed and no live identity/authorization activation claim is made.
 
-Evidence Before Claim. This audit records the current candidate boundary; it does not assert that unverified routes are secure or that the candidate is deployed.
-
-
-## Follow-up security hardening — 2026-10-13
-
-- Commit `2ff370ccd23e8f9cf0bd273bff55bcc7a998c289` adds a durable audit-and-deny helper for route families with no configured scope contract.
-- Commit `bd50d154d1b4c54dee78578abfcf98fd5492f994` applies an explicit fail-closed block to all generated `/api/v1/features/*` routes before their handlers run. This closes the identified gap where a caller-supplied nested `athlete_id` could be mistaken for proof that the generated feature record's own `subject_id` and `actor_id` were correctly bound.
-- Commit `a53e7d536beb4ff33d1962948feba6c045465ca5` adds an actual-app HTTP regression test asserting HTTP 503, no handler write, and a deny audit event with the request correlation ID for an unbound feature create attempt.
-- **Verification state: NOT RUN / PENDING CI for the new commits.** The 20 successful workflow runs listed above belong to the prior candidate head and must not be reused as proof for these edits.
-- This is a deliberate availability trade-off: generated feature routes remain unavailable to non-test principals until a route-specific, persisted tenant/subject/actor ownership contract is implemented and tested. Explicit test-only overrides remain isolated from production.
-- The change does not close the remaining mounted-router parent-chain, role-policy, consent-applicability, trusted guardian verification, production OIDC, or independent retest gaps. PR #128 remains draft; Phase 4 exit remains BLOCKED.
-
-
-## Route manifest follow-up — 2026-10-13
-
-A source-derived route/resource authorization manifest has been added:
-[KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md](https://github.com/hazemwahdan-spec/kaizo-system-/blob/feat/phase4-core-resource-authorization/docs/audits/KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md).
-
-It records 99 statically declared decorator routes across ten backend files and separately lists the three generated feature route patterns. It classifies each route as core-guarded/retest-required, mounted-generic-guard/not-proven, shared-policy-blocker, or public health. The source-derived list is an audit baseline, not a claim of full runtime inventory or security. CI route-inventory verification must be rerun after any route change; dynamic feature routes are handled separately.
-
-### Latest candidate CI snapshot
-Candidate head at this checkpoint: `c2df6b61ec66e687c4bf6a6cfc58669c954c4d2e`.
-- [Actual Core Route Inventory run 38347760415](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760415): PASS.
-- [Commercial Security Regression run 38347760371](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760371): PASS.
-- [Live Runtime Smoke run 38347760456](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760456): PASS for deployed health/OpenAPI only; no proof the candidate code is deployed or that production OIDC/route allow-deny behavior was independently tested.
-- [Persistence Adapter Validation run 38347760408](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38347760408): in progress at the last check; compile, persistence integration, and PostgreSQL-mode import passed; later acceptance steps were still running/pending. Do not mark the full suite green until the final job conclusion is success.
-
-The manifest refresh confirms 99 source-declared decorator routes after removal of three duplicate problem-library declarations. A regression test now asserts exactly one registration for each affected method/path. These code/test changes require fresh CI before their result is claimed.
-
-**Disposition remains BLOCKED — P4-REQ-011 OPEN / NOT PROVEN.** The generic mounted-route guard is not a substitute for explicit per-route policy. No production settings were changed, no PR was merged, and no live OIDC activation claim is made.
-
-
-## Duplicate route correction and guardian-consent hardening — 2026-10-13 (validated code head)
-
-- Removed the second declarations of `GET /api/v1/problem-library`, `POST /api/v1/problem-library/selections`, and `GET /api/v1/problem-library/selections/{selection_id}` from `backend/main.py` in commit `afd498b62caf53f267ddc8dcfdd027f4bc497b23`.
-- Added actual-app route-inventory regression assertions requiring exactly one registered route for each of those method/path pairs in commit `035a4987f1ffb8bb8f7b0a732fa83bac6ceff46d`.
-- Refreshed the source-derived route manifest to 99 static decorator routes in commit `5f18a36395b7d75612097b9602df0d1005428829`.
-- **Verification:** code head `0b945e96aaeb36bc756cbf202c114af86458dd6a` has **21/21 retrieved workflow runs completed successfully**, including the full PostgreSQL persistence suite, actual-app route inventory, commercial security regression, and bounded live health/OpenAPI smoke. See [Persistence Adapter Validation](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295580) and [Actual Core Route Inventory](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295474). The live smoke still does not prove that the candidate branch is deployed or that production OIDC/route allow-deny behavior was independently tested.
-- No production deployment was performed. PR #128 remains draft/unmerged and Phase 4 exit remains blocked.
-
-
-### Guardian-consent relationship binding
-- Code commit `2cba9e81a3cb9e49afaa4b5dd5b5aa6e24908052` changed `has_active_child_consent` so the latest exact-scope consent must be active and unexpired **and** the latest guardian relationship for the same child/guardian/academy must still be verified.
-- Integration test commit `028f92a511132f6188b72af2eacc46f0bc5cc1a6` covers valid consent under a verified relationship, revoked consent, expired consent, and invalidation of an otherwise-active consent after relationship revocation.
-- The first fresh persistence run correctly caught an old acceptance test that expected consent to remain active after the guardian had already been revoked. Test contract was corrected in `0b945e96aaeb36bc756cbf202c114af86458dd6a`.
-- Latest code-head CI: **21/21 retrieved workflows passed**, including [Persistence Adapter Validation](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295580), [Route Inventory](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295474), [Commercial Security Regression](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295416), and [Live Runtime Smoke](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38348295362).
-- This proves the candidate's automated persistence and regression contracts, **not** a trusted real-world guardian-verification workflow or live production OIDC enforcement. Those remain closure blockers.
+**Evidence Before Claim.** Do not merge PR #128 or close Phase 4 based on green CI and health/OpenAPI smoke alone.
