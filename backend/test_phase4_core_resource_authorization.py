@@ -237,7 +237,7 @@ def test_actual_create_assessment_denies_minor_without_active_consent_before_rea
     monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
     monkeypatch.setattr(authz, "get_resource_tenant", lambda **_: "academy-a")
     monkeypatch.setattr(authz, "get_verified_age_classification", lambda **_: "minor")
-    monkeypatch.setattr(authz, "has_active_minor_consent", lambda **_: False)
+    monkeypatch.setattr(authz, "get_active_minor_consent_id", lambda **_: None)
     reads, writes = [], []
     monkeypatch.setattr(main.persistence, "get_athlete", lambda athlete_id: reads.append(athlete_id) or {"athlete_id": athlete_id})
     monkeypatch.setattr(main.persistence, "upsert_assessment", lambda item: writes.append(item))
