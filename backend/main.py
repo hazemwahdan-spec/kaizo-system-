@@ -12,7 +12,7 @@ from datetime import datetime
 import persistence
 from phase4_core_resource_authorization import (
     require_core_actor, assert_resource_tenant, assert_assessment_tenant, assert_minor_consent, bind_new_resource,
-    deny_unmapped_resource_scope,
+    deny_role_access, deny_unmapped_resource_scope,
 )
 from productization.identity import Principal
 from phase4_identity_store import get_resource_tenant, list_authorization_audit_for_academy
@@ -117,6 +117,19 @@ async def require_router_resource_scope(
     """
     if principal.source == "test_override":
         return principal
+
+    if request.url.path.startswith("/api/v1/academy/") and principal.role != "academy":
+        deny_role_access(
+            principal=principal, request=request, resource_type="academy_operation",
+            required_role="academy",
+        )
+
+    if request.url.path.startswith("/api/v1/knowledge-runtime/") and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+        deny_unmapped_resource_scope(
+            principal=principal, request=request, resource_type="knowledge_ingest",
+            resource_id=request.path_params.get("item_id"),
+            detail="Knowledge publication is blocked until the trusted publisher role and global-versus-academy policy are configured",
+        )
 
     # Generated feature routes currently lack a proven record-level contract that
     # binds record_id/subject_id/actor_id to one persisted academy-owned resource.
@@ -1535,7 +1548,13 @@ KPI_DEFINITIONS: Dict[str, Dict[str, Any]] = {}
 KPI_CAPTURES: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/api/v1/kpis", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def create_kpi(req: KPIDefinitionCreateRequest) -> Dict[str, Any]:
+def create_kpi(req: KPIDefinitionCreateRequest, request: Request, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    if principal.source != "test_override":
+        deny_unmapped_resource_scope(
+            principal=principal, request=request, resource_type="kpi_definition",
+            resource_id=req.kpi_id,
+            detail="KPI definition publication is blocked until the shared catalog publisher and ownership policy are configured",
+        )
     allowed_directions = {"higher_is_better", "lower_is_better", "target_range"}
     if not req.kpi_id.strip() or not req.name.strip() or not req.metric_name.strip() or not req.unit.strip():
         raise HTTPException(status_code=400, detail="kpi_id, name, metric_name and unit are required")
