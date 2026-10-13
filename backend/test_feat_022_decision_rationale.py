@@ -1,14 +1,32 @@
 import unittest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 import main, persistence
 
-class FEAT022Tests(unittest.TestCase):
+from phase4_core_resource_authorization import require_core_actor
+from productization.identity import Principal
+
+
+class CoreAuthTestOverrides:
+    def _install_auth_test_overrides(self):
+        self.principal = Principal(actor_id="unit-test-coach", role="coach", tenant_id="unit-test-academy", resource_owner_id=None, verified=True, source="test_override")
+        main.app.dependency_overrides[require_core_actor] = lambda: self.principal
+        self._authorization_patches = [patch("main.bind_new_resource"), patch("main.assert_resource_tenant"), patch("main.assert_assessment_tenant")]
+        for item in self._authorization_patches: item.start()
+        self.addCleanup(self._cleanup_auth_test_overrides)
+    def _cleanup_auth_test_overrides(self):
+        main.app.dependency_overrides.pop(require_core_actor, None)
+        for item in reversed(self._authorization_patches): item.stop()
+
+
+class FEAT022Tests(CoreAuthTestOverrides, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         persistence.initialize()
         cls.c=TestClient(main.app)
 
     def setUp(self):
+        self._install_auth_test_overrides()
         a=self.c.post("/api/v1/athletes",json={"display_name":"FEAT022","metadata":{}}); self.assertEqual(a.status_code,201)
         self.aid=a.json()["athlete_id"]
         s=self.c.post("/api/v1/assessments",json={"athlete_id":self.aid,"template_id":"T22","measurements":{"x":1},"recorded_by":"coach"}); self.assertEqual(s.status_code,201)
