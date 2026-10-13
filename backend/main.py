@@ -727,7 +727,7 @@ COACH_DECISION_REVIEWS: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/decision-candidates/{candidate_id}/coach-review", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewRequest) -> Dict[str, Any]:
+def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if candidate_id != req.candidate_id:
         raise HTTPException(status_code=400, detail="candidate_id mismatch")
     if not req.coach_id.strip():
@@ -739,6 +739,7 @@ def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewR
     if action == "OVERRIDE" and not (req.override_reason or "").strip():
         raise HTTPException(status_code=400, detail="override_reason is required for OVERRIDE")
 
+    assert_resource_tenant(resource_type="decision_candidate", resource_id=candidate_id, principal=principal, request_route="/api/v1/decision-candidates/{candidate_id}/coach-review", action="write")
     candidate = (
         persistence.get_decision_candidate(candidate_id)
         if persistence.is_postgres_enabled()
@@ -746,6 +747,7 @@ def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewR
     )
     if candidate is None:
         raise HTTPException(status_code=404, detail="decision candidate not found")
+    assert_minor_consent(child_id=candidate["athlete_id"], principal=principal, resource="coach_review", action="write", request_route="/api/v1/decision-candidates/{candidate_id}/coach-review")
 
     import uuid
     now = datetime.utcnow().isoformat()
@@ -777,7 +779,8 @@ def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewR
 
 
 @app.get("/api/v1/decision-candidates/{candidate_id}/coach-review", dependencies=[Depends(require_core_actor)])
-def list_coach_decision_reviews(candidate_id: str) -> Dict[str, Any]:
+def list_coach_decision_reviews(candidate_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="decision_candidate", resource_id=candidate_id, principal=principal, request_route="/api/v1/decision-candidates/{candidate_id}/coach-review", action="read")
     candidate = (
         persistence.get_decision_candidate(candidate_id)
         if persistence.is_postgres_enabled()
@@ -785,6 +788,7 @@ def list_coach_decision_reviews(candidate_id: str) -> Dict[str, Any]:
     )
     if candidate is None:
         raise HTTPException(status_code=404, detail="decision candidate not found")
+    assert_minor_consent(child_id=candidate["athlete_id"], principal=principal, resource="coach_review", action="read", request_route="/api/v1/decision-candidates/{candidate_id}/coach-review")
     reviews = (
         persistence.list_coach_decision_reviews(candidate_id)
         if persistence.is_postgres_enabled()
@@ -809,15 +813,17 @@ DECISION_RECORDS: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/decision-candidates/{candidate_id}/decision-record", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def create_decision_record(candidate_id: str, req: DecisionRecordRequest) -> Dict[str, Any]:
+def create_decision_record(candidate_id: str, req: DecisionRecordRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if candidate_id != req.candidate_id:
         raise HTTPException(status_code=400, detail="candidate_id mismatch")
     if not req.coach_id.strip() or not req.outcome_intent.strip():
         raise HTTPException(status_code=400, detail="coach_id and outcome_intent are required")
 
+    assert_resource_tenant(resource_type="decision_candidate", resource_id=candidate_id, principal=principal, request_route="/api/v1/decision-candidates/{candidate_id}/decision-record", action="write")
     candidate = persistence.get_decision_candidate(candidate_id) if persistence.is_postgres_enabled() else DECISION_CANDIDATES.get(candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="decision candidate not found")
+    assert_minor_consent(child_id=candidate["athlete_id"], principal=principal, resource="decision_record", action="write", request_route="/api/v1/decision-candidates/{candidate_id}/decision-record")
 
     reviews = persistence.list_coach_decision_reviews(candidate_id) if persistence.is_postgres_enabled() else [
         item for item in COACH_DECISION_REVIEWS.values() if item["candidate_id"] == candidate_id
@@ -858,10 +864,12 @@ def create_decision_record(candidate_id: str, req: DecisionRecordRequest) -> Dic
 
 
 @app.get("/api/v1/decision-candidates/{candidate_id}/decision-record", dependencies=[Depends(require_core_actor)])
-def list_decision_records(candidate_id: str) -> Dict[str, Any]:
+def list_decision_records(candidate_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="decision_candidate", resource_id=candidate_id, principal=principal, request_route="/api/v1/decision-candidates/{candidate_id}/decision-record", action="read")
     candidate = persistence.get_decision_candidate(candidate_id) if persistence.is_postgres_enabled() else DECISION_CANDIDATES.get(candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="decision candidate not found")
+    assert_minor_consent(child_id=candidate["athlete_id"], principal=principal, resource="decision_record", action="read", request_route="/api/v1/decision-candidates/{candidate_id}/decision-record")
     records = persistence.list_decision_records(candidate_id) if persistence.is_postgres_enabled() else [
         item for item in DECISION_RECORDS.values() if item["candidate_id"] == candidate_id
     ]
@@ -887,9 +895,12 @@ TRAINING_PLANS: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/training-plans", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def create_training_plan(req: TrainingPlanRequest) -> Dict[str, Any]:
+def create_training_plan(req: TrainingPlanRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if not all(x.strip() for x in [req.athlete_id, req.decision_id, req.title, req.objective, req.created_by]):
         raise HTTPException(status_code=400, detail="athlete_id, decision_id, title, objective and created_by are required")
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/training-plans", action="read")
+    assert_resource_tenant(resource_type="decision_record", resource_id=req.decision_id, principal=principal, request_route="/api/v1/training-plans", action="read")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="training_plan", action="write", request_route="/api/v1/training-plans")
     decision = persistence.get_decision_record(req.decision_id) if persistence.is_postgres_enabled() else DECISION_RECORDS.get(req.decision_id)
     if decision is None:
         raise HTTPException(status_code=404, detail="decision record not found")
@@ -913,10 +924,12 @@ def create_training_plan(req: TrainingPlanRequest) -> Dict[str, Any]:
 
 
 @app.get("/api/v1/training-plans/{plan_id}", dependencies=[Depends(require_core_actor)])
-def get_training_plan(plan_id: str) -> Dict[str, Any]:
+def get_training_plan(plan_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="training_plan", resource_id=plan_id, principal=principal, request_route="/api/v1/training-plans/{plan_id}", action="read")
     plan = persistence.get_training_plan(plan_id) if persistence.is_postgres_enabled() else TRAINING_PLANS.get(plan_id)
     if plan is None:
         raise HTTPException(status_code=404, detail="training plan not found")
+    assert_minor_consent(child_id=plan["athlete_id"], principal=principal, resource="training_plan", action="read", request_route="/api/v1/training-plans/{plan_id}")
     return plan
 
 
@@ -933,11 +946,14 @@ TRAINING_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/training-plans/{plan_id}/sessions", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def create_training_session(plan_id: str, req: TrainingSessionRequest) -> Dict[str, Any]:
+def create_training_session(plan_id: str, req: TrainingSessionRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if plan_id != req.plan_id:
         raise HTTPException(status_code=400, detail="plan_id mismatch")
     if not req.title.strip() or not req.created_by.strip() or req.duration_minutes <= 0:
         raise HTTPException(status_code=400, detail="title, created_by and positive duration_minutes are required")
+    assert_resource_tenant(resource_type="training_plan", resource_id=plan_id, principal=principal, request_route="/api/v1/training-plans/{plan_id}/sessions", action="write")
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/training-plans/{plan_id}/sessions", action="read")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="training_session", action="write", request_route="/api/v1/training-plans/{plan_id}/sessions")
     plan = persistence.get_training_plan(plan_id) if persistence.is_postgres_enabled() else TRAINING_PLANS.get(plan_id)
     if plan is None:
         raise HTTPException(status_code=404, detail="training plan not found")
@@ -962,10 +978,12 @@ def create_training_session(plan_id: str, req: TrainingSessionRequest) -> Dict[s
 
 
 @app.get("/api/v1/training-sessions/{session_id}", dependencies=[Depends(require_core_actor)])
-def get_training_session(session_id: str) -> Dict[str, Any]:
+def get_training_session(session_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="training_session", resource_id=session_id, principal=principal, request_route="/api/v1/training-sessions/{session_id}", action="read")
     session = persistence.get_training_session(session_id) if persistence.is_postgres_enabled() else TRAINING_SESSIONS.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="training session not found")
+    assert_minor_consent(child_id=session["athlete_id"], principal=principal, resource="training_session", action="read", request_route="/api/v1/training-sessions/{session_id}")
     return session
 
 class TrainingDosageRequest(BaseModel):
@@ -982,7 +1000,7 @@ TRAINING_DOSAGES: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/training-sessions/{session_id}/dosage", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def create_training_dosage(session_id: str, req: TrainingDosageRequest) -> Dict[str, Any]:
+def create_training_dosage(session_id: str, req: TrainingDosageRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if session_id != req.session_id:
         raise HTTPException(status_code=400, detail="session_id mismatch")
     if not req.block_name.strip() or not req.prescribed_by.strip():
@@ -990,6 +1008,7 @@ def create_training_dosage(session_id: str, req: TrainingDosageRequest) -> Dict[
     if req.sets <= 0 or req.reps <= 0 or req.rest_seconds < 0:
         raise HTTPException(status_code=400, detail="sets and reps must be positive and rest_seconds cannot be negative")
 
+    assert_resource_tenant(resource_type="training_session", resource_id=session_id, principal=principal, request_route="/api/v1/training-sessions/{session_id}/dosage", action="write")
     session = (
         persistence.get_training_session(session_id)
         if persistence.is_postgres_enabled()
@@ -997,6 +1016,7 @@ def create_training_dosage(session_id: str, req: TrainingDosageRequest) -> Dict[
     )
     if session is None:
         raise HTTPException(status_code=404, detail="training session not found")
+    assert_minor_consent(child_id=session["athlete_id"], principal=principal, resource="training_dosage", action="write", request_route="/api/v1/training-sessions/{session_id}/dosage")
 
     block_names = {str(block.get("name", "")).strip() for block in session.get("blocks", [])}
     if req.block_name.strip() not in block_names:
@@ -1033,7 +1053,8 @@ def create_training_dosage(session_id: str, req: TrainingDosageRequest) -> Dict[
 
 
 @app.get("/api/v1/training-sessions/{session_id}/dosage", dependencies=[Depends(require_core_actor)])
-def list_training_dosages(session_id: str) -> Dict[str, Any]:
+def list_training_dosages(session_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="training_session", resource_id=session_id, principal=principal, request_route="/api/v1/training-sessions/{session_id}/dosage", action="read")
     session = (
         persistence.get_training_session(session_id)
         if persistence.is_postgres_enabled()
@@ -1041,6 +1062,7 @@ def list_training_dosages(session_id: str) -> Dict[str, Any]:
     )
     if session is None:
         raise HTTPException(status_code=404, detail="training session not found")
+    assert_minor_consent(child_id=session["athlete_id"], principal=principal, resource="training_dosage", action="read", request_route="/api/v1/training-sessions/{session_id}/dosage")
     dosages = (
         persistence.list_training_dosages(session_id)
         if persistence.is_postgres_enabled()
@@ -1056,7 +1078,8 @@ def list_training_dosages(session_id: str) -> Dict[str, Any]:
 
 
 @app.get("/api/v1/training-dosages/{dosage_id}", dependencies=[Depends(require_core_actor)])
-def get_training_dosage(dosage_id: str) -> Dict[str, Any]:
+def get_training_dosage(dosage_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="training_dosage", resource_id=dosage_id, principal=principal, request_route="/api/v1/training-dosages/{dosage_id}", action="read")
     dosage = (
         persistence.get_training_dosage(dosage_id)
         if persistence.is_postgres_enabled()
@@ -1064,6 +1087,7 @@ def get_training_dosage(dosage_id: str) -> Dict[str, Any]:
     )
     if dosage is None:
         raise HTTPException(status_code=404, detail="training dosage not found")
+    assert_minor_consent(child_id=dosage["athlete_id"], principal=principal, resource="training_dosage", action="read", request_route="/api/v1/training-dosages/{dosage_id}")
     return dosage
 
 
@@ -1079,15 +1103,17 @@ CAUSE_CONTEXT_FRAMINGS: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/v1/problem-statements/{problem_id}/cause-context", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_core_actor)])
-def frame_problem_cause_context(problem_id: str, req: CauseContextFramingRequest) -> Dict[str, Any]:
+def frame_problem_cause_context(problem_id: str, req: CauseContextFramingRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if problem_id != req.problem_id:
         raise HTTPException(status_code=400, detail="problem_id mismatch")
     if not req.cause.strip() or not req.framed_by.strip():
         raise HTTPException(status_code=400, detail="cause and framed_by are required")
 
+    assert_resource_tenant(resource_type="problem_statement", resource_id=problem_id, principal=principal, request_route="/api/v1/problem-statements/{problem_id}/cause-context", action="write")
     problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
         raise HTTPException(status_code=404, detail="problem statement not found")
+    assert_minor_consent(child_id=problem["athlete_id"], principal=principal, resource="cause_context", action="write", request_route="/api/v1/problem-statements/{problem_id}/cause-context")
 
     import uuid
     now = datetime.utcnow().isoformat()
@@ -1115,7 +1141,8 @@ def frame_problem_cause_context(problem_id: str, req: CauseContextFramingRequest
 
 
 @app.get("/api/v1/problem-statements/{problem_id}/cause-context", dependencies=[Depends(require_core_actor)])
-def get_problem_cause_context(problem_id: str) -> Dict[str, Any]:
+def get_problem_cause_context(problem_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="problem_statement", resource_id=problem_id, principal=principal, request_route="/api/v1/problem-statements/{problem_id}/cause-context", action="read")
     problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
         raise HTTPException(status_code=404, detail="problem statement not found")
