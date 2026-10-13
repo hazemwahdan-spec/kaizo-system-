@@ -213,3 +213,71 @@ def get_resource_tenant(*, resource_type: str, resource_id: str) -> str | None:
             )
             row = cur.fetchone()
     return str(row[0]) if row else None
+
+
+def record_age_classification(
+    *, athlete_id: str, academy_id: str, age_class: str, status: str,
+    version: int, verified_by: str, verified_at: Any,
+) -> None:
+    """Append a trusted, versioned age classification; request payloads are not proof."""
+    _postgres_required()
+    if age_class not in {"adult", "minor"} or status not in {"verified", "revoked"}:
+        raise ValueError("Invalid age classification state")
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_athlete_age_classifications
+                   (athlete_id, academy_id, age_class, status, version, verified_by, verified_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (athlete_id, academy_id, age_class, status, version, verified_by, verified_at),
+            )
+        conn.commit()
+
+
+def get_verified_age_classification(*, athlete_id: str, academy_id: str) -> str | None:
+    """Return only the latest verified classification; missing/revoked is unknown."""
+    _postgres_required()
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT age_class, status FROM kaizo_athlete_age_classifications
+                   WHERE athlete_id=%s AND academy_id=%s
+                   ORDER BY version DESC LIMIT 1""",
+                (athlete_id, academy_id),
+            )
+            row = cur.fetchone()
+    return str(row[0]) if row and row[1] == "verified" else None
+
+
+def has_active_minor_consent(
+    *, child_id: str, academy_id: str, resource: str, action: str,
+) -> bool:
+    """Require a latest verified guardian relationship and active, unexpired scoped consent."""
+    _postgres_required()
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """WITH latest_relationships AS (
+                       SELECT DISTINCT ON (guardian_actor_id)
+                              guardian_actor_id, verification_status
+                       FROM kaizo_guardian_relationships
+                       WHERE child_id=%s AND academy_id=%s
+                       ORDER BY guardian_actor_id, version DESC
+                   ), latest_consents AS (
+                       SELECT DISTINCT ON (guardian_actor_id)
+                              guardian_actor_id, state, expires_at
+                       FROM kaizo_child_consents
+                       WHERE child_id=%s AND academy_id=%s
+                         AND resource=%s AND action=%s
+                       ORDER BY guardian_actor_id, version DESC
+                   )
+                   SELECT EXISTS (
+                       SELECT 1 FROM latest_relationships r
+                       JOIN latest_consents c USING (guardian_actor_id)
+                       WHERE r.verification_status='verified'
+                         AND c.state='active' AND c.expires_at > NOW()
+                   )""",
+                (child_id, academy_id, child_id, academy_id, resource, action),
+            )
+            row = cur.fetchone()
+    return bool(row and row[0])
