@@ -32,10 +32,14 @@ def _test_atomic_core_resource_binding():
     }
     persistence.persist_core_resource_and_binding(
         resource_type="athlete", resource=athlete, tenant_id=tenant_id,
-        bound_by_actor_id="atomic-test-coach",
+        bound_by_actor_id="atomic-test-coach", correlation_id="atomic-athlete-create",
     )
     assert store.get_resource_tenant(resource_type="athlete", resource_id=athlete_id) == tenant_id
     assert persistence.get_athlete(athlete_id)["display_name"] == "Atomic test athlete"
+    assert any(
+        row["resource_id"] == athlete_id and row["decision"] == "allow"
+        for row in store.list_authorization_audit(correlation_id="atomic-athlete-create")
+    )
 
     assessment_id = "atomic-assessment-" + uuid.uuid4().hex
     assessment = {
@@ -46,7 +50,7 @@ def _test_atomic_core_resource_binding():
     }
     persistence.persist_core_resource_and_binding(
         resource_type="assessment", resource=assessment, tenant_id=tenant_id,
-        bound_by_actor_id="atomic-test-coach",
+        bound_by_actor_id="atomic-test-coach", correlation_id="atomic-assessment-create",
     )
     assert store.get_resource_tenant(resource_type="assessment", resource_id=assessment_id) == tenant_id
     assert persistence.get_assessment(assessment_id)["athlete_id"] == athlete_id
@@ -65,7 +69,7 @@ def _test_atomic_core_resource_binding():
     try:
         persistence.persist_core_resource_and_binding(
             resource_type="athlete", resource=conflicting, tenant_id=tenant_id,
-            bound_by_actor_id="atomic-test-coach",
+            bound_by_actor_id="atomic-test-coach", correlation_id="atomic-conflict-rollback",
         )
     except persistence.PersistenceConfigurationError:
         pass
@@ -73,6 +77,7 @@ def _test_atomic_core_resource_binding():
         raise AssertionError("Conflicting ownership must fail closed")
     assert persistence.get_athlete(conflicting_id) is None
     assert store.get_resource_tenant(resource_type="athlete", resource_id=conflicting_id) == "different-academy"
+    assert store.list_authorization_audit(correlation_id="atomic-conflict-rollback") == []
 
     mismatched_assessment_id = "atomic-assessment-conflict-" + uuid.uuid4().hex
     mismatched_assessment = {
