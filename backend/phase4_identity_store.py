@@ -299,6 +299,7 @@ def get_resource_tenant(*, resource_type: str, resource_id: str) -> str | None:
               ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
             WHERE r.snapshot_id=%s""",
     }
+    query = parent_chain_queries.get(resource_type)
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -306,15 +307,21 @@ def get_resource_tenant(*, resource_type: str, resource_id: str) -> str | None:
                    WHERE resource_type=%s AND resource_id=%s""",
                 (resource_type, resource_id),
             )
-            row = cur.fetchone()
-            if row:
-                return str(row[0])
-            query = parent_chain_queries.get(resource_type)
+            binding_row = cur.fetchone()
             if query is None:
-                return None
+                return str(binding_row[0]) if binding_row else None
+            # For child resources, the persisted parent chain is canonical. If
+            # an optional child binding exists, it must agree with that chain.
             cur.execute(query, (resource_id,))
-            row = cur.fetchone()
-    return str(row[0]) if row else None
+            parent_row = cur.fetchone()
+            if not parent_row:
+                return None
+            parent_tenant = str(parent_row[0])
+            if binding_row and str(binding_row[0]) != parent_tenant:
+                raise persistence.PersistenceConfigurationError(
+                    "Child resource binding conflicts with authoritative parent tenant"
+                )
+            return parent_tenant
 
 
 def record_age_classification(
