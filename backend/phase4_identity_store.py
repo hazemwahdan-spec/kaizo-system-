@@ -117,11 +117,35 @@ def has_active_child_consent(
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT state, expires_at > NOW() AS unexpired
-                   FROM kaizo_child_consents
-                   WHERE child_id=%s AND guardian_actor_id=%s AND academy_id=%s
-                     AND resource=%s AND action=%s
-                   ORDER BY version DESC LIMIT 1""",
+                """SELECT c.state, c.expires_at > NOW() AS unexpired
+                   FROM kaizo_child_consents AS c
+                   WHERE c.child_id=%s AND c.guardian_actor_id=%s AND c.academy_id=%s
+                     AND c.resource=%s AND c.action=%s
+                     AND c.version = (
+                         SELECT MAX(c_latest.version)
+                         FROM kaizo_child_consents AS c_latest
+                         WHERE c_latest.child_id=c.child_id
+                           AND c_latest.guardian_actor_id=c.guardian_actor_id
+                           AND c_latest.academy_id=c.academy_id
+                           AND c_latest.resource=c.resource
+                           AND c_latest.action=c.action
+                     )
+                     AND EXISTS (
+                         SELECT 1
+                         FROM kaizo_guardian_relationships AS g
+                         WHERE g.child_id=c.child_id
+                           AND g.guardian_actor_id=c.guardian_actor_id
+                           AND g.academy_id=c.academy_id
+                           AND g.version = (
+                               SELECT MAX(g_latest.version)
+                               FROM kaizo_guardian_relationships AS g_latest
+                               WHERE g_latest.child_id=g.child_id
+                                 AND g_latest.guardian_actor_id=g.guardian_actor_id
+                                 AND g_latest.academy_id=g.academy_id
+                           )
+                           AND g.verification_status='verified'
+                     )
+                   ORDER BY c.version DESC LIMIT 1""",
                 (child_id, guardian_actor_id, academy_id, resource, action),
             )
             row = cur.fetchone()
