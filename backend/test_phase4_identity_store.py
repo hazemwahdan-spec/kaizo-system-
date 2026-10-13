@@ -24,6 +24,20 @@ def _test_atomic_core_resource_binding():
     assert store.get_resource_tenant(resource_type="athlete", resource_id=athlete_id) == tenant_id
     assert persistence.get_athlete(athlete_id)["display_name"] == "Atomic test athlete"
 
+    assessment_id = "atomic-assessment-" + uuid.uuid4().hex
+    assessment = {
+        "assessment_id": assessment_id, "athlete_id": athlete_id,
+        "template_id": "ATOMIC-TPL", "measurements": {"score": 1},
+        "recorded_by": "atomic-test-coach", "assessed_at": "2026-10-13T00:00:00",
+        "created_at": "2026-10-13T00:00:00",
+    }
+    persistence.persist_core_resource_and_binding(
+        resource_type="assessment", resource=assessment, tenant_id=tenant_id,
+        bound_by_actor_id="atomic-test-coach",
+    )
+    assert store.get_resource_tenant(resource_type="assessment", resource_id=assessment_id) == tenant_id
+    assert persistence.get_assessment(assessment_id)["athlete_id"] == athlete_id
+
     conflicting_id = "atomic-conflict-" + uuid.uuid4().hex
     with persistence.connection() as conn:
         with conn.cursor() as cur:
