@@ -236,6 +236,10 @@ def main():
         child_id="test-child-active", academy_id="test-academy",
         resource="assessment", action="read",
     )
+    assert store.get_active_minor_consent_id(
+        child_id="test-child-active", academy_id="test-academy",
+        resource="assessment", action="read",
+    ) == "test-active-consent-v1"
     store.record_child_consent(
         consent_id="test-active-consent-v2", child_id="test-child-active",
         guardian_actor_id="test-active-guardian", academy_id="test-academy",
