@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, verify_bearer_token
-from .runtime_adapter import RuntimeContext as ProductRuntimeContext
 from phase4_identity_store import has_active_child_consent, has_verified_guardian_relationship
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
@@ -174,7 +173,7 @@ def parent_progress(
             raise HTTPException(status_code=403, detail="active guardian consent for athlete progress is required")
 
         # Bind the already database-verified child to the product-surface scope.
-        scoped_parent = ProductRuntimeContext(
+        scoped_parent = RuntimeContext(
             actor_id=principal.actor_id,
             role=principal.role,
             tenant_id=principal.tenant_id,
