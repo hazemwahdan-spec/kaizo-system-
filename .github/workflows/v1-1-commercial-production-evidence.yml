@@ -44,7 +44,7 @@ jobs:
             echo "INVALID_AUTH0_DOMAIN_FORMAT: set AUTH0_DOMAIN to kaizo-system.us.auth0.com (domain only)"
             exit 1
           fi
-          response=$(curl -fsS --retry 2 --retry-delay 1 \
+          response=$(curl -fsS --connect-timeout 5 --max-time 20 --retry 2 --retry-delay 1 \
             -X POST "https://${auth0_domain}/oauth/token" \
             -H "content-type: application/x-www-form-urlencoded" \
             --data-urlencode "grant_type=client_credentials" \
@@ -64,19 +64,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /tmp/oidc.json -w "%{http_code}" \
+          code=$(curl -sS --connect-timeout 5 --max-time 15 -o /tmp/oidc.json -w "%{http_code}" \
             -H "Authorization: Bearer ${KAIZO_OIDC_BEARER_TOKEN}" \
             "${KAIZO_PRODUCTION_BASE_URL}/api/v1/product/auth/oidc/verify")
           if [ "$code" != "200" ]; then
             echo "OIDC_LIVE_VERIFICATION: FAIL (HTTP $code)"
-            python - <<'PY'
-          import json
-          try:
-              d=json.load(open('/tmp/oidc.json'))
-              print("Response detail:", d.get("detail", "non-JSON error response"))
-          except Exception:
-              print("Response body was not valid JSON; body omitted.")
-          PY
+            echo "Response body omitted to avoid exposing deployment configuration."
             exit 1
           fi
           python - <<'PY'
@@ -91,7 +84,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /tmp/oidc-negative.json -w "%{http_code}" \
+          code=$(curl -sS --connect-timeout 5 --max-time 15 -o /tmp/oidc-negative.json -w "%{http_code}" \
             -H "Authorization: Bearer kaizo-phase4-invalid-token" \
             "${KAIZO_PRODUCTION_BASE_URL}/api/v1/product/auth/oidc/verify")
           if [ "$code" != "401" ]; then
@@ -105,7 +98,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
+          curl -fsS --connect-timeout 5 --max-time 15 "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
           python - <<'PY'
           import json
           d=json.load(open('/tmp/health.json'))
