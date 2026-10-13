@@ -202,8 +202,81 @@ def bind_resource_to_tenant(
 
 
 def get_resource_tenant(*, resource_type: str, resource_id: str) -> str | None:
-    """Resolve tenant scope from the database; never from request payload."""
+    """Resolve authoritative tenant scope from a binding or persisted parent chain.
+
+    Queries are a closed, static allowlist: request data is never interpolated
+    into SQL. For linked Core resources, derive academy ownership through their
+    persisted athlete parent and the athlete's authoritative tenant binding.
+    """
     _postgres_required()
+    parent_chain_queries = {
+        "problem_statement": """SELECT b.tenant_id
+            FROM kaizo_problem_statements r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.problem_id=%s""",
+        "diagnosis": """SELECT b.tenant_id
+            FROM kaizo_evidence_linked_diagnoses r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.diagnosis_id=%s""",
+        "decision_candidate": """SELECT b.tenant_id
+            FROM kaizo_decision_candidates r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.candidate_id=%s""",
+        "decision_rationale": """SELECT b.tenant_id
+            FROM kaizo_decision_rationales r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.rationale_id=%s""",
+        "decision_comparison": """SELECT b.tenant_id
+            FROM kaizo_decision_comparisons r
+            JOIN kaizo_evidence_linked_diagnoses d ON d.diagnosis_id=r.diagnosis_id
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=d.athlete_id
+            WHERE r.comparison_id=%s""",
+        "coach_review": """SELECT b.tenant_id
+            FROM kaizo_coach_decision_reviews r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.review_id=%s""",
+        "decision_record": """SELECT b.tenant_id
+            FROM kaizo_decision_records r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.decision_id=%s""",
+        "training_plan": """SELECT b.tenant_id
+            FROM kaizo_training_plans r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.plan_id=%s""",
+        "training_session": """SELECT b.tenant_id
+            FROM kaizo_training_sessions r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.session_id=%s""",
+        "cause_context": """SELECT b.tenant_id
+            FROM kaizo_cause_context_framings r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.framing_id=%s""",
+        "problem_library_selection": """SELECT b.tenant_id
+            FROM kaizo_problem_library_selections r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.selection_id=%s""",
+        "kpi_capture": """SELECT b.tenant_id
+            FROM kaizo_kpi_captures r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.capture_id=%s""",
+        "state_snapshot": """SELECT b.tenant_id
+            FROM kaizo_state_snapshots r
+            JOIN kaizo_resource_tenant_bindings b
+              ON b.resource_type='athlete' AND b.resource_id=r.athlete_id
+            WHERE r.snapshot_id=%s""",
+    }
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -211,6 +284,13 @@ def get_resource_tenant(*, resource_type: str, resource_id: str) -> str | None:
                    WHERE resource_type=%s AND resource_id=%s""",
                 (resource_type, resource_id),
             )
+            row = cur.fetchone()
+            if row:
+                return str(row[0])
+            query = parent_chain_queries.get(resource_type)
+            if query is None:
+                return None
+            cur.execute(query, (resource_id,))
             row = cur.fetchone()
     return str(row[0]) if row else None
 
