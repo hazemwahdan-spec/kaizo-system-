@@ -141,3 +141,46 @@ def test_problem_library_routes_are_registered_exactly_once():
     assert counts[("GET", "/api/v1/problem-library")] == 1
     assert counts[("POST", "/api/v1/problem-library/selections")] == 1
     assert counts[("GET", "/api/v1/problem-library/selections/{selection_id}")] == 1
+
+
+def test_manifest_covers_every_registered_core_api_route():
+    """A newly mounted or generated API route cannot escape the closure inventory."""
+    import re
+
+    repo_root = Path(__file__).resolve().parents[1]
+    manifest_path = (
+        repo_root / "docs" / "audits"
+        / "KAIZO_PHASE4_ROUTE_RESOURCE_AUTHORIZATION_MANIFEST_20261013.md"
+    )
+    manifest = manifest_path.read_text(encoding="utf-8")
+    documented = set()
+    for line in manifest.splitlines():
+        match = re.match(
+            r"^\\|\\s*(?:(?:\\d+)\\s*\\|\\s*)?"
+            r"(GET|POST|PUT|PATCH|DELETE)\\s*\\|\\s*`([^`]+)`\\s*\\|",
+            line,
+        )
+        if match:
+            method, path = match.groups()
+            documented.add((method, path))
+
+    actual = set()
+    for row in _registered_http_routes():
+        path = row["path"]
+        if not path.startswith("/api/v1/"):
+            continue
+        if path == "/api/v1/health" or path.startswith("/api/v1/product/"):
+            continue
+        for method in row["methods"]:
+            actual.add((method, path))
+
+    missing = sorted(actual - documented)
+    stale = sorted(documented - actual)
+    assert not missing, (
+        "Registered Core API routes missing from the Phase 4 manifest: "
+        f"{missing}"
+    )
+    assert not stale, (
+        "Manifest routes not registered in the actual FastAPI app (update the "
+        f"manifest when routes are intentionally removed): {stale}"
+    )
