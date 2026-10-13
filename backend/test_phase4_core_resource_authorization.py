@@ -952,3 +952,26 @@ def test_actual_route_denies_disallowed_role_before_resource_read_and_records_re
         and event.get("correlation_id") == "phase4-role-denial"
         for event in audit_events
     )
+
+
+def test_actual_route_allows_same_academy_active_coach_with_verified_adult_scope(monkeypatch):
+    """Keep a positive control so the authorization suite proves least privilege, not blanket denial."""
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal(role="coach", tenant_id="academy-a"))
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(authz, "get_resource_tenant", lambda **_: "academy-a")
+    monkeypatch.setattr(authz, "get_verified_age_classification", lambda **_: "adult")
+    monkeypatch.setattr(main.persistence, "is_postgres_enabled", lambda: False)
+    athlete_id = "phase4-same-academy-positive-control"
+    monkeypatch.setitem(main.ATHLETE_RECORDS, athlete_id, {"athlete_id": athlete_id, "display_name": "Synthetic Test Athlete"})
+    audit_events = []
+    monkeypatch.setattr(authz, "_audit_authorization", lambda **event: audit_events.append(event))
+
+    response = client.get(
+        "/api/v1/athletes/" + athlete_id,
+        headers={"Authorization": "Bearer signed-test-token", "X-Correlation-ID": "phase4-same-academy-allow"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["athlete_id"] == athlete_id
+    assert any(event.get("decision") == "allow" and event.get("resource_id") == athlete_id for event in audit_events)
