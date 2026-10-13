@@ -326,7 +326,7 @@ def bind_new_resource(
     principal: Principal,
     resource_data: dict | None = None,
     correlation_id: str | None = None,
-) -> None:
+) -> bool:
     """Persist ownership with the Core resource in one transaction when data is supplied."""
     from phase4_identity_store import bind_resource_to_tenant
 
@@ -339,7 +339,10 @@ def bind_new_resource(
                 resource=resource_data,
                 tenant_id=principal.tenant_id,
                 bound_by_actor_id=principal.actor_id,
+                actor_role=principal.role,
+                correlation_id=correlation_id,
             )
+            return True
         else:
             bind_resource_to_tenant(
                 resource_type=resource_type,
@@ -363,3 +366,4 @@ def bind_new_resource(
         action="create", decision="allow", reason_code="RESOURCE_CREATED_AND_BOUND",
         request_route=f"/api/v1/{resource_type}s", correlation_id=correlation_id,
     )
+    return False
