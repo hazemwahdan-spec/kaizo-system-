@@ -586,3 +586,24 @@ def test_explicit_decision_state_link_read_policy_checks_decision_owner_and_cons
     assert response.status_code == 404
     assert checked and checked[0]["resource"] == "decision_record"
     assert checked[0]["action"] == "read"
+
+
+def test_next_state_policy_checks_body_athlete_and_actor(monkeypatch):
+    import state_cycle
+    principal = Principal(actor_id="coach-1", role="coach", tenant_id="academy-a", resource_owner_id=None, verified=True, source="oidc_jwt")
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda resource_type, resource_id: resource_id)
+    checked = []
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **kw: checked.append(kw))
+    monkeypatch.setattr(state_cycle, "_get_state", lambda athlete_id: None)
+    response = client.post(
+        "/api/v1/state-cycle/feat-045/next-state",
+        json={"athlete_id": "athlete-a", "requested_by": "coach-1"},
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 404
+    assert checked and checked[0]["resource"] == "digital_twin_state"
+    assert checked[0]["action"] == "read"
