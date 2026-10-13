@@ -3,7 +3,7 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
@@ -68,7 +68,7 @@ class AthleteUpdateRequest(BaseModel):
 
 
 @app.post("/api/v1/athletes", status_code=status.HTTP_201_CREATED)
-def create_athlete(req: AthleteCreateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+def create_athlete(req: AthleteCreateRequest, request: Request, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     display_name = req.display_name.strip()
     if not display_name:
         raise HTTPException(status_code=400, detail="display_name is required")
@@ -96,9 +96,9 @@ def create_athlete(req: AthleteCreateRequest, principal: Principal = Depends(req
 
 
 @app.get("/api/v1/athletes/{athlete_id}")
-def get_athlete(athlete_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
-    assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal, request_route="/api/v1/athletes/{athlete_id}", action="read")
-    assert_minor_consent(child_id=athlete_id, principal=principal, resource="athlete", action="read", request_route="/api/v1/athletes/{athlete_id}")
+def get_athlete(athlete_id: str, request: Request, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal, request_route="/api/v1/athletes/{athlete_id}", action="read", correlation_id=request.headers.get("x-correlation-id"))
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="athlete", action="read", request_route="/api/v1/athletes/{athlete_id}", correlation_id=request.headers.get("x-correlation-id"))
     athlete = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -106,9 +106,9 @@ def get_athlete(athlete_id: str, principal: Principal = Depends(require_core_act
 
 
 @app.patch("/api/v1/athletes/{athlete_id}")
-def update_athlete(athlete_id: str, req: AthleteUpdateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
-    assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal, request_route="/api/v1/athletes/{athlete_id}", action="update")
-    assert_minor_consent(child_id=athlete_id, principal=principal, resource="athlete", action="write", request_route="/api/v1/athletes/{athlete_id}")
+def update_athlete(athlete_id: str, req: AthleteUpdateRequest, request: Request, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal, request_route="/api/v1/athletes/{athlete_id}", action="update", correlation_id=request.headers.get("x-correlation-id"))
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="athlete", action="write", request_route="/api/v1/athletes/{athlete_id}", correlation_id=request.headers.get("x-correlation-id"))
     current = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if current is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -149,15 +149,15 @@ class AssessmentCreateRequest(BaseModel):
 
 
 @app.post("/api/v1/assessments", status_code=status.HTTP_201_CREATED)
-def create_assessment(req: AssessmentCreateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+def create_assessment(req: AssessmentCreateRequest, request: Request, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     if not req.athlete_id.strip():
         raise HTTPException(status_code=400, detail="athlete_id is required")
     if not req.template_id.strip():
         raise HTTPException(status_code=400, detail="template_id is required")
     if not req.recorded_by.strip():
         raise HTTPException(status_code=400, detail="recorded_by is required")
-    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/assessments", action="create")
-    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="assessment", action="write", request_route="/api/v1/assessments")
+    assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/assessments", action="create", correlation_id=request.headers.get("x-correlation-id"))
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="assessment", action="write", request_route="/api/v1/assessments", correlation_id=request.headers.get("x-correlation-id"))
     athlete = (
         persistence.get_athlete(req.athlete_id)
         if persistence.is_postgres_enabled()
@@ -193,9 +193,9 @@ def create_assessment(req: AssessmentCreateRequest, principal: Principal = Depen
 
 
 @app.get("/api/v1/assessments/{assessment_id}")
-def get_assessment(assessment_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
-    athlete_id = assert_assessment_tenant(assessment_id=assessment_id, principal=principal, request_route="/api/v1/assessments/{assessment_id}", action="read")
-    assert_minor_consent(child_id=athlete_id, principal=principal, resource="assessment", action="read", request_route="/api/v1/assessments/{assessment_id}")
+def get_assessment(assessment_id: str, request: Request, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    athlete_id = assert_assessment_tenant(assessment_id=assessment_id, principal=principal, request_route="/api/v1/assessments/{assessment_id}", action="read", correlation_id=request.headers.get("x-correlation-id"))
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="assessment", action="read", request_route="/api/v1/assessments/{assessment_id}", correlation_id=request.headers.get("x-correlation-id"))
     assessment = (
         persistence.get_assessment(assessment_id)
         if persistence.is_postgres_enabled()
