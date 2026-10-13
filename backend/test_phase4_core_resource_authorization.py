@@ -41,7 +41,20 @@ def isolate_authorization_tests_from_audit_store(monkeypatch, request):
         monkeypatch.setattr(authz, "_audit_authorization", lambda **_: None)
 
 
+
+def _ensure_audit_tenant():
+    with main.persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO kaizo_tenants (tenant_id, display_name, status) "
+                "VALUES ('academy-a', 'Phase 4 route-test academy', 'active') "
+                "ON CONFLICT (tenant_id) DO NOTHING"
+            )
+        conn.commit()
+
+
 def test_authorization_decisions_are_durably_audited():
+    _ensure_audit_tenant()
     correlation_id = "phase4-authorization-audit-test"
     principal = _principal()
     authz._audit_authorization(
@@ -85,6 +98,7 @@ def test_authorization_audit_store_failure_fails_closed(monkeypatch):
 
 
 def test_actual_route_auth_denial_is_durably_audited(monkeypatch):
+    _ensure_audit_tenant()
     monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
     monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
     monkeypatch.setattr(authz, "has_active_membership", lambda **_: False)
