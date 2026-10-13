@@ -79,14 +79,14 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
                          "X-Trace-Id": self.trace_id + trace_suffix},
             )
 
-    def _insert_consent(self, state, created_at_sql="NOW()"):
+    def _insert_consent(self, state, created_at_sql="NOW()", expires_at_sql="NULL"):
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     f"""INSERT INTO kaizo_p14_consents
                         (child_resource_id,guardian_subject_id,tenant_id,resource_type,
-                         action,state,recorded_by_subject,created_at)
-                        VALUES (%s,%s,%s,'athlete','GET:/api/v1/athletes/{{athlete_id}}',%s,%s,{created_at_sql})""",
+                         action,state,recorded_by_subject,created_at,expires_at)
+                        VALUES (%s,%s,%s,'athlete','GET:/api/v1/athletes/{{athlete_id}}',%s,%s,{created_at_sql},{expires_at_sql})""",
                     (self.athlete_id, self.guardian, self.tenant_a, state, self.guardian),
                 )
             conn.commit()
@@ -135,6 +135,19 @@ class Phase4PostgresRouteDenialTests(unittest.TestCase):
             "verified_guardian_or_active_consent_missing",
         )
         self._assert_audit(self.trace_id + "-revoked", False)
+
+    def test_expired_guardian_consent_is_denied_and_audited(self):
+        self._insert_consent(
+            "active",
+            expires_at_sql="'2026-01-02T00:00:00+00:00'::timestamptz",
+        )
+        response = self._request("-expired")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()["detail"]["reason_code"],
+            "verified_guardian_or_active_consent_missing",
+        )
+        self._assert_audit(self.trace_id + "-expired", False)
 
     def test_parent_cannot_use_another_guardians_active_consent(self):
         self._insert_consent("active")
