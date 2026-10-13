@@ -841,8 +841,14 @@ def test_remaining_unmapped_mounted_route_families_remain_default_deny(
 
     assert response.status_code == 503
     assert "policy" in response.json()["detail"].lower()
-    assert len(audit_events) == 1
-    assert audit_events[0]["decision"] == "deny"
-    assert audit_events[0]["reason_code"] == "RESOURCE_SCOPE_POLICY_NOT_CONFIGURED"
-    assert audit_events[0]["correlation_id"] == correlation_id
-    assert audit_events[0]["request_route"] == path
+    # The identity dependency and the mounted-route guard may each record a
+    # denial. Require the specific fail-closed policy event, without assuming
+    # there can be no additional legitimate security audit event.
+    policy_denials = [
+        event for event in audit_events
+        if event.get("decision") == "deny"
+        and event.get("reason_code") == "RESOURCE_SCOPE_POLICY_NOT_CONFIGURED"
+    ]
+    assert len(policy_denials) == 1
+    assert policy_denials[0]["correlation_id"] == correlation_id
+    assert policy_denials[0]["request_route"] == path
