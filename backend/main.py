@@ -165,22 +165,32 @@ async def require_router_resource_scope(
     }
     references: list[tuple[str, str]] = []
 
-    def collect(value: Any) -> None:
+    def collect_declared_fields(value: Any) -> None:
+        # Only direct, declared model/path fields can bind a request to a resource.
+        # Never authorize a route because an arbitrary nested dictionary or an
+        # ignored extra JSON field happens to contain an athlete_id/record_id.
         if isinstance(value, dict):
-            for key, nested in value.items():
-                if key in field_types and isinstance(nested, (str, int)) and str(nested).strip():
-                    references.append((field_types[key], str(nested)))
-                collect(nested)
-        elif isinstance(value, list):
-            for nested in value:
-                collect(nested)
+            items = value.items()
+        elif hasattr(type(value), "model_fields"):
+            items = ((name, getattr(value, name, None)) for name in type(value).model_fields)
+        else:
+            return
+        for key, nested in items:
+            if key in field_types and isinstance(nested, (str, int)) and str(nested).strip():
+                references.append((field_types[key], str(nested)))
 
-    collect(request.path_params)
-    try:
-        payload = await request.json()
-    except Exception:
-        payload = None
-    collect(payload)
+    collect_declared_fields(request.path_params)
+    route = request.scope.get("route")
+    body_field = getattr(route, "body_field", None)
+    if body_field is not None:
+        try:
+            raw_payload = await request.json()
+            payload, validation_error = body_field.validate(raw_payload, {}, loc=("body",))
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="Mounted route body could not be validated for scope") from exc
+        if validation_error:
+            raise HTTPException(status_code=422, detail="Mounted route body is invalid")
+        collect_declared_fields(payload)
 
     if not references:
         raise HTTPException(
