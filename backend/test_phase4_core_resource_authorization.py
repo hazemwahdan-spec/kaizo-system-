@@ -743,3 +743,56 @@ def test_training_progress_write_denies_spoofed_updated_by(monkeypatch):
     response = client.post("/api/v1/training-workflow/feat-039/progress-state", json={"athlete_id":"athlete-a","state":{"score":5},"evidence_refs":["evidence-a"],"updated_by":"another-coach"}, headers={"Authorization":"Bearer signed-test-token"})
     assert response.status_code == 403
     assert checks == []
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "payload"),
+    [
+        (
+            "post",
+            "/api/v1/knowledge-runtime/feat-047/provenance",
+            {
+                "knowledge_id": "phase4-unmapped-knowledge-test",
+                "source_type": "test",
+                "source_ref": "synthetic://phase4-unmapped",
+                "source_version": "1",
+                "evidence_status": "UNVERIFIED",
+                "provenance_note": "synthetic fail-closed authorization regression",
+                "evidence_refs": ["synthetic-evidence"],
+                "changed_by": "oidc|phase4-test-coach",
+                "coach_final_authority": True,
+            },
+        ),
+        (
+            "post",
+            "/api/v1/reporting/export",
+            {
+                "academy_id": "academy-a",
+                "requested_by": "oidc|phase4-test-coach",
+                "report_type": "synthetic",
+            },
+        ),
+    ],
+)
+def test_unmapped_mounted_routes_fail_closed_before_handler_write(
+    monkeypatch, method, path, payload
+):
+    """A valid identity/body must not bypass missing route-specific scope policy."""
+    import knowledge_runtime
+
+    principal = _principal()
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    sentinel = "phase4-unmapped-knowledge-test"
+    knowledge_runtime.MEMORY_ITEMS.pop(sentinel, None)
+
+    response = getattr(client, method)(
+        path,
+        json=payload,
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+
+    assert response.status_code == 503
+    assert "No approved" in response.json()["detail"] or "policy" in response.json()["detail"].lower()
+    assert sentinel not in knowledge_runtime.MEMORY_ITEMS
