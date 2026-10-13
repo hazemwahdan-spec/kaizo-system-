@@ -124,7 +124,9 @@ async def require_router_resource_scope(
             required_role="academy",
         )
 
-    if request.url.path.startswith("/api/v1/knowledge-runtime/") and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+    knowledge_path = request.url.path.lower()
+    is_knowledge_mutation = any(token in knowledge_path for token in ("/ingest", "/publish", "/upload", "/reindex", "/delete"))
+    if request.url.path.startswith("/api/v1/knowledge-runtime/") and is_knowledge_mutation:
         deny_unmapped_resource_scope(
             principal=principal, request=request, resource_type="knowledge_ingest",
             resource_id=request.path_params.get("item_id"),
