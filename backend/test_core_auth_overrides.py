@@ -24,7 +24,6 @@ _patches = [
     patch("main.assert_resource_tenant"),
     patch("main.assert_assessment_tenant"),
     patch("main.assert_minor_consent"),
-            patch("main.assert_minor_consent"),
 ]
 for _patch in _patches:
     _patch.start()
