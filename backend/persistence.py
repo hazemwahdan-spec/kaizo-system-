@@ -1463,6 +1463,16 @@ def persist_core_resource_and_binding(
                 resource_id = resource["athlete_id"]
             else:
                 cur.execute(
+                    """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='athlete' AND resource_id=%s FOR SHARE""",
+                    (resource["athlete_id"],),
+                )
+                parent_binding = cur.fetchone()
+                if not parent_binding or str(parent_binding[0]) != tenant_id:
+                    raise PersistenceConfigurationError(
+                        "Assessment athlete must have a matching authoritative tenant binding"
+                    )
+                cur.execute(
                     """INSERT INTO kaizo_assessments
                        (assessment_id, athlete_id, template_id, measurements,
                         recorded_by, assessed_at, created_at)
