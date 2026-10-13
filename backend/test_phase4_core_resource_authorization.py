@@ -398,6 +398,19 @@ def test_actual_audit_log_endpoint_reads_only_the_authenticated_academy(monkeypa
     assert logs[0]["new_value"]["correlation_id"] == "audit-tenant-test"
 
 
+def test_mounted_knowledge_route_fails_closed_without_resource_scope(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    response = client.post(
+        "/api/v1/knowledge-runtime/feat-049/retrieve",
+        json={"query": "cross-academy data must not be returned"},
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 503
+    assert "No approved tenant/resource scope policy" in response.json()["detail"]
+
+
 def test_core_routes_fail_closed_when_oidc_gate_is_disabled(monkeypatch):
     monkeypatch.delenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", raising=False)
     response = client.get("/api/v1/athletes/any-id")
