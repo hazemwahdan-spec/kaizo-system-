@@ -500,3 +500,28 @@ def test_mounted_route_denies_partial_scope_when_another_identifier_is_unmapped(
     )
     assert response.status_code == 503
     assert "event_id" in response.json()["detail"]
+
+
+def test_declared_body_model_ignores_extra_resource_id(monkeypatch):
+    import backend.audit_trace_runtime as audit_runtime
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "MOUNTED_ROUTE_SCOPE_POLICIES", {
+        ("POST", "/api/v1/audit-trace/feat-052/trace"): {
+            "roles": ("coach",), "required_bindings": {},
+            "consent_resource": "audit_trace", "consent_action": "write",
+        }
+    })
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda resource_type, resource_id: resource_id)
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **_: None)
+    writes = []
+    monkeypatch.setattr(audit_runtime, "save_trace", lambda record: writes.append(record))
+    response = client.post(
+        "/api/v1/audit-trace/feat-052/trace",
+        json={"actor_id": "header-actor", "action": "test", "athlete_id": "extra-only"},
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 503
+    assert writes == []
