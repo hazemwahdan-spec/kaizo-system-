@@ -53,3 +53,16 @@ The candidate implementation at [productization/product_api.py](https://github.c
 **Important limitation:** this verification endpoint returns `verified=true` and `source=oidc_jwt` after standard JWT verification, but it does not itself prove KAIZO role/tenant membership, resource ownership, or guardian consent. The separate `resolve_bearer_principal` path additionally requires a valid KAIZO role and tenant claim; live authorization tests must exercise protected resource endpoints and demonstrate both allowed and denied outcomes. An Auth0 token-issuance success alone is not sufficient.
 
 The workflow's fixed Auth0 audience (`https://api.kaizo.system`) must exactly match the deployed service's `KAIZO_OIDC_AUDIENCE`; the issuer must match the Auth0 tenant issuer and JWKS URL must point to that same issuer's JWKS. These values should be checked as presence/consistency without printing secrets. Until host and runtime configuration are confirmed, no production verification run should be inferred from source inspection.
+
+
+## Production-evidence workflow correction and execution checkpoint — 2026-10-13
+
+The candidate branch workflow `.github/workflows/v1-1-commercial-production-evidence.yml` was re-read at blob `c9208eeb4705f00c134fe9aeca6678312e2ef11b`. It targets the canonical FastAPI Cloud host `https://kaizo-system.fastapicloud.dev`, requests a short-lived Auth0 client-credentials token using GitHub Actions secrets, masks the token, and checks the live OIDC verification endpoint plus `/api/v1/health`. The workflow explicitly states that these checks do **not** prove route-level RBAC, tenant isolation, guardian consent, durable audit, or full commercial activation.
+
+Execution evidence was rechecked:
+- [Phase 4 Live Runtime Smoke run 38432291475](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38432291475): job succeeded; its only substantive checks were deployed OpenAPI contract and health endpoint. It is **not** an execution of the corrected commercial OIDC workflow.
+- [Persistence Adapter Validation run 38432291418](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38432291418): job succeeded; step 40, actual Core resource authorization HTTP acceptance tests, completed successfully. This remains candidate-code CI evidence, not independent live-production allow/deny evidence.
+
+The corrected workflow has been inspected in the candidate branch, but no dispatch/run result is available in this execution context. Therefore the audit records no claim that Auth0 token issuance, live OIDC verification, or live resource authorization has passed. Before closure, execute the workflow from the candidate branch and then independently exercise protected production routes with both allowed and denied cases (including cross-tenant access and missing/revoked guardian consent), reconcile runtime route coverage, and capture independent retest plus rollback/regression evidence.
+
+Governance remains unchanged: `P4-REQ-011 = OPEN / NOT PROVEN`; `Phase 4 EXIT = BLOCKED`; PR #128 remains draft/open/unmerged. Evidence Before Claim.
