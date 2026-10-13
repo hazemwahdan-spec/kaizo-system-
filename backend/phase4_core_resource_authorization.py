@@ -16,7 +16,7 @@ from phase4_identity_store import (
     get_resource_tenant,
     get_verified_age_classification,
     has_active_membership,
-    has_active_minor_consent,
+    get_active_minor_consent_id,
 )
 from productization.identity import Principal
 
@@ -35,6 +35,7 @@ def _audit_authorization(
     reason_code: str,
     request_route: str,
     correlation_id: str | None = None,
+    consent_id: str | None = None,
 ) -> None:
     """Persist an allow/deny decision; audit failure itself is fail-closed."""
     from phase4_identity_store import append_authorization_audit
@@ -51,7 +52,7 @@ def _audit_authorization(
             action=action,
             decision=decision,
             reason_code=reason_code,
-            consent_id=None,
+            consent_id=consent_id,
             policy_version=POLICY_VERSION,
             request_route=request_route[:512],
         )
@@ -231,10 +232,11 @@ def assert_minor_consent(
         return
 
     try:
-        active_consent = has_active_minor_consent(
+        consent_id = get_active_minor_consent_id(
             child_id=child_id, academy_id=principal.tenant_id,
             resource=resource, action=action,
         )
+        active_consent = bool(consent_id)
     except Exception as exc:
         _audit_authorization(
             principal=principal, resource_type=resource, resource_id=child_id,
@@ -259,7 +261,7 @@ def assert_minor_consent(
     _audit_authorization(
         principal=principal, resource_type=resource, resource_id=child_id,
         action=action, decision="allow", reason_code="ACTIVE_GUARDIAN_CONSENT_VALID",
-        request_route=request_route,
+        request_route=request_route, consent_id=consent_id,
     )
 
 
