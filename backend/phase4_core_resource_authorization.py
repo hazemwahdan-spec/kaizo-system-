@@ -143,7 +143,7 @@ def assert_resource_tenant(
         _audit_authorization(
             principal=principal, resource_type=resource_type, resource_id=resource_id,
             action=action, decision="deny", reason_code="RESOURCE_SCOPE_STORE_UNAVAILABLE",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(
             status_code=503,
@@ -154,7 +154,7 @@ def assert_resource_tenant(
         _audit_authorization(
             principal=principal, resource_type=resource_type, resource_id=resource_id,
             action=action, decision="deny", reason_code="RESOURCE_TENANT_SCOPE_DENIED",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(status_code=403, detail="Resource tenant scope denied")
 
@@ -168,7 +168,7 @@ def assert_resource_tenant(
         _audit_authorization(
             principal=principal, resource_type=resource_type, resource_id=resource_id,
             action=action, decision="deny", reason_code="MEMBERSHIP_STORE_UNAVAILABLE",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(
             status_code=503,
@@ -178,14 +178,14 @@ def assert_resource_tenant(
         _audit_authorization(
             principal=principal, resource_type=resource_type, resource_id=resource_id,
             action=action, decision="deny", reason_code="ACTIVE_MEMBERSHIP_REQUIRED",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(status_code=403, detail="Active academy membership required")
 
     _audit_authorization(
         principal=principal, resource_type=resource_type, resource_id=resource_id,
         action=action, decision="allow", reason_code="RESOURCE_TENANT_SCOPE_VALID",
-        request_route=request_route,
+        request_route=request_route, correlation_id=correlation_id,
     )
 
 
@@ -217,7 +217,7 @@ def assert_minor_consent(
         _audit_authorization(
             principal=principal, resource_type=resource, resource_id=child_id,
             action=action, decision="deny", reason_code="VERIFIED_AGE_CLASSIFICATION_REQUIRED",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(
             status_code=403,
@@ -228,7 +228,7 @@ def assert_minor_consent(
         _audit_authorization(
             principal=principal, resource_type=resource, resource_id=child_id,
             action=action, decision="allow", reason_code="VERIFIED_ADULT_CLASSIFICATION",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         return
 
@@ -242,7 +242,7 @@ def assert_minor_consent(
         _audit_authorization(
             principal=principal, resource_type=resource, resource_id=child_id,
             action=action, decision="deny", reason_code="MINOR_CONSENT_STORE_UNAVAILABLE",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(
             status_code=503, detail="Authoritative guardian consent store is unavailable"
@@ -252,7 +252,7 @@ def assert_minor_consent(
         _audit_authorization(
             principal=principal, resource_type=resource, resource_id=child_id,
             action=action, decision="deny", reason_code="ACTIVE_GUARDIAN_CONSENT_REQUIRED",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(
             status_code=403,
@@ -262,7 +262,7 @@ def assert_minor_consent(
     _audit_authorization(
         principal=principal, resource_type=resource, resource_id=child_id,
         action=action, decision="allow", reason_code="ACTIVE_GUARDIAN_CONSENT_VALID",
-        request_route=request_route, consent_id=consent_id,
+        request_route=request_route, correlation_id=correlation_id, consent_id=consent_id,
     )
 
 
@@ -294,7 +294,7 @@ def assert_assessment_tenant(
         _audit_authorization(
             principal=principal, resource_type="assessment", resource_id=assessment_id,
             action=action, decision="deny", reason_code="ASSESSMENT_STORE_UNAVAILABLE",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(
             status_code=503,
@@ -304,17 +304,17 @@ def assert_assessment_tenant(
         _audit_authorization(
             principal=principal, resource_type="assessment", resource_id=assessment_id,
             action=action, decision="deny", reason_code="ASSESSMENT_NOT_FOUND",
-            request_route=request_route,
+            request_route=request_route, correlation_id=correlation_id,
         )
         raise HTTPException(status_code=404, detail="assessment not found")
     athlete_id = str(row[0])
     assert_resource_tenant(
         resource_type="athlete", resource_id=athlete_id, principal=principal,
-        request_route=request_route, action=action, correlation_id=correlation_id,
+        request_route=request_route, correlation_id=correlation_id, action=action, correlation_id=correlation_id,
     )
     assert_resource_tenant(
         resource_type="assessment", resource_id=assessment_id, principal=principal,
-        request_route=request_route, action=action,
+        request_route=request_route, correlation_id=correlation_id, action=action,
     )
     return athlete_id
 
