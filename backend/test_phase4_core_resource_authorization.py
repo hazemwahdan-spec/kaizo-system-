@@ -607,3 +607,18 @@ def test_next_state_policy_checks_body_athlete_and_actor(monkeypatch):
     assert response.status_code == 404
     assert checked and checked[0]["resource"] == "digital_twin_state"
     assert checked[0]["action"] == "read"
+
+
+def test_next_state_policy_denies_actor_mismatch(monkeypatch):
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    checks = []
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **kw: checks.append(kw))
+    response = client.post(
+        "/api/v1/state-cycle/feat-045/next-state",
+        json={"athlete_id": "athlete-a", "requested_by": "wrong-actor"},
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+    assert response.status_code == 403
+    assert checks == []
