@@ -19,7 +19,6 @@ class FEAT013KPIAcceptanceTests(unittest.TestCase):
             patch("main.assert_resource_tenant"),
             patch("main.assert_assessment_tenant"),
             patch("main.assert_minor_consent"),
-            patch("main.assert_minor_consent"),
         ]
         for item in self._binding_patches:
             item.start()
