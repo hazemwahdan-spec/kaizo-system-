@@ -156,6 +156,15 @@ def parent_progress(
                 guardian_actor_id=principal.actor_id,
                 academy_id=resource_tenant_id,
             )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Authoritative guardian relationship store is unavailable",
+            ) from exc
+        if not linked:
+            raise HTTPException(status_code=403, detail="verified guardian relationship required")
+
+        try:
             consent = has_active_child_consent(
                 child_id=athlete_id,
                 guardian_actor_id=principal.actor_id,
@@ -166,11 +175,8 @@ def parent_progress(
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail="Authoritative guardian relationship/consent store is unavailable",
+                detail="Authoritative guardian consent store is unavailable",
             ) from exc
-
-        if not linked:
-            raise HTTPException(status_code=403, detail="verified guardian relationship required")
         if not consent:
             raise HTTPException(status_code=403, detail="active guardian consent for athlete progress is required")
 
