@@ -122,6 +122,11 @@ def main():
                 "VALUES ('academy-a', 'Phase 4 route-test academy', 'active') "
                 "ON CONFLICT (tenant_id) DO NOTHING"
             )
+            cur.execute(
+                "INSERT INTO kaizo_tenants (tenant_id, display_name, status) "
+                "VALUES ('test-other-academy', 'Phase 4 second test academy', 'active') "
+                "ON CONFLICT (tenant_id) DO NOTHING"
+            )
         conn.commit()
 
     _test_atomic_core_resource_binding()
@@ -244,6 +249,19 @@ def main():
     assert len(audit) == 1
     assert audit[0]["decision"] == "deny"
     assert audit[0]["reason_code"] == "CONSENT_REVOKED"
+
+    # Durable audit queries must never mix events from different academies.
+    store.append_authorization_audit(
+        event_id="test-authz-deny-other-academy", correlation_id="test-correlation-other",
+        actor_id="other-coach", actor_role="coach", academy_id="test-other-academy",
+        resource_type="athlete", resource_id="other-athlete", action="read",
+        decision="deny", reason_code="CROSS_TENANT_TEST", consent_id=None,
+        policy_version="test-policy-v1", request_route="/test/other-academy",
+    )
+    academy_audit = store.list_authorization_audit_for_academy(academy_id="test-academy")
+    other_audit = store.list_authorization_audit_for_academy(academy_id="test-other-academy")
+    assert [row["correlation_id"] for row in academy_audit] == ["test-correlation-1"]
+    assert [row["correlation_id"] for row in other_audit] == ["test-correlation-other"]
 
     with persistence.connection() as conn:
         with conn.cursor() as cur:
