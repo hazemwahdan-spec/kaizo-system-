@@ -696,3 +696,21 @@ def test_digital_twin_write_requires_case_and_evidence_scope(monkeypatch):
     assert response.status_code == 201
     assert writes
     assert any(x["resource"] == "evidence" and x["action"] == "read" for x in checked)
+
+
+def test_digital_twin_write_denies_case_owned_by_different_athlete(monkeypatch):
+    import state_cycle
+    principal = Principal(actor_id="coach-1", role="coach", tenant_id="academy-a", resource_owner_id=None, verified=True, source="oidc_jwt")
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda *args: "athlete-a")
+    monkeypatch.setattr(main, "_assert_case_scope", lambda *args, **kwargs: "athlete-b")
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **kw: None)
+    monkeypatch.setattr(state_cycle.persistence, "is_postgres_enabled", lambda: True)
+    writes = []
+    monkeypatch.setattr(state_cycle, "_save_state", lambda record: writes.append(record))
+    response = client.post("/api/v1/state-cycle/feat-042/digital-twin-state", json={"entity_id":"athlete-a","state":{"score":6},"source_event":"test","case_id":"case-b","updated_by":"coach-1","evidence_refs":["evidence-a"]}, headers={"Authorization":"Bearer signed-test-token"})
+    assert response.status_code == 403
+    assert writes == []
