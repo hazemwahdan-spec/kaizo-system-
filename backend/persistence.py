@@ -1421,3 +1421,80 @@ def list_training_dosages(session_id: str) -> list[Dict[str, Any]]:
         "coach_final_authority": True, "execution_authorized": False,
     } for r in rows]
 
+
+
+def persist_core_resource_and_binding(
+    *,
+    resource_type: str,
+    resource: Dict[str, Any],
+    tenant_id: str,
+    bound_by_actor_id: str,
+) -> None:
+    """Atomically persist a Core athlete/assessment and its authoritative tenant binding.
+
+    The identity migration must exist before this function can succeed. If either
+    the resource write or binding write fails, the transaction rolls back both.
+    """
+    if not is_postgres_enabled():
+        raise PersistenceConfigurationError(
+            "Atomic Core resource ownership requires PostgreSQL"
+        )
+    if resource_type not in {"athlete", "assessment"}:
+        raise ValueError("Unsupported Core resource type")
+
+    with connection() as conn:
+        with conn.cursor() as cur:
+            if resource_type == "athlete":
+                cur.execute(
+                    """INSERT INTO kaizo_athletes
+                       (athlete_id, display_name, status, metadata, created_at, updated_at)
+                       VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+                       ON CONFLICT (athlete_id) DO UPDATE SET
+                         display_name=EXCLUDED.display_name,
+                         status=EXCLUDED.status,
+                         metadata=EXCLUDED.metadata,
+                         updated_at=EXCLUDED.updated_at""",
+                    (
+                        resource["athlete_id"], resource["display_name"],
+                        resource["status"], json.dumps(resource.get("metadata", {})),
+                        resource["created_at"], resource["updated_at"],
+                    ),
+                )
+                resource_id = resource["athlete_id"]
+            else:
+                cur.execute(
+                    """INSERT INTO kaizo_assessments
+                       (assessment_id, athlete_id, template_id, measurements,
+                        recorded_by, assessed_at, created_at)
+                       VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s)
+                       ON CONFLICT (assessment_id) DO UPDATE SET
+                         measurements=EXCLUDED.measurements,
+                         recorded_by=EXCLUDED.recorded_by,
+                         assessed_at=EXCLUDED.assessed_at""",
+                    (
+                        resource["assessment_id"], resource["athlete_id"],
+                        resource["template_id"], json.dumps(resource.get("measurements", {})),
+                        resource["recorded_by"], resource["assessed_at"],
+                        resource["created_at"],
+                    ),
+                )
+                resource_id = resource["assessment_id"]
+
+            cur.execute(
+                """INSERT INTO kaizo_resource_tenant_bindings
+                   (resource_type, resource_id, tenant_id, bound_by_actor_id)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (resource_type, resource_id) DO NOTHING""",
+                (resource_type, resource_id, tenant_id, bound_by_actor_id),
+            )
+            cur.execute(
+                """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                   WHERE resource_type=%s AND resource_id=%s""",
+                (resource_type, resource_id),
+            )
+            binding = cur.fetchone()
+            if not binding or str(binding[0]) != tenant_id:
+                raise PersistenceConfigurationError(
+                    "Resource already has a different authoritative tenant binding"
+                )
+        conn.commit()
