@@ -99,6 +99,9 @@ def main():
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(migration)
+        conn.commit()
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
             cur.execute(canonical_migration)
         conn.commit()
 
