@@ -98,11 +98,26 @@ def assert_assessment_tenant(*, assessment_id: str, principal: Principal) -> str
 
 
 def bind_new_resource(
-    *, resource_type: str, resource_id: str, principal: Principal,
+    *,
+    resource_type: str,
+    resource_id: str,
+    principal: Principal,
+    resource_data: dict | None = None,
 ) -> None:
+    """Persist ownership with the Core resource in one transaction when data is supplied."""
     from phase4_identity_store import bind_resource_to_tenant
 
     try:
+        if resource_data is not None:
+            if resource_data.get("athlete_id") != resource_id and resource_data.get("assessment_id") != resource_id:
+                raise ValueError("Resource payload identity does not match binding identity")
+            persistence.persist_core_resource_and_binding(
+                resource_type=resource_type,
+                resource=resource_data,
+                tenant_id=principal.tenant_id,
+                bound_by_actor_id=principal.actor_id,
+            )
+            return
         bind_resource_to_tenant(
             resource_type=resource_type,
             resource_id=resource_id,
@@ -113,5 +128,5 @@ def bind_new_resource(
         # Fail closed: caller must not return success if ownership cannot be recorded.
         raise HTTPException(
             status_code=503,
-            detail="Unable to persist authoritative resource ownership",
+            detail="Unable to atomically persist Core resource ownership",
         ) from exc
