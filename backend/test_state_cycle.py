@@ -2,6 +2,7 @@ import os
 os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
 
 from fastapi.testclient import TestClient
+import test_core_auth_overrides  # domain acceptance only; security has dedicated tests
 
 from main import app
 
