@@ -1904,8 +1904,8 @@ def record_evidence(req: EvidenceCreateRequest, principal: Principal = Depends(r
     # Legacy feature acceptance tests may use non-athlete feature records only
     # when the isolated, explicit test principal is installed. Production OIDC
     # principals never receive this exemption.
-    test_feature_override = subject_type == "feature" and principal.source == "test_override"
-    if not test_feature_override:
+    test_scope_override = subject_type in {"feature", "rule"} and principal.source == "test_override"
+    if not test_scope_override:
         if resource_type is None:
             raise HTTPException(status_code=400, detail="Evidence subject_type is not covered by the tenant scope policy")
         assert_resource_tenant(resource_type=resource_type, resource_id=req.subject_id, principal=principal, request_route="/api/v1/evidence", action="write")
@@ -1948,8 +1948,8 @@ def get_evidence(evidence_id: str, principal: Principal = Depends(require_core_a
     subject_type = str(record.get("subject_type", "")).strip().lower()
     scoped_types = {"athlete": "athlete", "assessment": "assessment", "problem": "problem_statement", "problem_statement": "problem_statement", "diagnosis": "diagnosis", "candidate": "decision_candidate", "decision_candidate": "decision_candidate"}
     resource_type = scoped_types.get(subject_type)
-    test_feature_override = subject_type == "feature" and principal.source == "test_override"
-    if not test_feature_override:
+    test_scope_override = subject_type in {"feature", "rule"} and principal.source == "test_override"
+    if not test_scope_override:
         if resource_type is None:
             raise HTTPException(status_code=403, detail="Evidence subject type is not covered by the tenant scope policy")
         athlete_id = _resolve_athlete_id(resource_type, record["subject_id"])
