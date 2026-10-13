@@ -11,7 +11,7 @@ from datetime import datetime
 
 import persistence
 from phase4_core_resource_authorization import (
-    require_core_actor, assert_resource_tenant, assert_assessment_tenant, bind_new_resource,
+    require_core_actor, assert_resource_tenant, assert_assessment_tenant, assert_minor_consent, bind_new_resource,
 )
 from productization.identity import Principal
 from evidence_store import EVIDENCE_RECORDS
@@ -98,6 +98,7 @@ def create_athlete(req: AthleteCreateRequest, principal: Principal = Depends(req
 @app.get("/api/v1/athletes/{athlete_id}")
 def get_athlete(athlete_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal, request_route="/api/v1/athletes/{athlete_id}", action="read")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="athlete", action="read", request_route="/api/v1/athletes/{athlete_id}")
     athlete = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -107,6 +108,7 @@ def get_athlete(athlete_id: str, principal: Principal = Depends(require_core_act
 @app.patch("/api/v1/athletes/{athlete_id}")
 def update_athlete(athlete_id: str, req: AthleteUpdateRequest, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
     assert_resource_tenant(resource_type="athlete", resource_id=athlete_id, principal=principal, request_route="/api/v1/athletes/{athlete_id}", action="update")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="athlete", action="write", request_route="/api/v1/athletes/{athlete_id}")
     current = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if current is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -155,6 +157,7 @@ def create_assessment(req: AssessmentCreateRequest, principal: Principal = Depen
     if not req.recorded_by.strip():
         raise HTTPException(status_code=400, detail="recorded_by is required")
     assert_resource_tenant(resource_type="athlete", resource_id=req.athlete_id, principal=principal, request_route="/api/v1/assessments", action="create")
+    assert_minor_consent(child_id=req.athlete_id, principal=principal, resource="assessment", action="write", request_route="/api/v1/assessments")
     athlete = (
         persistence.get_athlete(req.athlete_id)
         if persistence.is_postgres_enabled()
@@ -191,7 +194,8 @@ def create_assessment(req: AssessmentCreateRequest, principal: Principal = Depen
 
 @app.get("/api/v1/assessments/{assessment_id}")
 def get_assessment(assessment_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
-    assert_assessment_tenant(assessment_id=assessment_id, principal=principal, request_route="/api/v1/assessments/{assessment_id}", action="read")
+    athlete_id = assert_assessment_tenant(assessment_id=assessment_id, principal=principal, request_route="/api/v1/assessments/{assessment_id}", action="read")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="assessment", action="read", request_route="/api/v1/assessments/{assessment_id}")
     assessment = (
         persistence.get_assessment(assessment_id)
         if persistence.is_postgres_enabled()
