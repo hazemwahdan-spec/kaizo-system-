@@ -860,21 +860,6 @@ def test_remaining_unmapped_mounted_route_families_remain_default_deny(
     ("path", "payload", "actor_field"),
     [
         (
-            "/api/v1/training-workflow/feat-033/decision-drill",
-            {"athlete_id": "athlete-a", "decision_id": "decision-a", "drill_id": "drill-a", "rationale": "specific rationale", "evidence_refs": ["evidence-a"], "selected_by": "coach-1", "coach_final_authority": True},
-            "selected_by",
-        ),
-        (
-            "/api/v1/training-workflow/feat-034/drill-prescription",
-            {"athlete_id": "athlete-a", "decision_id": "decision-a", "session_id": "session-a", "drill_id": "drill-a", "objective": "entry timing", "dosage": {"sets": 2, "reps": 3}, "prescribed_by": "coach-1", "coach_final_authority": True},
-            "prescribed_by",
-        ),
-        (
-            "/api/v1/training-workflow/feat-035/execution-cues",
-            {"athlete_id": "athlete-a", "session_id": "session-a", "drill_id": "drill-a", "cues": ["enter on movement"], "checklist": ["balanced entry"], "created_by": "coach-1", "coach_final_authority": True},
-            "created_by",
-        ),
-        (
             "/api/v1/training-workflow/feat-037/retest",
             {"athlete_id": "athlete-a", "session_id": "session-a", "baseline_reference": "baseline-a", "retest_values": {"score": 2}, "evidence_refs": ["evidence-a"], "retested_by": "coach-1", "coach_final_authority": True},
             "retested_by",
@@ -975,3 +960,49 @@ def test_actual_route_allows_same_academy_active_coach_with_verified_adult_scope
     assert response.status_code == 200
     assert response.json()["athlete_id"] == athlete_id
     assert any(event.get("decision") == "allow" and event.get("resource_id") == athlete_id for event in audit_events)
+
+
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        (
+            "/api/v1/training-workflow/feat-033/decision-drill",
+            {"athlete_id": "athlete-a", "decision_id": "decision-a", "drill_id": "drill-a", "rationale": "specific rationale", "evidence_refs": ["evidence-a"], "selected_by": "coach-1", "coach_final_authority": True},
+        ),
+        (
+            "/api/v1/training-workflow/feat-034/drill-prescription",
+            {"athlete_id": "athlete-a", "decision_id": "decision-a", "session_id": "session-a", "drill_id": "drill-a", "objective": "entry timing", "dosage": {"sets": 2, "reps": 3}, "prescribed_by": "coach-1", "coach_final_authority": True},
+        ),
+        (
+            "/api/v1/training-workflow/feat-035/execution-cues",
+            {"athlete_id": "athlete-a", "session_id": "session-a", "drill_id": "drill-a", "cues": ["enter on movement"], "checklist": ["balanced entry"], "created_by": "coach-1", "coach_final_authority": True},
+        ),
+    ],
+)
+def test_training_workflow_routes_with_unowned_drill_ids_remain_default_deny(
+    monkeypatch, path, payload
+):
+    """Do not infer drill-catalog ownership from an athlete/session binding."""
+    import training_workflow as training
+
+    principal = Principal(
+        actor_id="coach-1", role="coach", tenant_id="academy-a",
+        resource_owner_id=None, verified=True, source="oidc_jwt",
+    )
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda resource_type, resource_id: "athlete-a")
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **_: None)
+    writes = []
+    monkeypatch.setattr(training, "_save", lambda *args, **kwargs: writes.append((args, kwargs)) or {"record_id": "record-a", "athlete_id": "athlete-a"})
+
+    response = client.post(
+        path, json=payload,
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+
+    assert response.status_code == 503
+    assert "drill_id" in response.text
+    assert writes == []
