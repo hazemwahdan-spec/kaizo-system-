@@ -367,3 +367,24 @@ def bind_new_resource(
         request_route=f"/api/v1/{resource_type}s", correlation_id=correlation_id,
     )
     return False
+
+
+
+def deny_unmapped_resource_scope(
+    *, principal: Principal, request: Request, resource_id: str | None = None,
+) -> None:
+    """Fail closed and durably audit a route family lacking a specific scope contract."""
+    _audit_authorization(
+        principal=principal,
+        resource_type="feature_record",
+        resource_id=resource_id,
+        action=request.method.lower(),
+        decision="deny",
+        reason_code="RESOURCE_SCOPE_POLICY_NOT_CONFIGURED",
+        request_route=request.url.path,
+        correlation_id=request.headers.get("X-Correlation-ID"),
+    )
+    raise HTTPException(
+        status_code=503,
+        detail="Feature route is blocked until feature-record tenant, subject, and actor ownership policy is configured",
+    )
