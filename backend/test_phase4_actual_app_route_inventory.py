@@ -156,8 +156,8 @@ def test_manifest_covers_every_registered_core_api_route():
     documented = set()
     for line in manifest.splitlines():
         match = re.match(
-            r"^\\|\\s*(?:(?:\\d+)\\s*\\|\\s*)?"
-            r"(GET|POST|PUT|PATCH|DELETE)\\s*\\|\\s*`([^`]+)`\\s*\\|",
+            r"^\|\s*(?:(?:\d+)\s*\|\s*)?"
+            r"(GET|POST|PUT|PATCH|DELETE)\s*\|\s*`([^`]+)`\s*\|",
             line,
         )
         if match:
