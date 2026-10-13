@@ -1,5 +1,6 @@
 """Phase 4 acceptance for versioned, approved rule governance."""
 import os
+from types import SimpleNamespace
 
 os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
@@ -22,7 +23,7 @@ def isolate_domain_authorization_from_rule_contract_tests():
     # authorization is covered by dedicated Phase 4 security regressions.
     previous = main.app.dependency_overrides.get(require_phase4_domain_access)
     main.app.dependency_overrides[require_phase4_domain_access] = lambda: {
-        "principal": "phase4-rule-test", "tenant_id": "phase4-rule-test-tenant"
+        "principal": SimpleNamespace(actor_id="phase4-rule-test"), "tenant_id": "phase4-rule-test-tenant"
     }
     try:
         yield
