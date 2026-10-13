@@ -174,6 +174,40 @@ def list_authorization_audit(*, correlation_id: str) -> list[dict[str, Any]]:
     ]
 
 
+
+def list_authorization_audit_for_academy(*, academy_id: str) -> list[dict[str, Any]]:
+    """Return only durable authorization events owned by the caller's academy."""
+    _postgres_required()
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT occurred_at, correlation_id, actor_id, actor_role,
+                          resource_type, resource_id, action, decision, reason_code,
+                          consent_id, policy_version, request_route
+                   FROM kaizo_authorization_audit
+                   WHERE academy_id=%s
+                   ORDER BY occurred_at, event_id""",
+                (academy_id,),
+            )
+            rows = cur.fetchall()
+    return [
+        {
+            "timestamp": row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0]),
+            "correlation_id": row[1],
+            "who": row[2],
+            "actor_role": row[3],
+            "resource_type": row[4],
+            "resource_id": row[5],
+            "action": row[6],
+            "decision": row[7],
+            "reason_code": row[8],
+            "consent_id": row[9],
+            "policy_version": row[10],
+            "request_route": row[11],
+        }
+        for row in rows
+    ]
+
 def bind_resource_to_tenant(
     *, resource_type: str, resource_id: str, tenant_id: str, bound_by_actor_id: str,
 ) -> None:
