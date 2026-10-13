@@ -84,6 +84,15 @@ def main():
             cur.execute(canonical_migration)
         conn.commit()
 
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO kaizo_tenants (tenant_id, display_name, status) "
+                "VALUES ('test-academy', 'Phase 4 test academy', 'active') "
+                "ON CONFLICT (tenant_id) DO NOTHING"
+            )
+        conn.commit()
+
     _test_atomic_core_resource_binding()
 
     # Clean only the four dedicated Phase 4 test tables in this ephemeral DB.
@@ -175,6 +184,52 @@ def main():
         child_id="test-child", guardian_actor_id="test-guardian",
         academy_id="test-academy", resource="assessment", action="read",
     )
+
+
+    store.record_age_classification(
+        athlete_id="test-child-active", academy_id="test-academy",
+        age_class="minor", status="verified", version=1,
+        verified_by="trusted-test-admin", verified_at=now,
+    )
+    assert store.get_verified_age_classification(
+        athlete_id="test-child-active", academy_id="test-academy"
+    ) == "minor"
+    store.record_guardian_relationship(
+        relationship_id="test-active-guardian-v1", child_id="test-child-active",
+        guardian_actor_id="test-active-guardian", academy_id="test-academy",
+        verification_status="verified", version=1,
+        verified_by="trusted-test-admin", verified_at=now,
+    )
+    store.record_child_consent(
+        consent_id="test-active-consent-v1", child_id="test-child-active",
+        guardian_actor_id="test-active-guardian", academy_id="test-academy",
+        resource="assessment", action="read", state="active",
+        expires_at=now + timedelta(days=1), recorded_by_actor_id="test-active-guardian",
+        version=1,
+    )
+    assert store.has_active_minor_consent(
+        child_id="test-child-active", academy_id="test-academy",
+        resource="assessment", action="read",
+    )
+    store.record_child_consent(
+        consent_id="test-active-consent-v2", child_id="test-child-active",
+        guardian_actor_id="test-active-guardian", academy_id="test-academy",
+        resource="assessment", action="read", state="revoked",
+        expires_at=now + timedelta(days=1), recorded_by_actor_id="test-active-guardian",
+        version=2,
+    )
+    assert not store.has_active_minor_consent(
+        child_id="test-child-active", academy_id="test-academy",
+        resource="assessment", action="read",
+    )
+    store.record_age_classification(
+        athlete_id="test-child-active", academy_id="test-academy",
+        age_class="minor", status="revoked", version=2,
+        verified_by="trusted-test-admin", verified_at=now,
+    )
+    assert store.get_verified_age_classification(
+        athlete_id="test-child-active", academy_id="test-academy"
+    ) is None
 
     store.append_authorization_audit(
         event_id="test-authz-deny-1", correlation_id="test-correlation-1",
