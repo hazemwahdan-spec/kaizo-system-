@@ -1,10 +1,51 @@
 """Ephemeral-PostgreSQL acceptance tests for durable Phase 4 stores."""
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import uuid
 
 import persistence
 import phase4_identity_store as store
 
+
+
+def _test_atomic_core_resource_binding():
+    """Resource rows and ownership bindings commit or roll back together."""
+    athlete_id = "atomic-athlete-" + uuid.uuid4().hex
+    tenant_id = "atomic-academy"
+    athlete = {
+        "athlete_id": athlete_id, "display_name": "Atomic test athlete",
+        "status": "ACTIVE", "metadata": {}, "created_at": "2026-10-13T00:00:00",
+        "updated_at": "2026-10-13T00:00:00",
+    }
+    persistence.persist_core_resource_and_binding(
+        resource_type="athlete", resource=athlete, tenant_id=tenant_id,
+        bound_by_actor_id="atomic-test-coach",
+    )
+    assert store.get_resource_tenant(resource_type="athlete", resource_id=athlete_id) == tenant_id
+    assert persistence.get_athlete(athlete_id)["display_name"] == "Atomic test athlete"
+
+    conflicting_id = "atomic-conflict-" + uuid.uuid4().hex
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_resource_tenant_bindings
+                   (resource_type, resource_id, tenant_id, bound_by_actor_id)
+                   VALUES ('athlete', %s, 'different-academy', 'seed')""",
+                (conflicting_id,),
+            )
+        conn.commit()
+    conflicting = dict(athlete, athlete_id=conflicting_id, display_name="Must rollback")
+    try:
+        persistence.persist_core_resource_and_binding(
+            resource_type="athlete", resource=conflicting, tenant_id=tenant_id,
+            bound_by_actor_id="atomic-test-coach",
+        )
+    except persistence.PersistenceConfigurationError:
+        pass
+    else:
+        raise AssertionError("Conflicting ownership must fail closed")
+    assert persistence.get_athlete(conflicting_id) is None
+    assert store.get_resource_tenant(resource_type="athlete", resource_id=conflicting_id) == "different-academy"
 
 def main():
     assert persistence.is_postgres_enabled()
@@ -13,6 +54,8 @@ def main():
         with conn.cursor() as cur:
             cur.execute(migration)
         conn.commit()
+
+    _test_atomic_core_resource_binding()
 
     # Clean only the four dedicated Phase 4 test tables in this ephemeral DB.
     with persistence.connection() as conn:
