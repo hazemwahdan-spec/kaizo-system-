@@ -824,11 +824,11 @@ def test_remaining_unmapped_mounted_route_families_remain_default_deny(
     monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
     monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
 
-    response = getattr(client, method)(
-        path,
-        json={} if method == "post" else None,
-        headers={"Authorization": "Bearer signed-test-token"},
-    )
+    headers = {"Authorization": "Bearer signed-test-token"}
+    if method == "post":
+        response = client.post(path, json={}, headers=headers)
+    else:
+        response = client.get(path, headers=headers)
 
     assert response.status_code == 503
     assert "policy" in response.json()["detail"].lower()
