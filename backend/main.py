@@ -250,7 +250,7 @@ async def require_router_resource_scope(
         for key, nested in items:
             if key in field_types and isinstance(nested, (str, int)) and str(nested).strip():
                 references.append((field_types[key], str(nested)))
-            elif key.endswith(("_id", "_ids")) and (
+            elif key != "actor_id" and key.endswith(("_id", "_ids")) and (
                 (isinstance(nested, (str, int)) and str(nested).strip())
                 or (isinstance(nested, list) and any(str(item).strip() for item in nested))
             ):
