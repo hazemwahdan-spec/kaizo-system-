@@ -136,3 +136,10 @@ Purpose: explicit source-level route inventory and closure backlog. This is not 
 
 ## Exit gate
 This manifest is **OPEN / NOT PROVEN** until every route is assigned an explicit policy owner and all required tests/evidence are linked. Do not merge PR #128 or close Phase 4 based on this inventory alone.
+
+## Live verification checkpoint — 2026-10-14 (UTC+03:00)
+- Candidate commit: `0d2b9b75f5f8e9207ee900a5b03df43edcd88bad`.
+- Production-evidence run: [38473682842](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/38473682842).
+- Auth0 short-lived access-token issuance passed, but the deployed verifier returned HTTP 401 with the explicit diagnostic: `OIDC production identity requires KAIZO_OIDC_ISSUER, KAIZO_OIDC_AUDIENCE and KAIZO_OIDC_JWKS_URL`.
+- This establishes a deployment-environment configuration blocker, not a reason to weaken token validation. Configure the three verifier settings in the FastAPI Cloud service environment, redeploy/restart, then rerun live OIDC verification. Expected Auth0 values: issuer `https://kaizo-system.us.auth0.com/`, audience `https://api.kaizo.system`, JWKS `https://kaizo-system.us.auth0.com/.well-known/jwks.json`.
+- Phase 4 remains **OPEN / NOT PROVEN** until live identity and the independent route-level authorization evidence pass. No merge or closure is authorized by these CI results alone.
