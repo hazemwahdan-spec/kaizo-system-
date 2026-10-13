@@ -14,6 +14,7 @@ from phase4_core_resource_authorization import (
     require_core_actor, assert_resource_tenant, assert_assessment_tenant, assert_minor_consent, bind_new_resource,
 )
 from productization.identity import Principal
+from phase4_identity_store import get_resource_tenant
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
@@ -1347,10 +1348,12 @@ def select_problem_from_library(req: ProblemLibrarySelectionRequest, principal: 
 
 
 @app.get("/api/v1/problem-library/selections/{selection_id}", dependencies=[Depends(require_core_actor)])
-def get_problem_library_selection(selection_id: str) -> Dict[str, Any]:
+def get_problem_library_selection(selection_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
+    assert_resource_tenant(resource_type="problem_library_selection", resource_id=selection_id, principal=principal, request_route="/api/v1/problem-library/selections/{selection_id}", action="read")
     selection = persistence.get_problem_library_selection(selection_id) if persistence.is_postgres_enabled() else PROBLEM_LIBRARY_SELECTIONS.get(selection_id)
     if selection is None:
         raise HTTPException(status_code=404, detail="problem library selection not found")
+    assert_minor_consent(child_id=selection["athlete_id"], principal=principal, resource="problem_library_selection", action="read", request_route="/api/v1/problem-library/selections/{selection_id}")
     return selection
 
 
@@ -1808,14 +1811,14 @@ def list_evidence(subject_id: Optional[str] = None, principal: Principal = Depen
     matched_types = []
     for candidate_type in ("athlete", "assessment", "problem_statement", "diagnosis", "decision_candidate"):
         try:
-            assert_resource_tenant(resource_type=candidate_type, resource_id=subject_id, principal=principal, request_route="/api/v1/evidence", action="list")
-            matched_types.append(candidate_type)
-        except HTTPException as exc:
-            if exc.status_code not in {403, 404}:
-                raise
-    if len(matched_types) != 1:
-        raise HTTPException(status_code=403, detail="Evidence subject scope is missing or ambiguous")
-    resource_type = matched_types[0]
+            candidate_tenant = get_resource_tenant(resource_type=candidate_type, resource_id=subject_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Authoritative evidence subject scope store is unavailable") from exc
+        if candidate_tenant:
+            matched_types.append((candidate_type, str(candidate_tenant)))
+    if len(matched_types) != 1 or matched_types[0][1] != principal.tenant_id:
+        raise HTTPException(status_code=403, detail="Evidence subject scope is missing, ambiguous, or outside this academy")
+    resource_type = matched_types[0][0]
     athlete_id = _resolve_athlete_id(resource_type, subject_id)
     if not athlete_id:
         raise HTTPException(status_code=403, detail="Evidence subject has no verified athlete ownership chain")
