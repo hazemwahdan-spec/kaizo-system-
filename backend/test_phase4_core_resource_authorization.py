@@ -491,7 +491,7 @@ def test_mounted_route_denies_partial_scope_when_another_identifier_is_unmapped(
     monkeypatch.setattr(main, "MOUNTED_ROUTE_SCOPE_POLICIES", {
         ("POST", "/api/v1/competition/readiness"): {
             "roles": ("coach",),
-            "required_bindings": {"athlete_id": "athlete"},
+            "required_bindings": {},
             "consent_resource": "competition_readiness",
             "consent_action": "write",
         }
