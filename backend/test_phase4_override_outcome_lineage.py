@@ -24,6 +24,17 @@ def isolate_outcome_lineage_business_tests_from_tenant_guard():
     main.app.dependency_overrides[require_phase4_domain_access] = lambda: {
         "principal": SimpleNamespace(actor_id="phase4-outcome-test"), "tenant_id": "phase4-outcome-test-tenant"
     }
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO kaizo_tenants (tenant_id, display_name, status) VALUES (%s, %s, 'ACTIVE') ON CONFLICT (tenant_id) DO UPDATE SET status='ACTIVE'",
+                ("phase4-outcome-test-tenant", "Phase 4 Outcome Test"),
+            )
+            cur.execute(
+                "INSERT INTO kaizo_tenant_memberships (tenant_id, subject_id, role, status) VALUES (%s, %s, 'coach', 'ACTIVE') ON CONFLICT (tenant_id, subject_id, role) DO UPDATE SET status='ACTIVE'",
+                ("phase4-outcome-test-tenant", "phase4-outcome-test"),
+            )
+        conn.commit()
     try:
         yield
     finally:
