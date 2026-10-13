@@ -121,3 +121,23 @@ def test_all_mounted_and_generated_routes_require_fail_closed_resource_scope_gua
         "Mounted/generated routes without fail-closed resource scope guard: "
         f"{missing_scope_guard}"
     )
+
+
+def test_problem_library_routes_are_registered_exactly_once():
+    """Duplicate FastAPI registrations shadow later handlers and are not acceptable."""
+    from collections import Counter
+
+    rows = _registered_http_routes()
+    counts = Counter(
+        (method, row["path"])
+        for row in rows
+        for method in row["methods"]
+        if row["path"] in {
+            "/api/v1/problem-library",
+            "/api/v1/problem-library/selections",
+            "/api/v1/problem-library/selections/{selection_id}",
+        }
+    )
+    assert counts[("GET", "/api/v1/problem-library")] == 1
+    assert counts[("POST", "/api/v1/problem-library/selections")] == 1
+    assert counts[("GET", "/api/v1/problem-library/selections/{selection_id}")] == 1
