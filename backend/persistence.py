@@ -7,6 +7,7 @@ and DATABASE_URL. No credentials are stored in source control.
 
 import json
 import os
+import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
 
@@ -1429,8 +1430,10 @@ def persist_core_resource_and_binding(
     resource: Dict[str, Any],
     tenant_id: str,
     bound_by_actor_id: str,
+    actor_role: str = "coach",
+    correlation_id: str | None = None,
 ) -> None:
-    """Atomically persist a Core athlete/assessment and its authoritative tenant binding.
+    """Atomically persist a Core resource, tenant binding, and allow audit event.
 
     The identity migration must exist before this function can succeed. If either
     the resource write or binding write fails, the transaction rolls back both.
@@ -1507,4 +1510,17 @@ def persist_core_resource_and_binding(
                 raise PersistenceConfigurationError(
                     "Resource already has a different authoritative tenant binding"
                 )
+            cur.execute(
+                """INSERT INTO kaizo_authorization_audit
+                   (event_id, correlation_id, actor_id, actor_role, academy_id,
+                    resource_type, resource_id, action, decision, reason_code,
+                    consent_id, policy_version, request_route)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'create', 'allow',
+                           'RESOURCE_CREATED_AND_BOUND', NULL, 'phase4-core-v1', %s)""",
+                (
+                    str(uuid.uuid4()), (correlation_id or str(uuid.uuid4()))[:128],
+                    bound_by_actor_id, actor_role, tenant_id, resource_type, resource_id,
+                    f"/api/v1/{resource_type}s",
+                ),
+            )
         conn.commit()
