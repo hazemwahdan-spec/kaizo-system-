@@ -36,6 +36,21 @@ CREATE TABLE IF NOT EXISTS kaizo_resource_tenant_bindings (
 CREATE INDEX IF NOT EXISTS idx_kaizo_resource_tenant
     ON kaizo_resource_tenant_bindings (tenant_id, resource_type);
 
+
+CREATE TABLE IF NOT EXISTS kaizo_athlete_age_classifications (
+    athlete_id TEXT NOT NULL,
+    academy_id TEXT NOT NULL REFERENCES kaizo_tenants(tenant_id),
+    age_class TEXT NOT NULL CHECK (age_class IN ('adult', 'minor')),
+    status TEXT NOT NULL CHECK (status IN ('verified', 'revoked')),
+    version INTEGER NOT NULL CHECK (version > 0),
+    verified_by TEXT NOT NULL,
+    verified_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (athlete_id, academy_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_kaizo_age_classification_latest
+    ON kaizo_athlete_age_classifications (athlete_id, academy_id, version DESC);
+
 CREATE TABLE IF NOT EXISTS kaizo_guardian_relationships (
     relationship_id TEXT PRIMARY KEY,
     child_id TEXT NOT NULL,
