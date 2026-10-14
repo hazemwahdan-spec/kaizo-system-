@@ -83,7 +83,7 @@ class FEAT012RecordAthleteAssessmentTests(unittest.TestCase):
         )
         self.assertEqual(missing_measurements.status_code, 400)
 
-    def test_assessment_recording_is_audited(self):
+    def test_legacy_audit_log_read_fails_closed_until_authorization_is_deployed(self):
         athlete = self._athlete()
         response = self.client.post(
             "/api/v1/assessments",
@@ -96,13 +96,19 @@ class FEAT012RecordAthleteAssessmentTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 201)
 
-        audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
-        matches = [x for x in audit.json()["logs"] if x["action"] == "ASSESSMENT_RECORDED"]
+        # The event is recorded in the process-local buffer, but that buffer is
+        # not durable production audit evidence. The legacy read endpoint must
+        # remain unavailable until verified identity and tenant authorization
+        # are deployed; do not weaken this guard to satisfy a legacy test.
+        matches = [x for x in AUDIT_LOGS if x["action"] == "ASSESSMENT_RECORDED"]
         self.assertTrue(matches)
         self.assertEqual(matches[-1]["who"], "coach-feat012")
         self.assertEqual(matches[-1]["new_value"]["athlete_id"], athlete["athlete_id"])
         self.assertEqual(matches[-1]["new_value"]["template_id"], "ASSESSMENT-U11-GRIP")
+
+        audit = self.client.get("/api/v1/audit/logs")
+        self.assertEqual(audit.status_code, 503)
+        self.assertIn("temporarily disabled", audit.json()["detail"])
 
 
 if __name__ == "__main__":
