@@ -2,6 +2,7 @@ import unittest
 from fastapi.testclient import TestClient
 from main import app, EVIDENCE_RECORDS
 
+
 class FEAT051EvidenceSpineTests(unittest.TestCase):
     def setUp(self):
         EVIDENCE_RECORDS.clear()
@@ -47,21 +48,24 @@ class FEAT051EvidenceSpineTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 400)
 
-    def test_evidence_event_is_audited(self):
-        self.client.post("/api/v1/evidence", json={
-            "evidence_id": "EVD-AUDIT",
+    def test_audit_endpoint_fails_closed_without_verified_authorization(self):
+        created = self.client.post("/api/v1/evidence", json={
+            "evidence_id": "EVD-AUDIT-BOUNDARY",
             "subject_type": "feature",
             "subject_id": "FEAT-051",
             "evidence_level": "E2",
             "status": "VERIFIED",
-            "claim": "audited evidence",
+            "claim": "audit access must remain protected",
             "verified_by": "coach-002"
         })
+        self.assertEqual(created.status_code, 201)
+
+        # The legacy audit endpoint intentionally stays unavailable until the
+        # verified identity + tenant-scoped authorization path is deployed.
         audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
-        matches = [x for x in audit.json()["logs"] if x["action"] == "EVIDENCE_RECORDED"]
-        self.assertTrue(matches)
-        self.assertEqual(matches[-1]["who"], "coach-002")
+        self.assertEqual(audit.status_code, 503)
+        self.assertIn("temporarily disabled", audit.json()["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()
