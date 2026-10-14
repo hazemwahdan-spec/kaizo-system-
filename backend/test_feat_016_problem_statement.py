@@ -66,11 +66,16 @@ class FEAT016StructuredProblemStatementTests(unittest.TestCase):
             "athlete_id":athlete["athlete_id"],"assessment_id":assessment["assessment_id"],
             "statement":"Problem with entry timing.","problem_type":"timing","created_by":"coach-feat016"})
         self.assertEqual(r.status_code,201)
-        logs=self.client.get("/api/v1/audit/logs").json()["logs"]
-        matches=[x for x in logs if x["action"]=="PROBLEM_STATEMENT_CREATED"]
+        # Inspect the emitted in-process event without opening the legacy
+        # unauthenticated audit-read endpoint. This is test evidence only;
+        # it does not prove durable or tenant-scoped production audit.
+        matches=[x for x in main.AUDIT_LOGS if x["action"]=="PROBLEM_STATEMENT_CREATED"]
         self.assertTrue(matches)
         self.assertEqual(matches[-1]["who"],"coach-feat016")
         self.assertEqual(matches[-1]["new_value"]["problem_type"],"timing")
+        audit=self.client.get("/api/v1/audit/logs")
+        self.assertEqual(audit.status_code,503)
+        self.assertIn("temporarily disabled",audit.json()["detail"])
 
 if __name__=="__main__":
     unittest.main()
