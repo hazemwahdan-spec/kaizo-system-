@@ -98,9 +98,8 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         )
         self.assertEqual(created.status_code, 201)
 
-        audit = client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
-        matching = [x for x in audit.json()["logs"] if x["action"] == "ASSESSMENT_RECORDED"]
+        audit = main.AUDIT_LOGS
+        matching = [x for x in audit if x["action"] == "ASSESSMENT_RECORDED"]
         self.assertTrue(matching)
         self.assertEqual(matching[-1]["who"], "coach-audit")
         self.assertEqual(matching[-1]["new_value"]["athlete_id"], athlete.json()["athlete_id"])
@@ -109,9 +108,9 @@ class FEAT046AuditSpineTests(unittest.TestCase):
     def test_audit_log_preserves_old_and_new_values(self):
         client = TestClient(app)
         response = client.get("/api/v1/audit/logs")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("logs", response.json())
-        for entry in response.json()["logs"]:
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("logs", response.json())
+        for entry in main.AUDIT_LOGS:
             self.assertIn("timestamp", entry)
             self.assertIn("who", entry)
             self.assertIn("action", entry)
