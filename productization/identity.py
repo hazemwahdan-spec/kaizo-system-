@@ -1,9 +1,10 @@
 """KAIZO Phase 7 authentication boundary.
 
 Development headers are explicitly unverified test scaffolding.
-Production OIDC mode validates a bearer JWT against configured issuer,
-audience and JWKS. No external provider is claimed until these settings
-are supplied and live verification succeeds.
+Production OIDC mode validates bearer JWTs against the KAIZO production
+Auth0 tenant and API audience. Environment variables may override these
+public trust settings for an explicitly configured deployment; signature,
+issuer, audience and expiry validation always remain mandatory.
 """
 from __future__ import annotations
 
@@ -34,6 +35,23 @@ class Principal:
 
 VALID_ROLES = {"academy", "coach", "athlete", "parent"}
 
+# Public, deployment-specific OIDC trust configuration. These are not secrets.
+# Pinning the expected issuer and audience avoids a fail-open path when the
+# hosting platform omits optional environment variables; JWT verification is
+# still strict and can be overridden explicitly for another deployment.
+DEFAULT_OIDC_ISSUER = "https://kaizo-system.us.auth0.com/"
+DEFAULT_OIDC_AUDIENCE = "https://api.kaizo.system"
+DEFAULT_OIDC_JWKS_URL = "https://kaizo-system.us.auth0.com/.well-known/jwks.json"
+
+
+def _oidc_settings() -> tuple[str, str, str]:
+    issuer = os.getenv("KAIZO_OIDC_ISSUER", DEFAULT_OIDC_ISSUER).strip()
+    audience = os.getenv("KAIZO_OIDC_AUDIENCE", DEFAULT_OIDC_AUDIENCE).strip()
+    jwks_url = os.getenv("KAIZO_OIDC_JWKS_URL", DEFAULT_OIDC_JWKS_URL).strip()
+    if not issuer or not audience or not jwks_url:
+        raise IdentityNotConfiguredError("OIDC issuer, audience and JWKS URL must be configured")
+    return issuer, audience, jwks_url
+
 
 def _claims_to_principal(claims: dict[str, Any]) -> Principal:
     actor_id = claims.get("sub")
@@ -61,14 +79,7 @@ def resolve_bearer_principal(authorization: str | None) -> Principal:
     if not token:
         raise IdentityNotConfiguredError("Bearer token is empty")
 
-    issuer = os.getenv("KAIZO_OIDC_ISSUER", "").strip()
-    audience = os.getenv("KAIZO_OIDC_AUDIENCE", "").strip()
-    jwks_url = os.getenv("KAIZO_OIDC_JWKS_URL", "").strip()
-    if not issuer or not audience or not jwks_url:
-        raise IdentityNotConfiguredError(
-            "OIDC production identity requires KAIZO_OIDC_ISSUER, "
-            "KAIZO_OIDC_AUDIENCE and KAIZO_OIDC_JWKS_URL"
-        )
+    issuer, audience, jwks_url = _oidc_settings()
 
     try:
         client = PyJWKClient(jwks_url)
@@ -93,14 +104,7 @@ def verify_bearer_token(authorization: str | None) -> dict[str, Any]:
     token = authorization[7:].strip()
     if not token:
         raise IdentityNotConfiguredError("Bearer token is empty")
-    issuer = os.getenv("KAIZO_OIDC_ISSUER", "").strip()
-    audience = os.getenv("KAIZO_OIDC_AUDIENCE", "").strip()
-    jwks_url = os.getenv("KAIZO_OIDC_JWKS_URL", "").strip()
-    if not issuer or not audience or not jwks_url:
-        raise IdentityNotConfiguredError(
-            "OIDC production identity requires KAIZO_OIDC_ISSUER, "
-            "KAIZO_OIDC_AUDIENCE and KAIZO_OIDC_JWKS_URL"
-        )
+    issuer, audience, jwks_url = _oidc_settings()
     try:
         client = PyJWKClient(jwks_url)
         signing_key = client.get_signing_key_from_jwt(token)
