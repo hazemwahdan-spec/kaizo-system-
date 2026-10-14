@@ -1,7 +1,7 @@
 import unittest
 
 from fastapi.testclient import TestClient
-from main import app, DIGITAL_TWIN_STATE
+from main import app, DIGITAL_TWIN_STATE, AUDIT_LOGS
 
 
 class FEAT041DigitalTwinStateTests(unittest.TestCase):
@@ -101,7 +101,7 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        audit = main.AUDIT_LOGS
+        audit = AUDIT_LOGS
         matches = [
             x for x in audit
             if x["action"] == "DIGITAL_TWIN_SYNCHRONIZED"
