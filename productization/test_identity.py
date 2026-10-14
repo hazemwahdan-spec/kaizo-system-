@@ -22,11 +22,13 @@ def test_unknown_role_is_rejected_in_development(monkeypatch):
         resolve_principal("x", "admin", "academy-a", None)
 
 
-def test_oidc_mode_fails_closed_without_provider_configuration(monkeypatch):
+def test_oidc_mode_rejects_malformed_bearer_token(monkeypatch):
+    # The production issuer, audience and JWKS URL have safe public defaults.
+    # Missing optional environment overrides must not disable those trust pins.
     monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
     for name in ("KAIZO_OIDC_ISSUER", "KAIZO_OIDC_AUDIENCE", "KAIZO_OIDC_JWKS_URL"):
         monkeypatch.delenv(name, raising=False)
-    with pytest.raises(IdentityNotConfiguredError, match="OIDC production identity"):
+    with pytest.raises(IdentityNotConfiguredError, match="OIDC token verification failed"):
         resolve_principal("ignored", "coach", "ignored", None, "Bearer test-token")
 
 
