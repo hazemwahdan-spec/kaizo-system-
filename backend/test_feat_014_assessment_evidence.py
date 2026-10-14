@@ -117,11 +117,20 @@ class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 201)
-        logs = self.client.get("/api/v1/audit/logs").json()["logs"]
-        actions = [entry for entry in logs if entry["action"] == "ASSESSMENT_EVIDENCE_ATTACHED"]
+        # Assert the audit event in-process; the public audit endpoint is intentionally
+        # fail-closed until authenticated audit-read authorization is enabled.
+        actions = [
+            entry
+            for entry in main.AUDIT_LOGS
+            if entry["action"] == "ASSESSMENT_EVIDENCE_ATTACHED"
+        ]
         self.assertTrue(actions)
         self.assertEqual(actions[-1]["who"], "coach-feat014")
         self.assertEqual(actions[-1]["new_value"]["assessment_id"], self.assessment_id)
+
+        audit_response = self.client.get("/api/v1/audit/logs")
+        self.assertEqual(audit_response.status_code, 503)
+        self.assertIn("temporarily disabled", audit_response.json()["detail"])
 
 
 if __name__ == "__main__":
