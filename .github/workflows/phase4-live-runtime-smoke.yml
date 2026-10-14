@@ -63,6 +63,23 @@ jobs:
           print(f"LIVE_OPENAPI_PASS: {len(paths)} paths; required Phase 4 paths present")
           PY
 
+      - name: Verify protected audit endpoint fails closed without identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Never print the response body: it may contain audit metadata if the
+          # deployed authorization boundary is missing.
+          status="$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
+          case "$status" in
+            401|403|503)
+              echo "LIVE_UNAUTHENTICATED_DENIAL_PASS: /api/v1/audit/logs returned HTTP $status without a bearer token"
+              ;;
+            *)
+              echo "LIVE_UNAUTHENTICATED_DENIAL_FAILED: protected audit endpoint returned HTTP $status without a bearer token"
+              exit 1
+              ;;
+          esac
+
       - name: Verify deployed health endpoint
         shell: bash
         run: |

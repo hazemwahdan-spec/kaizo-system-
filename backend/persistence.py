@@ -107,6 +107,12 @@ CREATE TABLE IF NOT EXISTS kaizo_knowledge_repository (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_knowledge_ingest_records (
+    item_id TEXT PRIMARY KEY,
+    payload JSONB NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kaizo_state_snapshots (
     snapshot_id TEXT PRIMARY KEY,
     athlete_id TEXT NOT NULL,
@@ -314,11 +320,53 @@ def initialize() -> None:
         conn.commit()
 
 
-def upsert_athlete(athlete: Dict[str, Any]) -> None:
+def upsert_athlete(
+    athlete: Dict[str, Any], *, tenant_id: str | None = None,
+    bound_by_subject: str | None = None,
+) -> None:
     if not is_postgres_enabled():
         return
     with connection() as conn:
         with conn.cursor() as cur:
+            if tenant_id is not None or bound_by_subject is not None:
+                if not tenant_id or not bound_by_subject:
+                    raise PersistenceConfigurationError(
+                        "Tenant-scoped athlete writes require tenant_id and bound_by_subject"
+                    )
+                cur.execute(
+                    """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='athlete' AND resource_id=%s FOR UPDATE""",
+                    (athlete["athlete_id"],),
+                )
+                binding = cur.fetchone()
+                if binding is not None and binding[0] != tenant_id:
+                    raise PersistenceConfigurationError(
+                        "Athlete resource is already bound to another tenant"
+                    )
+                if binding is None:
+                    cur.execute(
+                        "SELECT 1 FROM kaizo_athletes WHERE athlete_id=%s",
+                        (athlete["athlete_id"],),
+                    )
+                    if cur.fetchone() is not None:
+                        raise PersistenceConfigurationError(
+                            "Refusing to auto-bind an existing unowned athlete record"
+                        )
+                    cur.execute(
+                        """INSERT INTO kaizo_resource_tenant_bindings
+                           (resource_type,resource_id,tenant_id,bound_by_subject)
+                           SELECT 'athlete',%s,t.tenant_id,%s
+                           FROM kaizo_tenants t
+                           JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                           WHERE t.tenant_id=%s AND t.status='ACTIVE'
+                             AND m.subject_id=%s AND m.status='ACTIVE'
+                           LIMIT 1""",
+                        (athlete["athlete_id"], bound_by_subject, tenant_id, bound_by_subject),
+                    )
+                    if cur.rowcount != 1:
+                        raise PersistenceConfigurationError(
+                            "Active tenant membership is required to bind athlete"
+                        )
             cur.execute(
                 """
                 INSERT INTO kaizo_athletes
@@ -472,11 +520,53 @@ def get_digital_twin(entity_id: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def upsert_knowledge(item_id: str, payload: Dict[str, Any], updated_at: str) -> None:
+def upsert_knowledge(
+    item_id: str, payload: Dict[str, Any], updated_at: str, *,
+    tenant_id: str | None = None, bound_by_subject: str | None = None,
+) -> None:
     if not is_postgres_enabled():
         return
     with connection() as conn:
         with conn.cursor() as cur:
+            if tenant_id is not None or bound_by_subject is not None:
+                if not tenant_id or not bound_by_subject:
+                    raise PersistenceConfigurationError(
+                        "Tenant-scoped knowledge writes require tenant_id and bound_by_subject"
+                    )
+                cur.execute(
+                    """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='knowledge' AND resource_id=%s FOR UPDATE""",
+                    (item_id,),
+                )
+                binding = cur.fetchone()
+                if binding is not None and binding[0] != tenant_id:
+                    raise PersistenceConfigurationError(
+                        "Knowledge resource is already bound to another tenant"
+                    )
+                if binding is None:
+                    cur.execute(
+                        "SELECT 1 FROM kaizo_knowledge_repository WHERE item_id=%s",
+                        (item_id,),
+                    )
+                    if cur.fetchone() is not None:
+                        raise PersistenceConfigurationError(
+                            "Refusing to auto-bind an existing unowned knowledge record"
+                        )
+                    cur.execute(
+                        """INSERT INTO kaizo_resource_tenant_bindings
+                           (resource_type,resource_id,tenant_id,bound_by_subject)
+                           SELECT 'knowledge',%s,t.tenant_id,%s
+                           FROM kaizo_tenants t
+                           JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                           WHERE t.tenant_id=%s AND t.status='ACTIVE'
+                             AND m.subject_id=%s AND m.status='ACTIVE'
+                           LIMIT 1""",
+                        (item_id, bound_by_subject, tenant_id, bound_by_subject),
+                    )
+                    if cur.rowcount != 1:
+                        raise PersistenceConfigurationError(
+                            "Active tenant membership is required to bind knowledge"
+                        )
             cur.execute(
                 """
                 INSERT INTO kaizo_knowledge_repository (item_id, payload, updated_at)
@@ -490,14 +580,83 @@ def upsert_knowledge(item_id: str, payload: Dict[str, Any], updated_at: str) -> 
         conn.commit()
 
 
-def load_knowledge() -> Dict[str, Any]:
+def upsert_ingested_knowledge(
+    item_id: str, payload: Dict[str, Any], updated_at: str, *,
+    tenant_id: str, bound_by_subject: str,
+) -> None:
+    """Persist legacy Knowledge Engine ingestion in its own tenant-scoped store."""
+    if not is_postgres_enabled():
+        return
+    if not tenant_id or not bound_by_subject:
+        raise PersistenceConfigurationError(
+            "Tenant-scoped ingestion requires tenant_id and bound_by_subject"
+        )
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                   WHERE resource_type='knowledge_ingest' AND resource_id=%s FOR UPDATE""",
+                (item_id,),
+            )
+            binding = cur.fetchone()
+            if binding is not None and binding[0] != tenant_id:
+                raise PersistenceConfigurationError(
+                    "Ingested knowledge is already bound to another tenant"
+                )
+            if binding is None:
+                cur.execute(
+                    "SELECT 1 FROM kaizo_knowledge_ingest_records WHERE item_id=%s",
+                    (item_id,),
+                )
+                if cur.fetchone() is not None:
+                    raise PersistenceConfigurationError(
+                        "Refusing to auto-bind an existing unowned ingestion record"
+                    )
+                cur.execute(
+                    """INSERT INTO kaizo_resource_tenant_bindings
+                       (resource_type,resource_id,tenant_id,bound_by_subject)
+                       SELECT 'knowledge_ingest',%s,t.tenant_id,%s
+                       FROM kaizo_tenants t
+                       JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                       WHERE t.tenant_id=%s AND t.status='ACTIVE'
+                         AND m.subject_id=%s AND m.status='ACTIVE'
+                       LIMIT 1""",
+                    (item_id, bound_by_subject, tenant_id, bound_by_subject),
+                )
+                if cur.rowcount != 1:
+                    raise PersistenceConfigurationError(
+                        "Active tenant membership is required to bind ingested knowledge"
+                    )
+            cur.execute(
+                """INSERT INTO kaizo_knowledge_ingest_records(item_id,payload,updated_at)
+                   VALUES (%s,%s::jsonb,%s)
+                   ON CONFLICT (item_id) DO UPDATE SET
+                     payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at""",
+                (item_id, json.dumps(payload), updated_at),
+            )
+        conn.commit()
+
+
+def load_knowledge(tenant_id: str | None = None) -> Dict[str, Any]:
+    """Load knowledge globally only for trusted internal jobs, or tenant-scoped for requests."""
     if not is_postgres_enabled():
         return {}
     with connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT item_id, payload FROM kaizo_knowledge_repository ORDER BY item_id"
-            )
+            if tenant_id is None:
+                cur.execute(
+                    "SELECT item_id, payload FROM kaizo_knowledge_repository ORDER BY item_id"
+                )
+            else:
+                cur.execute(
+                    """SELECT k.item_id,k.payload
+                       FROM kaizo_knowledge_repository k
+                       JOIN kaizo_resource_tenant_bindings b
+                         ON b.resource_type='knowledge' AND b.resource_id=k.item_id
+                       WHERE b.tenant_id=%s
+                       ORDER BY k.item_id""",
+                    (tenant_id,),
+                )
             rows = cur.fetchall()
     return {row[0]: row[1] for row in rows}
 
@@ -1195,11 +1354,51 @@ def list_state_snapshots(athlete_id: Optional[str] = None) -> list[Dict[str, Any
             rows=cur.fetchall()
     return [{"snapshot_id":r[0],"athlete_id":r[1],"assessment_id":r[2],"snapshot_type":r[3],"measurements":r[4],"kpis":r[5],"captured_by":r[6],"captured_at":r[7],"created_at":r[8]} for r in rows]
 
-def upsert_kpi_definition(definition: Dict[str, Any]) -> None:
+def upsert_kpi_definition(
+    definition: Dict[str, Any], *, tenant_id: str | None = None,
+    bound_by_subject: str | None = None,
+) -> None:
     if not is_postgres_enabled():
         return
     with connection() as conn:
         with conn.cursor() as cur:
+            if tenant_id is not None or bound_by_subject is not None:
+                if not tenant_id or not bound_by_subject:
+                    raise PersistenceConfigurationError(
+                        "Tenant-scoped KPI writes require tenant_id and bound_by_subject"
+                    )
+                cur.execute(
+                    """SELECT tenant_id FROM kaizo_resource_tenant_bindings
+                       WHERE resource_type='kpi_definition' AND resource_id=%s FOR UPDATE""",
+                    (definition["kpi_id"],),
+                )
+                binding = cur.fetchone()
+                if binding is not None and binding[0] != tenant_id:
+                    raise PersistenceConfigurationError("KPI definition is already bound to another tenant")
+                if binding is None:
+                    cur.execute(
+                        "SELECT 1 FROM kaizo_kpi_definitions WHERE kpi_id=%s",
+                        (definition["kpi_id"],),
+                    )
+                    if cur.fetchone() is not None:
+                        raise PersistenceConfigurationError(
+                            "Refusing to auto-bind an existing unowned KPI definition"
+                        )
+                    cur.execute(
+                        """INSERT INTO kaizo_resource_tenant_bindings
+                           (resource_type,resource_id,tenant_id,bound_by_subject)
+                           SELECT 'kpi_definition',%s,t.tenant_id,%s
+                           FROM kaizo_tenants t
+                           JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                           WHERE t.tenant_id=%s AND t.status='ACTIVE'
+                             AND m.subject_id=%s AND m.status='ACTIVE'
+                           LIMIT 1""",
+                        (definition["kpi_id"], bound_by_subject, tenant_id, bound_by_subject),
+                    )
+                    if cur.rowcount != 1:
+                        raise PersistenceConfigurationError(
+                            "Active tenant membership is required to bind KPI definition"
+                        )
             cur.execute("""
                 INSERT INTO kaizo_kpi_definitions
                     (kpi_id, name, metric_name, unit, target, direction, defined_by, status, created_at, updated_at)
@@ -1224,11 +1423,49 @@ def get_kpi_definition(kpi_id: str) -> Optional[Dict[str, Any]]:
     return {"kpi_id":row[0],"name":row[1],"metric_name":row[2],"unit":row[3],"target":row[4],"direction":row[5],"defined_by":row[6],"status":row[7],"created_at":row[8],"updated_at":row[9]}
 
 
-def upsert_kpi_capture(capture: Dict[str, Any]) -> None:
+def upsert_kpi_capture(
+    capture: Dict[str, Any], *, tenant_id: str | None = None,
+    bound_by_subject: str | None = None, role: str | None = None,
+    trace_id: str | None = None, action: str = "POST:/api/v1/kpis/captures",
+) -> None:
     if not is_postgres_enabled():
         return
     with connection() as conn:
         with conn.cursor() as cur:
+            if tenant_id is not None or bound_by_subject is not None or role is not None:
+                if not tenant_id or not bound_by_subject or not role:
+                    raise PersistenceConfigurationError(
+                        "Tenant-scoped KPI capture writes require tenant, actor and role"
+                    )
+                for resource_type, resource_id in (
+                    ("athlete", capture["athlete_id"]),
+                    ("kpi_definition", capture["kpi_id"]),
+                ):
+                    cur.execute(
+                        """SELECT 1
+                           FROM kaizo_resource_tenant_bindings b
+                           JOIN kaizo_tenants t ON t.tenant_id=b.tenant_id
+                           JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                           WHERE b.resource_type=%s AND b.resource_id=%s
+                             AND b.tenant_id=%s AND t.status='ACTIVE'
+                             AND m.subject_id=%s AND m.role=%s AND m.status='ACTIVE'
+                           LIMIT 1""",
+                        (resource_type, resource_id, tenant_id, bound_by_subject, role),
+                    )
+                    allowed = cur.fetchone() is not None
+                    cur.execute(
+                        """INSERT INTO kaizo_p14_audit_events
+                           (actor_subject_id,event_type,tenant_id,resource_type,action,
+                            allowed,reason_code,trace_id,metadata)
+                           VALUES (%s,'authorization_decision',%s,%s,%s,%s,%s,%s,%s::jsonb)""",
+                        (bound_by_subject, tenant_id, resource_type, action, allowed,
+                         "active_membership_and_resource_binding" if allowed else "kpi_or_athlete_tenant_binding_missing",
+                         trace_id, json.dumps({"source": "kpi_capture", "resource_id": resource_id})),
+                    )
+                    if not allowed:
+                        raise PersistenceConfigurationError(
+                            f"{resource_type} is not owned by the active caller tenant"
+                        )
             cur.execute("""
                 INSERT INTO kaizo_kpi_captures
                     (capture_id,athlete_id,kpi_id,value,captured_by,assessment_id,captured_at,created_at)

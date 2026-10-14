@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from phase4_domain_authorization import require_phase4_domain_access
 from pydantic import BaseModel, Field
 
 import persistence
@@ -25,7 +26,7 @@ from drill_library import Drill, validate_drill
 from problem_drill_linkage import ProblemDrillLink, validate_link
 
 
-router = APIRouter(prefix="/api/v1/features", tags=["Feature Runtime"])
+router = APIRouter(prefix="/api/v1/features", tags=["Feature Runtime"], dependencies=[Depends(require_phase4_domain_access)])
 
 
 class FeatureRecordRequest(BaseModel):
@@ -134,23 +135,36 @@ def _ensure_schema() -> None:
 _MEMORY: Dict[str, Dict[str, Any]] = {}
 
 
-def _save(record: Dict[str, Any]) -> None:
+def _save(
+    record: Dict[str, Any], *, tenant_id: str | None = None,
+    bound_by_subject: str | None = None,
+) -> None:
     if not persistence.is_postgres_enabled():
         _MEMORY[record["record_id"]] = record
         return
+    if not tenant_id or not bound_by_subject:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required to persist feature records")
     _ensure_schema()
     with persistence.connection() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_resource_tenant_bindings
+                   (resource_type,resource_id,tenant_id,bound_by_subject)
+                   SELECT 'feature_record',%s,t.tenant_id,%s
+                   FROM kaizo_tenants t
+                   JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                   WHERE t.tenant_id=%s AND t.status='ACTIVE'
+                     AND m.subject_id=%s AND m.status='ACTIVE'
+                   LIMIT 1""",
+                (record["record_id"], bound_by_subject, tenant_id, bound_by_subject),
+            )
+            if cur.rowcount != 1:
+                raise HTTPException(status_code=403, detail="Active tenant membership is required to create a feature record")
             cur.execute("""
                 INSERT INTO kaizo_feature_records
                 (record_id,feature_id,subject_id,actor_id,payload,evidence_refs,status,
                  coach_final_authority,execution_authorized,created_at,updated_at)
                 VALUES (%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s,%s,%s)
-                ON CONFLICT (record_id) DO UPDATE SET
-                    payload=EXCLUDED.payload,
-                    evidence_refs=EXCLUDED.evidence_refs,
-                    status=EXCLUDED.status,
-                    updated_at=EXCLUDED.updated_at
             """, (
                 record["record_id"],record["feature_id"],record["subject_id"],record["actor_id"],
                 __import__("json").dumps(record["payload"]),
@@ -160,16 +174,21 @@ def _save(record: Dict[str, Any]) -> None:
         conn.commit()
 
 
-def _get(record_id: str) -> Optional[Dict[str, Any]]:
+def _get(record_id: str, tenant_id: str | None = None) -> Optional[Dict[str, Any]]:
     if not persistence.is_postgres_enabled():
         return _MEMORY.get(record_id)
+    if not tenant_id:
+        return None
     _ensure_schema()
     with persistence.connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""SELECT record_id,feature_id,subject_id,actor_id,payload,
-                                  evidence_refs,status,coach_final_authority,
-                                  execution_authorized,created_at,updated_at
-                           FROM kaizo_feature_records WHERE record_id=%s""",(record_id,))
+            cur.execute("""SELECT r.record_id,r.feature_id,r.subject_id,r.actor_id,r.payload,
+                                  r.evidence_refs,r.status,r.coach_final_authority,
+                                  r.execution_authorized,r.created_at,r.updated_at
+                           FROM kaizo_feature_records r
+                           JOIN kaizo_resource_tenant_bindings b
+                             ON b.resource_type='feature_record' AND b.resource_id=r.record_id
+                           WHERE r.record_id=%s AND b.tenant_id=%s""",(record_id,tenant_id))
             row=cur.fetchone()
     if not row:
         return None
@@ -179,17 +198,22 @@ def _get(record_id: str) -> Optional[Dict[str, Any]]:
             "created_at":row[9],"updated_at":row[10]}
 
 
-def _list(feature_id: str) -> List[Dict[str, Any]]:
+def _list(feature_id: str, tenant_id: str | None = None) -> List[Dict[str, Any]]:
     if not persistence.is_postgres_enabled():
         return [r for r in _MEMORY.values() if r["feature_id"]==feature_id]
+    if not tenant_id:
+        return []
     _ensure_schema()
     with persistence.connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""SELECT record_id,feature_id,subject_id,actor_id,payload,
-                                  evidence_refs,status,coach_final_authority,
-                                  execution_authorized,created_at,updated_at
-                           FROM kaizo_feature_records WHERE feature_id=%s
-                           ORDER BY created_at""",(feature_id,))
+            cur.execute("""SELECT r.record_id,r.feature_id,r.subject_id,r.actor_id,r.payload,
+                                  r.evidence_refs,r.status,r.coach_final_authority,
+                                  r.execution_authorized,r.created_at,r.updated_at
+                           FROM kaizo_feature_records r
+                           JOIN kaizo_resource_tenant_bindings b
+                             ON b.resource_type='feature_record' AND b.resource_id=r.record_id
+                           WHERE r.feature_id=%s AND b.tenant_id=%s
+                           ORDER BY r.created_at""",(feature_id,tenant_id))
             rows=cur.fetchall()
     return [{"record_id":r[0],"feature_id":r[1],"subject_id":r[2],"actor_id":r[3],
              "payload":r[4],"evidence_refs":r[5],"status":r[6],
@@ -354,14 +378,35 @@ def _validate(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
     return contract
 
 
-def _create(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
+def _create(feature_id: str, req: FeatureRecordRequest, phase4: Dict[str, Any] | None = None) -> Dict[str, Any]:
     contract=_validate(feature_id,req)
     now=_now()
+    principal = (phase4 or {}).get("principal")
+    tenant_id = (phase4 or {}).get("tenant_id")
+    actor_subject = getattr(principal, "actor_id", None)
+    if persistence.is_postgres_enabled() and (not tenant_id or not actor_subject):
+        raise HTTPException(status_code=503, detail="Verified tenant context is required to create a feature record")
+    if persistence.is_postgres_enabled() and req.actor_id.strip() != actor_subject:
+        raise HTTPException(status_code=403, detail={"decision":"DENY","reason_code":"actor_identity_mismatch","field":"actor_id"})
+    effective_actor = actor_subject or req.actor_id.strip()
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1 FROM kaizo_resource_tenant_bindings
+                       WHERE resource_id=%s AND tenant_id<>%s LIMIT 1""",
+                    (req.subject_id.strip(), tenant_id),
+                )
+                if cur.fetchone() is not None:
+                    raise HTTPException(
+                        status_code=403,
+                        detail={"decision":"DENY","reason_code":"subject_tenant_mismatch"},
+                    )
     record={
         "feature_id":feature_id,
         "record_id":str(uuid4()),
         "subject_id":req.subject_id.strip(),
-        "actor_id":req.actor_id.strip(),
+        "actor_id":effective_actor,
         "payload":req.payload,
         "evidence_refs":req.evidence_refs,
         "status":contract["status"],
@@ -370,9 +415,9 @@ def _create(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
         "created_at":now,
         "updated_at":now,
     }
-    _save(record)
+    _save(record, tenant_id=tenant_id, bound_by_subject=effective_actor)
     if persistence.is_postgres_enabled():
-        persistence.append_audit(timestamp=now,who=req.actor_id.strip(),
+        persistence.append_audit(timestamp=now,who=effective_actor,
             action=f"{feature_id}_RECORDED",old_value=None,new_value=record,
             why=f"Feature contract accepted: {contract['name']}.")
     return record
@@ -383,15 +428,26 @@ def _create(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
 def _register(feature_id: str) -> None:
     slug=CONTRACTS[feature_id]["name"].lower().replace("/","-").replace(" ","-")
     slug="".join(c for c in slug if c.isalnum() or c=="-").strip("-")
-    def create(req: FeatureRecordRequest, _fid: str=feature_id):
-        return _create(_fid,req)
-    def get(record_id: str, _fid: str=feature_id):
-        record=_get(record_id)
+    def create(
+        req: FeatureRecordRequest,
+        phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+        _fid: str = feature_id,
+    ):
+        return _create(_fid, req, phase4)
+    def get(
+        record_id: str,
+        phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+        _fid: str = feature_id,
+    ):
+        record=_get(record_id, tenant_id=phase4.get("tenant_id"))
         if record is None or record["feature_id"] != _fid:
             raise HTTPException(status_code=404, detail="feature record not found")
         return record
-    def list_records(_fid: str=feature_id):
-        return {"feature_id":_fid,"feature":CONTRACTS[_fid]["name"],"records":_list(_fid)}
+    def list_records(
+        phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+        _fid: str = feature_id,
+    ):
+        return {"feature_id":_fid,"feature":CONTRACTS[_fid]["name"],"records":_list(_fid, tenant_id=phase4.get("tenant_id"))}
     router.add_api_route(f"/{feature_id.lower()}/{slug}",create,methods=["POST"],status_code=201,
                          name=f"{feature_id}_create",summary=CONTRACTS[feature_id]["name"])
     router.add_api_route(f"/{feature_id.lower()}/{slug}/{{record_id}}",get,methods=["GET"],

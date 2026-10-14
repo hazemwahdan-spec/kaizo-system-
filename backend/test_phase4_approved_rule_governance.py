@@ -1,17 +1,56 @@
 """Phase 4 acceptance for versioned, approved rule governance."""
 import os
+from types import SimpleNamespace
+from uuid import uuid4
 
 os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
 
 from fastapi.testclient import TestClient
+import pytest
 import main
 import persistence
+from phase4_domain_authorization import require_phase4_domain_access
 from progression_rules import ProgressionRegressionRule
 
 persistence.initialize()
 client = TestClient(main.app)
+_TEST_ACTOR_ID = "phase4-rule-test"
 RULE_URL = "/api/v1/features/feat-029/progression-regression-rules"
+
+
+@pytest.fixture(autouse=True)
+def isolate_domain_authorization_from_rule_contract_tests():
+    # Stub only verified identity resolution; the durable tenant-membership
+    # check in feature_runtime remains real and must pass against PostgreSQL.
+    global _TEST_ACTOR_ID
+    actor_id = "phase4-rule-test-" + uuid4().hex
+    _TEST_ACTOR_ID = actor_id
+    tenant_id = "phase4-rule-tenant-" + uuid4().hex
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO kaizo_tenants(tenant_id,display_name) VALUES (%s,%s)",
+                (tenant_id, tenant_id),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_tenant_memberships(tenant_id,subject_id,role,status)
+                   VALUES (%s,%s,'coach','ACTIVE')""",
+                (tenant_id, actor_id),
+            )
+        conn.commit()
+
+    previous = main.app.dependency_overrides.get(require_phase4_domain_access)
+    main.app.dependency_overrides[require_phase4_domain_access] = lambda: {
+        "principal": SimpleNamespace(actor_id=actor_id), "tenant_id": tenant_id
+    }
+    try:
+        yield
+    finally:
+        if previous is None:
+            main.app.dependency_overrides.pop(require_phase4_domain_access, None)
+        else:
+            main.app.dependency_overrides[require_phase4_domain_access] = previous
 
 
 def payload(evidence_refs=None, **overrides):
@@ -27,7 +66,7 @@ def payload(evidence_refs=None, **overrides):
     body.update(overrides)
     return {
         "subject_id": "P4-RULE-SUBJECT",
-        "actor_id": "phase4-rule-test",
+        "actor_id": _TEST_ACTOR_ID,
         "payload": body,
         "evidence_refs": evidence_refs if evidence_refs is not None else ["P4-RULE-SOURCE-001"],
         "coach_final_authority": True,

@@ -1,6 +1,11 @@
 from fastapi.testclient import TestClient
 
 import academy_ops_runtime as academy
+import main
+from phase4_identity_boundary import Principal, require_phase4_principal
+from phase4_domain_authorization import require_phase4_domain_access
+main.app.dependency_overrides[require_phase4_principal] = lambda: Principal(actor_id="test-coach", role="coach", tenant_id="test-tenant", resource_owner_id=None, verified=True, source="test")
+main.app.dependency_overrides[require_phase4_domain_access] = lambda: {"principal": "test", "tenant_id": "test-tenant"}
 
 
 def setup_function():

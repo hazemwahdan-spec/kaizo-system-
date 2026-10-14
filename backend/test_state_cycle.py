@@ -4,6 +4,11 @@ os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
 from fastapi.testclient import TestClient
 
 from main import app
+from phase4_route_guard import require_phase4_route_access
+
+# This suite validates state-cycle semantics; dedicated Phase 4 security tests
+# retain the real dependency and verify fail-closed authorization.
+app.dependency_overrides[require_phase4_route_access] = lambda: {"test_only": True}
 
 client = TestClient(app)
 

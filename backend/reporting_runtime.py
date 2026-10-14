@@ -6,7 +6,8 @@ representation of approved data only; no report authorizes execution.
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from uuid import uuid4
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from phase4_domain_authorization import require_phase4_domain_access
 from pydantic import BaseModel, Field
 import csv
 import io
@@ -14,7 +15,7 @@ import json
 
 import persistence
 
-router = APIRouter(prefix="/api/v1/reporting", tags=["Reporting"])
+router = APIRouter(prefix="/api/v1/reporting", tags=["Reporting"], dependencies=[Depends(require_phase4_domain_access)])
 
 PROGRESS: Dict[str, Dict[str, Any]] = {}
 KPI_TRENDS: Dict[str, Dict[str, Any]] = {}

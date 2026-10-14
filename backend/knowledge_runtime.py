@@ -5,11 +5,12 @@ Coach Final Authority is mandatory; execution authorization is always false.
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from phase4_domain_authorization import require_phase4_domain_access
 from pydantic import BaseModel, Field
 import persistence
 
-router=APIRouter(prefix="/api/v1/knowledge-runtime",tags=["Knowledge Runtime"])
+router=APIRouter(prefix="/api/v1/knowledge-runtime",tags=["Knowledge Runtime"], dependencies=[Depends(require_phase4_domain_access)])
 MEMORY_ITEMS:Dict[str,Dict[str,Any]]={}
 MEMORY_LINKS:List[Dict[str,Any]]=[]
 
@@ -30,17 +31,33 @@ def schema():
                 linked_by TEXT NOT NULL, linked_at TEXT NOT NULL);""")
         c.commit()
 
-def save_item(r):
-    MEMORY_ITEMS[r["knowledge_id"]]=r
+def save_item(r, phase4=None):
     if persistence.is_postgres_enabled():
         schema()
-        persistence.upsert_knowledge(r["knowledge_id"],r, r["updated_at"])
+        principal = (phase4 or {}).get("principal")
+        tenant_id = (phase4 or {}).get("tenant_id")
+        actor_subject = getattr(principal, "actor_id", None)
+        if phase4 is not None:
+            if not tenant_id or not actor_subject:
+                raise HTTPException(503, "Verified tenant context is required to persist knowledge")
+            persistence.upsert_knowledge(
+                r["knowledge_id"], r, r["updated_at"],
+                tenant_id=tenant_id, bound_by_subject=actor_subject,
+            )
+        else:
+            persistence.upsert_knowledge(r["knowledge_id"], r, r["updated_at"])
         persistence.append_audit(timestamp=r["updated_at"],who=r["changed_by"],action="FEAT-047_048_KNOWLEDGE_RECORDED",old_value=None,new_value=r,why="Knowledge retained with provenance and lifecycle metadata.")
+    MEMORY_ITEMS[r["knowledge_id"]]=r
 
-def get_item(k):
+def get_item(k, tenant_id=None):
     if persistence.is_postgres_enabled():
-        data=persistence.load_knowledge().get(k)
-        if data: return data
+        # Never fall back to an unscoped global repository read on a request path.
+        if not tenant_id:
+            return None
+        item = persistence.load_knowledge(tenant_id=tenant_id).get(k)
+        if item and item.get("knowledge_id") == k:
+            return item
+        return None
     return MEMORY_ITEMS.get(k)
 
 class ProvenanceRequest(BaseModel):
@@ -60,7 +77,10 @@ class LinkRequest(BaseModel):
     evidence_refs:List[str]=Field(default_factory=list); coach_final_authority:bool=True
 
 @router.post("/feat-047/provenance",status_code=201)
-def provenance(req:ProvenanceRequest):
+def provenance(
+    req: ProvenanceRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     authority(req.coach_final_authority)
     if not req.knowledge_id.strip() or not req.source_type.strip() or not req.source_ref.strip() or not req.source_version.strip() or not req.provenance_note.strip() or not req.changed_by.strip():
         raise HTTPException(400,"knowledge_id, source_type, source_ref, source_version, provenance_note and changed_by are required")
@@ -68,11 +88,13 @@ def provenance(req:ProvenanceRequest):
     if req.evidence_status not in allowed_evidence_statuses:
         raise HTTPException(400,{"evidence_status":"invalid","allowed":sorted(allowed_evidence_statuses)})
     if not req.evidence_refs: raise HTTPException(400,"at least one evidence reference is required")
-    existing_records=list(MEMORY_ITEMS.values())
     if persistence.is_postgres_enabled():
-        for item in persistence.load_knowledge().values():
-            if not any(old.get("knowledge_id")==item.get("knowledge_id") for old in existing_records):
-                existing_records.append(item)
+        tenant_id = phase4.get("tenant_id")
+        if not tenant_id:
+            raise HTTPException(503, "Verified tenant context is required for knowledge provenance")
+        existing_records = list(persistence.load_knowledge(tenant_id=tenant_id).values())
+    else:
+        existing_records = list(MEMORY_ITEMS.values())
     conflicts=[
         item for item in existing_records
         if item.get("source_type")==req.source_type
@@ -86,14 +108,17 @@ def provenance(req:ProvenanceRequest):
        "version_conflict_refs":[item.get("knowledge_id") for item in conflicts],
        "provenance_note":req.provenance_note,"evidence_refs":req.evidence_refs,"lifecycle_status":"DRAFT",
        "changed_by":req.changed_by,"created_at":now(),"updated_at":now(),"coach_final_authority":True,"execution_authorized":False}
-    save_item(r); return {"feature_id":"FEAT-047","record":r}
+    save_item(r, phase4=phase4); return {"feature_id":"FEAT-047","record":r}
 
 @router.post("/feat-048/lifecycle",status_code=200)
-def lifecycle(req:LifecycleRequest):
+def lifecycle(
+    req: LifecycleRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     authority(req.coach_final_authority)
     allowed={"DRAFT","REVIEW","APPROVED","RETIRED","REJECTED"}
     if req.lifecycle_status not in allowed: raise HTTPException(400,{"allowed":sorted(allowed)})
-    r=get_item(req.knowledge_id)
+    r=get_item(req.knowledge_id, tenant_id=phase4.get("tenant_id"))
     if not r: raise HTTPException(404,"knowledge item not found")
     if req.lifecycle_status=="APPROVED" and r.get("evidence_status")!="VERIFIED":
         raise HTTPException(409,"knowledge evidence_status must be VERIFIED before approval")
@@ -103,21 +128,30 @@ def lifecycle(req:LifecycleRequest):
     return {"feature_id":"FEAT-048","previous_status":old,"record":r}
 
 @router.post("/feat-049/retrieve",status_code=200)
-def retrieve(req:RetrievalRequest):
+def retrieve(
+    req: RetrievalRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     authority(req.coach_final_authority)
     if not req.workflow_context.strip() or not req.query.strip() or not req.requested_by.strip(): raise HTTPException(400,"workflow_context, query and requested_by are required")
     q=req.query.lower()
-    candidates=[r for r in MEMORY_ITEMS.values() if r["lifecycle_status"]=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r["knowledge_id"].lower() or q in r["provenance_note"].lower() or q in r["source_ref"].lower())]
     if persistence.is_postgres_enabled():
-        for r in persistence.load_knowledge().values():
-            if r.get("lifecycle_status")=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower()):
-                if not any(x.get("knowledge_id")==r.get("knowledge_id") for x in candidates): candidates.append(r)
+        tenant_id = phase4.get("tenant_id")
+        if not tenant_id:
+            raise HTTPException(503, "Verified tenant context is required for knowledge retrieval")
+        source_records = persistence.load_knowledge(tenant_id=tenant_id).values()
+    else:
+        source_records = MEMORY_ITEMS.values()
+    candidates=[r for r in source_records if r.get("lifecycle_status")=="APPROVED" and r.get("evidence_status")=="VERIFIED" and (q in r.get("knowledge_id","").lower() or q in r.get("provenance_note","").lower() or q in r.get("source_ref","").lower())]
     return {"feature_id":"FEAT-049","workflow_context":req.workflow_context,"query":req.query,"results":candidates,"retrieved_by":req.requested_by,"coach_final_authority":True,"execution_authorized":False}
 
 @router.post("/feat-050/link",status_code=201)
-def link(req:LinkRequest):
+def link(
+    req: LinkRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     authority(req.coach_final_authority)
-    r=get_item(req.knowledge_id)
+    r=get_item(req.knowledge_id, tenant_id=phase4.get("tenant_id"))
     if not r: raise HTTPException(404,"knowledge item not found")
     if r["lifecycle_status"]!="APPROVED": raise HTTPException(409,"knowledge must be APPROVED before reusable linkage")
     if not req.unit_id.strip() or not req.link_type.strip() or not req.linked_by.strip(): raise HTTPException(400,"unit_id, link_type and linked_by are required")

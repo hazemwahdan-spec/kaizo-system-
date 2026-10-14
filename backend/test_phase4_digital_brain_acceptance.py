@@ -131,22 +131,36 @@ def test_phase4_decision_to_plan_preserves_evidence_and_coach_authority():
     assert readback.json()["plan_id"] == plan["plan_id"]
     assert readback.json()["execution_authorized"] is False
 
-    audit = client.get("/api/v1/audit/logs")
-    assert audit.status_code == 200
-    actions = [item.get("action") for item in audit.json().get("logs", [])]
+    # Business-event history is asserted at its event sink; the global HTTP
+    # audit endpoint is now reserved for the tenant-filtered P14 ledger.
+    actions = [item.get("action") for item in main.AUDIT_LOGS]
     assert "DECISION_CANDIDATES_GENERATED" in actions
     assert any("DECISION" in (action or "") for action in actions)
 
 
 def test_phase4_evidence_safety_fails_closed_without_coach_authority():
-    response = client.post("/api/v1/evidence-safety/feat-059/block", json={
-        "action_id": "P4-UNAUTHORIZED-ACTION",
-        "block_reason": "Required coach authority was not granted",
-        "diagnostic": {"test": "phase4-negative-path"},
-        "evidence_refs": ["P4-NEGATIVE-TEST"],
-        "blocked_by": "phase4-test",
-        "coach_final_authority": False,
-    })
+    # This acceptance test targets the handler's Coach Final Authority contract.
+    # Phase 4 identity/tenant policy has its own real-route tests; override it
+    # explicitly here so an unrelated auth configuration cannot mask the 409.
+    from phase4_domain_authorization import require_phase4_domain_access
+    previous = main.app.dependency_overrides.get(require_phase4_domain_access)
+    main.app.dependency_overrides[require_phase4_domain_access] = lambda: {
+        "principal": "phase4-test", "tenant_id": "phase4-test-tenant"
+    }
+    try:
+        response = client.post("/api/v1/evidence-safety/feat-059/block", json={
+            "action_id": "P4-UNAUTHORIZED-ACTION",
+            "block_reason": "Required coach authority was not granted",
+            "diagnostic": {"test": "phase4-negative-path"},
+            "evidence_refs": ["P4-NEGATIVE-TEST"],
+            "blocked_by": "phase4-test",
+            "coach_final_authority": False,
+        })
+    finally:
+        if previous is None:
+            main.app.dependency_overrides.pop(require_phase4_domain_access, None)
+        else:
+            main.app.dependency_overrides[require_phase4_domain_access] = previous
     assert response.status_code == 409
     assert "Coach Final Authority" in response.text
 

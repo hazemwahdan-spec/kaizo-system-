@@ -34,7 +34,9 @@ class FEAT013KPIAcceptanceTests(unittest.TestCase):
         missing_kpi = self.client.post("/api/v1/kpis/captures", json={
             "athlete_id": self.athlete_id, "kpi_id": "missing-kpi", "value": 21.0, "captured_by": "coach-feat013"
         })
-        self.assertEqual(missing_kpi.status_code, 404)
+        # A foreign or unbound KPI is denied before existence is disclosed.
+        self.assertEqual(missing_kpi.status_code, 403)
+        self.assertEqual(missing_kpi.json()["detail"]["reason_code"], "kpi_or_athlete_tenant_binding_missing")
 
     def test_capture_kpi_preserves_value_ownership_and_audit(self):
         self.client.post("/api/v1/kpis", json={
@@ -50,10 +52,15 @@ class FEAT013KPIAcceptanceTests(unittest.TestCase):
         self.assertEqual(capture["value"], 21.5)
         readback = self.client.get(f"/api/v1/kpis/captures/{capture['capture_id']}")
         self.assertEqual(readback.status_code, 200)
-        logs = self.client.get("/api/v1/audit/logs").json()["logs"]
-        actions = [entry for entry in logs if entry["action"] == "KPI_CAPTURED"]
+        # This legacy business-contract test checks event emission directly.
+        # The global audit API is now tenant-scoped and its access contract is
+        # verified by dedicated Phase 4 security tests.
+        actions = [entry for entry in main.AUDIT_LOGS if entry["action"] == "KPI_CAPTURED"]
         self.assertTrue(actions)
-        self.assertEqual(actions[-1]["who"], "coach-feat013")
+        from phase4_identity_boundary import require_phase4_principal
+        verified_principal = main.app.dependency_overrides[require_phase4_principal]()
+        self.assertEqual(actions[-1]["who"], verified_principal.actor_id)
+        self.assertNotEqual(actions[-1]["who"], "coach-feat013")
         self.assertEqual(actions[-1]["new_value"]["athlete_id"], self.athlete_id)
 
     def test_invalid_kpi_direction_is_rejected(self):

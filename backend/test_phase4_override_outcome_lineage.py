@@ -1,16 +1,59 @@
 """Phase 4 acceptance for coach override history and decision-to-outcome lineage."""
 import os
 import uuid
+from types import SimpleNamespace
 
 os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/kaizo_test"
 
 from fastapi.testclient import TestClient
+import pytest
 import main
 import persistence
+from phase4_domain_authorization import require_phase4_domain_access
+from phase4_route_guard import require_phase4_route_access, require_phase4_tenant_member
 
 persistence.initialize()
 client = TestClient(main.app)
+
+
+@pytest.fixture(autouse=True)
+def isolate_outcome_lineage_business_tests_from_tenant_guard():
+    # These tests assert override/audit lineage; actual tenant and actor
+    # spoofing behavior is verified in dedicated Phase 4 authorization tests.
+    test_access = {
+        "principal": SimpleNamespace(actor_id="phase4-outcome-test", role="coach"),
+        "tenant_id": "phase4-outcome-test-tenant",
+        "athlete_id": None,
+        "authorization": {"allowed": True, "reason_code": "isolated_business_lineage_test"},
+    }
+    dependencies = (
+        require_phase4_domain_access,
+        require_phase4_route_access,
+        require_phase4_tenant_member,
+    )
+    previous = {dependency: main.app.dependency_overrides.get(dependency) for dependency in dependencies}
+    for dependency in dependencies:
+        main.app.dependency_overrides[dependency] = lambda access=test_access: access
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO kaizo_tenants (tenant_id, display_name, status) VALUES (%s, %s, 'ACTIVE') ON CONFLICT (tenant_id) DO UPDATE SET status='ACTIVE'",
+                ("phase4-outcome-test-tenant", "Phase 4 Outcome Test"),
+            )
+            cur.execute(
+                "INSERT INTO kaizo_tenant_memberships (tenant_id, subject_id, role, status) VALUES (%s, %s, 'coach', 'ACTIVE') ON CONFLICT (tenant_id, subject_id, role) DO UPDATE SET status='ACTIVE'",
+                ("phase4-outcome-test-tenant", "phase4-outcome-test"),
+            )
+        conn.commit()
+    try:
+        yield
+    finally:
+        for dependency, prior_override in previous.items():
+            if prior_override is None:
+                main.app.dependency_overrides.pop(dependency, None)
+            else:
+                main.app.dependency_overrides[dependency] = prior_override
 
 
 def post(path, payload, expected=(200, 201)):
@@ -21,7 +64,7 @@ def post(path, payload, expected=(200, 201)):
 
 def test_phase4_override_preserves_candidate_and_audit_history():
     suffix = uuid.uuid4().hex[:8]
-    coach = f"phase4-override-{suffix}"
+    coach = "phase4-outcome-test"
     athlete = post("/api/v1/athletes", {"display_name": f"Phase4 Override {suffix}"})
     assessment = post("/api/v1/assessments", {
         "athlete_id": athlete["athlete_id"],
@@ -93,16 +136,15 @@ def test_phase4_override_preserves_candidate_and_audit_history():
     assert decision["coach_final_authority"] is True
     assert decision["execution_authorized"] is False
 
-    logs = client.get("/api/v1/audit/logs")
-    assert logs.status_code == 200
-    actions = [item.get("action") for item in logs.json().get("logs", [])]
+    # Keep business-event assertions separate from the tenant-scoped P14 HTTP ledger.
+    actions = [item.get("action") for item in main.AUDIT_LOGS]
     assert "DECISION_CANDIDATE_OVERRIDDEN" in actions
     assert any("DECISION" in (action or "") for action in actions)
 
 
 def test_phase4_decision_plan_kpi_retest_lineage_keeps_baseline():
     suffix = uuid.uuid4().hex[:8]
-    coach = f"phase4-lineage-{suffix}"
+    coach = "phase4-outcome-test"
     athlete = post("/api/v1/athletes", {"display_name": f"Phase4 Lineage {suffix}"})
     baseline = post("/api/v1/assessments", {
         "athlete_id": athlete["athlete_id"],

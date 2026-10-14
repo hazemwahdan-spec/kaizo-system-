@@ -9,12 +9,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from phase4_domain_authorization import bind_resource_to_tenant_cursor, require_phase4_domain_access
 from pydantic import BaseModel, Field
 
 import persistence
 
-router = APIRouter(prefix="/api/v1/academy", tags=["Academy Operations"])
+router = APIRouter(prefix="/api/v1/academy", tags=["Academy Operations"], dependencies=[Depends(require_phase4_domain_access)])
 
 ACADEMIES: Dict[str, Dict[str, Any]] = {}
 MEMBERSHIPS: Dict[str, Dict[str, Any]] = {}
@@ -28,6 +29,10 @@ def _now() -> str:
 
 def _pg_enabled() -> bool:
     return persistence.is_postgres_enabled()
+
+
+def _phase4_actor(phase4: Dict[str, Any], fallback: str = "system") -> str:
+    return str(getattr(phase4.get("principal"), "actor_id", None) or fallback)
 
 
 def _ensure_schema() -> None:
@@ -166,7 +171,10 @@ def _membership_exists(academy_id: str, coach_id: str) -> bool:
 
 
 @router.post("/academies", status_code=201)
-def create_academy(req: AcademyCreate) -> Dict[str, Any]:
+def create_academy(
+    req: AcademyCreate,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("name", req.name), ("owner_id", req.owner_id))
     if req.status not in {"ACTIVE", "INACTIVE", "ARCHIVED"}:
@@ -184,9 +192,15 @@ def create_academy(req: AcademyCreate) -> Dict[str, Any]:
         "coach_final_authority": True,
         "execution_authorized": False,
     }
-    ACADEMIES[item["academy_id"]] = item
     if _pg_enabled():
         _ensure_schema()
+        principal = phase4.get("principal")
+        actor_subject = getattr(principal, "actor_id", None)
+        tenant_id = phase4.get("tenant_id")
+        if not actor_subject or not tenant_id:
+            raise HTTPException(status_code=503, detail="Verified tenant context is required to persist an academy")
+        if req.owner_id.strip() != actor_subject:
+            raise HTTPException(status_code=403, detail={"decision": "DENY", "reason_code": "academy_owner_identity_mismatch"})
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -195,7 +209,12 @@ def create_academy(req: AcademyCreate) -> Dict[str, Any]:
                     VALUES (%s,%s,%s,%s,%s,%s)""",
                     (item["academy_id"], item["name"], item["status"], item["owner_id"], now, now),
                 )
+                bind_resource_to_tenant_cursor(
+                    cur, resource_type="academy", resource_id=item["academy_id"],
+                    tenant_id=tenant_id, bound_by_subject=actor_subject,
+                )
             conn.commit()
+    ACADEMIES[item["academy_id"]] = item
     _audit(req.owner_id, "ACADEMY_CREATED", item)
     return item
 
@@ -206,7 +225,7 @@ def get_academy(academy_id: str) -> Dict[str, Any]:
 
 
 @router.post("/memberships", status_code=201)
-def add_membership(req: MembershipCreate) -> Dict[str, Any]:
+def add_membership(req: MembershipCreate, phase4: Dict[str, Any] = Depends(require_phase4_domain_access)) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("academy_id", req.academy_id), ("coach_id", req.coach_id), ("role", req.role))
     _academy(req.academy_id)
@@ -226,7 +245,6 @@ def add_membership(req: MembershipCreate) -> Dict[str, Any]:
         "coach_final_authority": True,
         "execution_authorized": False,
     }
-    MEMBERSHIPS[item["membership_id"]] = item
     if _pg_enabled():
         _ensure_schema()
         with persistence.connection() as conn:
@@ -238,13 +256,18 @@ def add_membership(req: MembershipCreate) -> Dict[str, Any]:
                     (item["membership_id"], item["academy_id"], item["coach_id"], item["role"],
                      item["status"], now, now),
                 )
+                bind_resource_to_tenant_cursor(
+                    cur, resource_type="academy_membership", resource_id=item["membership_id"],
+                    tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
+                )
             conn.commit()
-    _audit(req.coach_id, "ACADEMY_COACH_MEMBERSHIP_CREATED", item)
+    MEMBERSHIPS[item["membership_id"]] = item
+    _audit(_phase4_actor(phase4, req.coach_id), "ACADEMY_COACH_MEMBERSHIP_CREATED", item)
     return item
 
 
 @router.post("/groups", status_code=201)
-def create_group(req: GroupCreate) -> Dict[str, Any]:
+def create_group(req: GroupCreate, phase4: Dict[str, Any] = Depends(require_phase4_domain_access)) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("academy_id", req.academy_id), ("name", req.name))
     _academy(req.academy_id)
@@ -265,7 +288,6 @@ def create_group(req: GroupCreate) -> Dict[str, Any]:
         "coach_final_authority": True,
         "execution_authorized": False,
     }
-    GROUPS[item["group_id"]] = item
     if _pg_enabled():
         _ensure_schema()
         with persistence.connection() as conn:
@@ -276,13 +298,18 @@ def create_group(req: GroupCreate) -> Dict[str, Any]:
                     VALUES (%s,%s,%s,%s,%s,%s)""",
                     (item["group_id"], item["academy_id"], item["name"], item["status"], now, now),
                 )
+                bind_resource_to_tenant_cursor(
+                    cur, resource_type="academy_group", resource_id=item["group_id"],
+                    tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
+                )
             conn.commit()
-    _audit("system", "ACADEMY_GROUP_CREATED", item)
+    GROUPS[item["group_id"]] = item
+    _audit(_phase4_actor(phase4), "ACADEMY_GROUP_CREATED", item)
     return item
 
 
 @router.post("/assignments", status_code=201)
-def assign_athlete(req: AssignmentCreate) -> Dict[str, Any]:
+def assign_athlete(req: AssignmentCreate, phase4: Dict[str, Any] = Depends(require_phase4_domain_access)) -> Dict[str, Any]:
     _require_authority(req.coach_final_authority)
     _require_text(("academy_id", req.academy_id), ("athlete_id", req.athlete_id))
     _academy(req.academy_id)
@@ -313,7 +340,6 @@ def assign_athlete(req: AssignmentCreate) -> Dict[str, Any]:
         "coach_final_authority": True,
         "execution_authorized": False,
     }
-    ASSIGNMENTS[item["assignment_id"]] = item
     if _pg_enabled():
         _ensure_schema()
         import json
@@ -326,8 +352,13 @@ def assign_athlete(req: AssignmentCreate) -> Dict[str, Any]:
                     (item["assignment_id"], item["academy_id"], item["athlete_id"],
                      json.dumps(coach_ids), item["status"], now, now),
                 )
+                bind_resource_to_tenant_cursor(
+                    cur, resource_type="academy_assignment", resource_id=item["assignment_id"],
+                    tenant_id=phase4["tenant_id"], bound_by_subject=phase4["principal"].actor_id,
+                )
             conn.commit()
-    _audit("system", "ATHLETE_MULTI_COACH_ASSIGNED", item)
+    ASSIGNMENTS[item["assignment_id"]] = item
+    _audit(_phase4_actor(phase4), "ATHLETE_MULTI_COACH_ASSIGNED", item)
     return item
 
 

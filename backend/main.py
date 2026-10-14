@@ -3,13 +3,17 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+import json
 
 import persistence
+from phase4_route_guard import require_phase4_route_access, require_phase4_tenant_member
+from phase4_identity_boundary import require_phase4_principal
+from phase4_domain_authorization import require_phase4_domain_access
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
@@ -64,7 +68,7 @@ class AthleteUpdateRequest(BaseModel):
 
 
 @app.post("/api/v1/athletes", status_code=status.HTTP_201_CREATED)
-def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
+def create_athlete(req: AthleteCreateRequest, phase4_access: Dict[str, Any] = Depends(require_phase4_tenant_member)) -> Dict[str, Any]:
     display_name = req.display_name.strip()
     if not display_name:
         raise HTTPException(status_code=400, detail="display_name is required")
@@ -78,10 +82,18 @@ def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
         "created_at": now,
         "updated_at": now,
     }
+    principal = phase4_access.get("principal")
+    tenant_id = phase4_access.get("tenant_id")
+    actor_subject = getattr(principal, "actor_id", None)
+    if not tenant_id or not actor_subject:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required to create an athlete")
+    # The athlete row and canonical tenant binding commit or roll back together.
+    persistence.upsert_athlete(
+        athlete, tenant_id=tenant_id, bound_by_subject=actor_subject,
+    )
     ATHLETE_RECORDS[athlete["athlete_id"]] = athlete
-    persistence.upsert_athlete(athlete)
     log_action(
-        "system",
+        actor_subject,
         "ATHLETE_CREATED",
         None,
         athlete,
@@ -90,7 +102,7 @@ def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
     return athlete
 
 
-@app.get("/api/v1/athletes/{athlete_id}")
+@app.get("/api/v1/athletes/{athlete_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_athlete(athlete_id: str) -> Dict[str, Any]:
     athlete = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if athlete is None:
@@ -98,7 +110,7 @@ def get_athlete(athlete_id: str) -> Dict[str, Any]:
     return athlete
 
 
-@app.patch("/api/v1/athletes/{athlete_id}")
+@app.patch("/api/v1/athletes/{athlete_id}", dependencies=[Depends(require_phase4_route_access)])
 def update_athlete(athlete_id: str, req: AthleteUpdateRequest) -> Dict[str, Any]:
     current = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if current is None:
@@ -139,7 +151,7 @@ class AssessmentCreateRequest(BaseModel):
     recorded_by: str
 
 
-@app.post("/api/v1/assessments", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/assessments", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_assessment(req: AssessmentCreateRequest) -> Dict[str, Any]:
     if not req.athlete_id.strip():
         raise HTTPException(status_code=400, detail="athlete_id is required")
@@ -180,7 +192,7 @@ def create_assessment(req: AssessmentCreateRequest) -> Dict[str, Any]:
     return assessment
 
 
-@app.get("/api/v1/assessments/{assessment_id}")
+@app.get("/api/v1/assessments/{assessment_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_assessment(assessment_id: str) -> Dict[str, Any]:
     assessment = (
         persistence.get_assessment(assessment_id)
@@ -199,7 +211,7 @@ class AssessmentEvidenceAttachmentRequest(BaseModel):
     attached_by: str
 
 
-@app.post("/api/v1/assessments/{assessment_id}/evidence", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/assessments/{assessment_id}/evidence", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def attach_assessment_evidence(assessment_id: str, req: AssessmentEvidenceAttachmentRequest) -> Dict[str, Any]:
     if assessment_id != req.assessment_id:
         raise HTTPException(status_code=400, detail="assessment_id mismatch")
@@ -234,7 +246,7 @@ def attach_assessment_evidence(assessment_id: str, req: AssessmentEvidenceAttach
     return attachment
 
 
-@app.get("/api/v1/assessments/{assessment_id}/evidence")
+@app.get("/api/v1/assessments/{assessment_id}/evidence", dependencies=[Depends(require_phase4_route_access)])
 def list_assessment_evidence(assessment_id: str) -> Dict[str, Any]:
     assessment = persistence.get_assessment(assessment_id) if persistence.is_postgres_enabled() else ASSESSMENT_RECORDS.get(assessment_id)
     if assessment is None:
@@ -260,7 +272,7 @@ class ProblemStatementCreateRequest(BaseModel):
 PROBLEM_STATEMENTS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/problem-statements", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/problem-statements", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_problem_statement(req: ProblemStatementCreateRequest) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.statement.strip():
         raise HTTPException(status_code=400, detail="athlete_id, assessment_id and statement are required")
@@ -287,7 +299,7 @@ def create_problem_statement(req: ProblemStatementCreateRequest) -> Dict[str, An
     return problem
 
 
-@app.get("/api/v1/problem-statements/{problem_id}")
+@app.get("/api/v1/problem-statements/{problem_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_problem_statement(problem_id: str) -> Dict[str, Any]:
     problem=persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
@@ -295,7 +307,7 @@ def get_problem_statement(problem_id: str) -> Dict[str, Any]:
     return problem
 
 
-@app.get("/api/v1/problem-statements")
+@app.get("/api/v1/problem-statements", dependencies=[Depends(require_phase4_route_access)])
 def list_problem_statements(athlete_id: Optional[str]=None) -> Dict[str, Any]:
     problems=persistence.list_problem_statements(athlete_id) if persistence.is_postgres_enabled() else list(PROBLEM_STATEMENTS.values())
     if athlete_id:
@@ -315,7 +327,7 @@ class EvidenceLinkedDiagnosisRequest(BaseModel):
 EVIDENCE_LINKED_DIAGNOSES: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/problem-statements/{problem_id}/diagnosis", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/problem-statements/{problem_id}/diagnosis", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnosisRequest) -> Dict[str, Any]:
     if problem_id != req.problem_id:
         raise HTTPException(status_code=400, detail="problem_id mismatch")
@@ -362,7 +374,7 @@ def create_evidence_linked_diagnosis(problem_id: str, req: EvidenceLinkedDiagnos
     return diagnosis
 
 
-@app.get("/api/v1/problem-statements/{problem_id}/diagnosis")
+@app.get("/api/v1/problem-statements/{problem_id}/diagnosis", dependencies=[Depends(require_phase4_route_access)])
 def list_evidence_linked_diagnoses(problem_id: str) -> Dict[str, Any]:
     problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
@@ -380,7 +392,7 @@ class DecisionCandidateGenerationRequest(BaseModel):
 DECISION_CANDIDATES: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-candidates", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-candidates", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def generate_decision_candidates(
     diagnosis_id: str, req: DecisionCandidateGenerationRequest
 ) -> Dict[str, Any]:
@@ -463,7 +475,7 @@ def generate_decision_candidates(
     }
 
 
-@app.get("/api/v1/diagnoses/{diagnosis_id}/decision-candidates")
+@app.get("/api/v1/diagnoses/{diagnosis_id}/decision-candidates", dependencies=[Depends(require_phase4_route_access)])
 def list_decision_candidates(diagnosis_id: str) -> Dict[str, Any]:
     diagnoses = (
         persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
@@ -490,7 +502,7 @@ class DecisionRationaleEvidenceRequest(BaseModel):
 DECISION_RATIONALES: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/decision-candidates/{candidate_id}/rationale", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/decision-candidates/{candidate_id}/rationale", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceRequest) -> Dict[str, Any]:
     if candidate_id != req.candidate_id:
         raise HTTPException(status_code=400, detail="candidate_id mismatch")
@@ -557,7 +569,7 @@ def record_decision_rationale(candidate_id: str, req: DecisionRationaleEvidenceR
     return rationale
 
 
-@app.get("/api/v1/decision-candidates/{candidate_id}/rationale")
+@app.get("/api/v1/decision-candidates/{candidate_id}/rationale", dependencies=[Depends(require_phase4_route_access)])
 def list_decision_rationales(candidate_id: str) -> Dict[str, Any]:
     candidate = (
         persistence.get_decision_candidate(candidate_id)
@@ -591,7 +603,7 @@ class DecisionAlternativeComparisonRequest(BaseModel):
 DECISION_COMPARISONS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def compare_decision_alternatives(
     diagnosis_id: str, req: DecisionAlternativeComparisonRequest
 ) -> Dict[str, Any]:
@@ -654,7 +666,7 @@ def compare_decision_alternatives(
     return comparison
 
 
-@app.get("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons")
+@app.get("/api/v1/diagnoses/{diagnosis_id}/decision-comparisons", dependencies=[Depends(require_phase4_route_access)])
 def list_decision_comparisons(diagnosis_id: str) -> Dict[str, Any]:
     diagnoses = (
         persistence.list_evidence_linked_diagnoses_for_id(diagnosis_id)
@@ -682,7 +694,7 @@ class CoachDecisionReviewRequest(BaseModel):
 COACH_DECISION_REVIEWS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/decision-candidates/{candidate_id}/coach-review", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/decision-candidates/{candidate_id}/coach-review", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewRequest) -> Dict[str, Any]:
     if candidate_id != req.candidate_id:
         raise HTTPException(status_code=400, detail="candidate_id mismatch")
@@ -732,7 +744,7 @@ def coach_review_decision_candidate(candidate_id: str, req: CoachDecisionReviewR
     return review
 
 
-@app.get("/api/v1/decision-candidates/{candidate_id}/coach-review")
+@app.get("/api/v1/decision-candidates/{candidate_id}/coach-review", dependencies=[Depends(require_phase4_route_access)])
 def list_coach_decision_reviews(candidate_id: str) -> Dict[str, Any]:
     candidate = (
         persistence.get_decision_candidate(candidate_id)
@@ -764,7 +776,7 @@ class DecisionRecordRequest(BaseModel):
 DECISION_RECORDS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/decision-candidates/{candidate_id}/decision-record", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/decision-candidates/{candidate_id}/decision-record", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_decision_record(candidate_id: str, req: DecisionRecordRequest) -> Dict[str, Any]:
     if candidate_id != req.candidate_id:
         raise HTTPException(status_code=400, detail="candidate_id mismatch")
@@ -813,7 +825,7 @@ def create_decision_record(candidate_id: str, req: DecisionRecordRequest) -> Dic
     return record
 
 
-@app.get("/api/v1/decision-candidates/{candidate_id}/decision-record")
+@app.get("/api/v1/decision-candidates/{candidate_id}/decision-record", dependencies=[Depends(require_phase4_route_access)])
 def list_decision_records(candidate_id: str) -> Dict[str, Any]:
     candidate = persistence.get_decision_candidate(candidate_id) if persistence.is_postgres_enabled() else DECISION_CANDIDATES.get(candidate_id)
     if candidate is None:
@@ -842,7 +854,7 @@ class TrainingPlanRequest(BaseModel):
 TRAINING_PLANS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/training-plans", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/training-plans", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_training_plan(req: TrainingPlanRequest) -> Dict[str, Any]:
     if not all(x.strip() for x in [req.athlete_id, req.decision_id, req.title, req.objective, req.created_by]):
         raise HTTPException(status_code=400, detail="athlete_id, decision_id, title, objective and created_by are required")
@@ -868,7 +880,7 @@ def create_training_plan(req: TrainingPlanRequest) -> Dict[str, Any]:
     return plan
 
 
-@app.get("/api/v1/training-plans/{plan_id}")
+@app.get("/api/v1/training-plans/{plan_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_training_plan(plan_id: str) -> Dict[str, Any]:
     plan = persistence.get_training_plan(plan_id) if persistence.is_postgres_enabled() else TRAINING_PLANS.get(plan_id)
     if plan is None:
@@ -888,7 +900,7 @@ class TrainingSessionRequest(BaseModel):
 TRAINING_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/training-plans/{plan_id}/sessions", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/training-plans/{plan_id}/sessions", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_training_session(plan_id: str, req: TrainingSessionRequest) -> Dict[str, Any]:
     if plan_id != req.plan_id:
         raise HTTPException(status_code=400, detail="plan_id mismatch")
@@ -917,7 +929,7 @@ def create_training_session(plan_id: str, req: TrainingSessionRequest) -> Dict[s
     return session
 
 
-@app.get("/api/v1/training-sessions/{session_id}")
+@app.get("/api/v1/training-sessions/{session_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_training_session(session_id: str) -> Dict[str, Any]:
     session = persistence.get_training_session(session_id) if persistence.is_postgres_enabled() else TRAINING_SESSIONS.get(session_id)
     if session is None:
@@ -937,7 +949,7 @@ class TrainingDosageRequest(BaseModel):
 TRAINING_DOSAGES: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/training-sessions/{session_id}/dosage", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/training-sessions/{session_id}/dosage", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_training_dosage(session_id: str, req: TrainingDosageRequest) -> Dict[str, Any]:
     if session_id != req.session_id:
         raise HTTPException(status_code=400, detail="session_id mismatch")
@@ -988,7 +1000,7 @@ def create_training_dosage(session_id: str, req: TrainingDosageRequest) -> Dict[
     return dosage
 
 
-@app.get("/api/v1/training-sessions/{session_id}/dosage")
+@app.get("/api/v1/training-sessions/{session_id}/dosage", dependencies=[Depends(require_phase4_route_access)])
 def list_training_dosages(session_id: str) -> Dict[str, Any]:
     session = (
         persistence.get_training_session(session_id)
@@ -1011,7 +1023,7 @@ def list_training_dosages(session_id: str) -> Dict[str, Any]:
     }
 
 
-@app.get("/api/v1/training-dosages/{dosage_id}")
+@app.get("/api/v1/training-dosages/{dosage_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_training_dosage(dosage_id: str) -> Dict[str, Any]:
     dosage = (
         persistence.get_training_dosage(dosage_id)
@@ -1034,7 +1046,7 @@ class CauseContextFramingRequest(BaseModel):
 CAUSE_CONTEXT_FRAMINGS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/problem-statements/{problem_id}/cause-context", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/problem-statements/{problem_id}/cause-context", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def frame_problem_cause_context(problem_id: str, req: CauseContextFramingRequest) -> Dict[str, Any]:
     if problem_id != req.problem_id:
         raise HTTPException(status_code=400, detail="problem_id mismatch")
@@ -1070,7 +1082,7 @@ def frame_problem_cause_context(problem_id: str, req: CauseContextFramingRequest
     return framing
 
 
-@app.get("/api/v1/problem-statements/{problem_id}/cause-context")
+@app.get("/api/v1/problem-statements/{problem_id}/cause-context", dependencies=[Depends(require_phase4_route_access)])
 def get_problem_cause_context(problem_id: str) -> Dict[str, Any]:
     problem = persistence.get_problem_statement(problem_id) if persistence.is_postgres_enabled() else PROBLEM_STATEMENTS.get(problem_id)
     if problem is None:
@@ -1113,7 +1125,7 @@ def list_problem_library(query: Optional[str] = None, limit: int = 50) -> Dict[s
     return {"total": len(items), "items": items}
 
 
-@app.post("/api/v1/problem-library/selections", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/problem-library/selections", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def select_problem_from_library(req: ProblemLibrarySelectionRequest) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.library_item_id.strip():
         raise HTTPException(status_code=400, detail="athlete_id, assessment_id and library_item_id are required")
@@ -1157,7 +1169,7 @@ def select_problem_from_library(req: ProblemLibrarySelectionRequest) -> Dict[str
     return selection
 
 
-@app.get("/api/v1/problem-library/selections/{selection_id}")
+@app.get("/api/v1/problem-library/selections/{selection_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_problem_library_selection(selection_id: str) -> Dict[str, Any]:
     selection = (
         persistence.get_problem_library_selection(selection_id)
@@ -1201,7 +1213,7 @@ def list_problem_library(query: Optional[str] = None, limit: int = 50) -> Dict[s
     return {"total": len(items), "items": items}
 
 
-@app.post("/api/v1/problem-library/selections", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/problem-library/selections", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def select_problem_from_library(req: ProblemLibrarySelectionRequest) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.assessment_id.strip() or not req.library_item_id.strip():
         raise HTTPException(status_code=400, detail="athlete_id, assessment_id and library_item_id are required")
@@ -1237,7 +1249,7 @@ def select_problem_from_library(req: ProblemLibrarySelectionRequest) -> Dict[str
     return selection
 
 
-@app.get("/api/v1/problem-library/selections/{selection_id}")
+@app.get("/api/v1/problem-library/selections/{selection_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_problem_library_selection(selection_id: str) -> Dict[str, Any]:
     selection = persistence.get_problem_library_selection(selection_id) if persistence.is_postgres_enabled() else PROBLEM_LIBRARY_SELECTIONS.get(selection_id)
     if selection is None:
@@ -1265,7 +1277,10 @@ KPI_DEFINITIONS: Dict[str, Dict[str, Any]] = {}
 KPI_CAPTURES: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/api/v1/kpis", status_code=status.HTTP_201_CREATED)
-def create_kpi(req: KPIDefinitionCreateRequest) -> Dict[str, Any]:
+def create_kpi(
+    req: KPIDefinitionCreateRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+) -> Dict[str, Any]:
     allowed_directions = {"higher_is_better", "lower_is_better", "target_range"}
     if not req.kpi_id.strip() or not req.name.strip() or not req.metric_name.strip() or not req.unit.strip():
         raise HTTPException(status_code=400, detail="kpi_id, name, metric_name and unit are required")
@@ -1286,25 +1301,74 @@ def create_kpi(req: KPIDefinitionCreateRequest) -> Dict[str, Any]:
         "created_at": now,
         "updated_at": now,
     }
+    principal = phase4.get("principal")
+    tenant_id = phase4.get("tenant_id")
+    actor_subject = getattr(principal, "actor_id", None)
+    if not tenant_id or not actor_subject:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required to create a KPI")
+    persistence.upsert_kpi_definition(
+        definition, tenant_id=tenant_id, bound_by_subject=actor_subject,
+    )
     KPI_DEFINITIONS[req.kpi_id] = definition
-    persistence.upsert_kpi_definition(definition)
-    log_action(req.defined_by, "KPI_DEFINED", None, definition, "KPI definition captured with explicit metric semantics and owner.")
+    log_action(actor_subject, "KPI_DEFINED", None, definition, "KPI definition captured with explicit metric semantics and owner.")
     return definition
 
-@app.get("/api/v1/kpis/{kpi_id}")
+@app.get("/api/v1/kpis/{kpi_id}", dependencies=[Depends(require_phase4_domain_access)])
 def get_kpi(kpi_id: str) -> Dict[str, Any]:
     definition = persistence.get_kpi_definition(kpi_id) if persistence.is_postgres_enabled() else KPI_DEFINITIONS.get(kpi_id)
     if definition is None:
         raise HTTPException(status_code=404, detail="KPI not found")
     return definition
 
-@app.post("/api/v1/kpis/captures", status_code=status.HTTP_201_CREATED)
-def capture_kpi(req: KPICaptureRequest) -> Dict[str, Any]:
+@app.post("/api/v1/kpis/captures", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
+def capture_kpi(
+    req: KPICaptureRequest,
+    request: Request,
+    phase4_access: Dict[str, Any] = Depends(require_phase4_route_access),
+) -> Dict[str, Any]:
     if not req.athlete_id.strip() or not req.kpi_id.strip() or not req.captured_by.strip():
         raise HTTPException(status_code=400, detail="athlete_id, kpi_id and captured_by are required")
     athlete = persistence.get_athlete(req.athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(req.athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
+    principal = phase4_access.get("principal")
+    tenant_id = phase4_access.get("tenant_id")
+    actor_subject = getattr(principal, "actor_id", None)
+    actor_role = getattr(principal, "role", None)
+    if not tenant_id or not actor_subject or not actor_role:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required for KPI capture")
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1
+                       FROM kaizo_resource_tenant_bindings b
+                       JOIN kaizo_tenants t ON t.tenant_id=b.tenant_id
+                       JOIN kaizo_tenant_memberships m ON m.tenant_id=t.tenant_id
+                       WHERE b.resource_type='kpi_definition' AND b.resource_id=%s
+                         AND b.tenant_id=%s AND t.status='ACTIVE'
+                         AND m.subject_id=%s AND m.role=%s AND m.status='ACTIVE'
+                       LIMIT 1""",
+                    (req.kpi_id, tenant_id, actor_subject, actor_role),
+                )
+                kpi_binding_allowed = cur.fetchone() is not None
+                if not kpi_binding_allowed:
+                    cur.execute(
+                        """INSERT INTO kaizo_p14_audit_events
+                           (actor_subject_id,event_type,tenant_id,resource_type,action,
+                            allowed,reason_code,trace_id,metadata)
+                           VALUES (%s,'authorization_decision',%s,'kpi_definition',%s,FALSE,
+                                   'kpi_or_athlete_tenant_binding_missing',%s,%s::jsonb)""",
+                        (actor_subject, tenant_id, "POST:/api/v1/kpis/captures",
+                         request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+                         json.dumps({"source": "kpi_capture_precheck", "kpi_id": req.kpi_id})),
+                    )
+            conn.commit()
+        if not kpi_binding_allowed:
+            raise HTTPException(
+                status_code=403,
+                detail={"decision": "DENY", "reason_code": "kpi_or_athlete_tenant_binding_missing"},
+            )
     kpi = persistence.get_kpi_definition(req.kpi_id) if persistence.is_postgres_enabled() else KPI_DEFINITIONS.get(req.kpi_id)
     if kpi is None:
         raise HTTPException(status_code=404, detail="KPI not found")
@@ -1315,21 +1379,82 @@ def capture_kpi(req: KPICaptureRequest) -> Dict[str, Any]:
         "athlete_id": req.athlete_id,
         "kpi_id": req.kpi_id,
         "value": req.value,
-        "captured_by": req.captured_by,
+        "captured_by": actor_subject,
         "assessment_id": req.assessment_id,
         "captured_at": now,
         "created_at": now,
     }
+    try:
+        persistence.upsert_kpi_capture(
+            capture, tenant_id=tenant_id, bound_by_subject=actor_subject, role=actor_role,
+            trace_id=request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+            action="POST:/api/v1/kpis/captures",
+        )
+    except persistence.PersistenceConfigurationError as exc:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO kaizo_p14_audit_events
+                       (actor_subject_id,event_type,tenant_id,resource_type,action,
+                        allowed,reason_code,trace_id,metadata)
+                       VALUES (%s,'authorization_decision',%s,'kpi_definition',%s,FALSE,
+                               'kpi_or_athlete_tenant_binding_missing',%s,%s::jsonb)""",
+                    (actor_subject, tenant_id, "POST:/api/v1/kpis/captures",
+                     request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+                     '{"source":"kpi_capture","decision":"DENY"}'),
+                )
+            conn.commit()
+        raise HTTPException(
+            status_code=403,
+            detail={"decision": "DENY", "reason_code": "kpi_or_athlete_tenant_binding_missing"},
+        ) from exc
     KPI_CAPTURES[capture["capture_id"]] = capture
-    persistence.upsert_kpi_capture(capture)
-    log_action(req.captured_by, "KPI_CAPTURED", None, capture, "KPI value captured for an existing athlete and defined KPI.")
+    log_action(actor_subject, "KPI_CAPTURED", None, capture, "KPI value captured for an existing athlete and tenant-owned KPI.")
     return capture
 
-@app.get("/api/v1/kpis/captures/{capture_id}")
-def get_kpi_capture(capture_id: str) -> Dict[str, Any]:
+@app.get("/api/v1/kpis/captures/{capture_id}", dependencies=[Depends(require_phase4_route_access)])
+def get_kpi_capture(
+    capture_id: str,
+    request: Request,
+    phase4_access: Dict[str, Any] = Depends(require_phase4_route_access),
+) -> Dict[str, Any]:
     capture = persistence.get_kpi_capture(capture_id) if persistence.is_postgres_enabled() else KPI_CAPTURES.get(capture_id)
     if capture is None:
         raise HTTPException(status_code=404, detail="KPI capture not found")
+    if not persistence.is_postgres_enabled():
+        # Only reachable under explicit test overrides; production authorization
+        # already fails closed when durable persistence is unavailable.
+        return capture
+    tenant_id = phase4_access.get("tenant_id")
+    principal = phase4_access.get("principal")
+    actor_subject = getattr(principal, "actor_id", None)
+    if not tenant_id or not actor_subject:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required to read a KPI capture")
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT 1 FROM kaizo_resource_tenant_bindings
+                   WHERE resource_type='kpi_definition' AND resource_id=%s AND tenant_id=%s
+                   LIMIT 1""",
+                (capture["kpi_id"], tenant_id),
+            )
+            allowed = cur.fetchone() is not None
+            cur.execute(
+                """INSERT INTO kaizo_p14_audit_events
+                   (actor_subject_id,event_type,tenant_id,resource_type,action,
+                    allowed,reason_code,trace_id,metadata)
+                   VALUES (%s,'authorization_decision',%s,'kpi_definition',%s,%s,%s,%s,%s::jsonb)""",
+                (actor_subject, tenant_id, f"GET:/api/v1/kpis/captures/{capture_id}", allowed,
+                 "active_membership_and_resource_binding" if allowed else "kpi_or_athlete_tenant_binding_missing",
+                 request.headers.get("x-trace-id") or request.headers.get("x-request-id"),
+                 json.dumps({"source": "kpi_capture_read", "kpi_id": capture["kpi_id"]})),
+            )
+        conn.commit()
+    if not allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={"decision": "DENY", "reason_code": "kpi_or_athlete_tenant_binding_missing"},
+        )
     return capture
 
 
@@ -1409,7 +1534,6 @@ KNOWLEDGE_REPOSITORY: Dict[str, Any] = {
 
 if persistence.is_postgres_enabled():
     persistence.initialize()
-    KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
 
 class RuleEvaluationRequest(BaseModel):
     athlete_id: str
@@ -1419,7 +1543,7 @@ class RuleEvaluationRequest(BaseModel):
     metric_name: str
     actual_value: Optional[float] = None
 
-@app.post("/api/v1/rules/evaluate", status_code=status.HTTP_200_OK)
+@app.post("/api/v1/rules/evaluate", status_code=status.HTTP_200_OK, dependencies=[Depends(require_phase4_route_access)])
 def evaluate_rule(req: RuleEvaluationRequest) -> Dict[str, Any]:
     profile_key = f"{req.age_group}|{req.gender}|{req.weight_category}|{req.metric_name}"
     required_set = REQUIRED_INPUTS.get(profile_key)
@@ -1507,7 +1631,7 @@ class SafetyEvaluationRequest(BaseModel):
     rationale: Optional[str] = None
 
 
-@app.post("/api/v1/safety/evaluate", status_code=status.HTTP_200_OK)
+@app.post("/api/v1/safety/evaluate", status_code=status.HTTP_200_OK, dependencies=[Depends(require_phase4_route_access)])
 def evaluate_safety(req: SafetyEvaluationRequest) -> Dict[str, Any]:
     allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
     if req.evidence_level not in allowed_levels:
@@ -1577,33 +1701,43 @@ class KnowledgeIngestRequest(BaseModel):
     user_id: str
 
 @app.post("/api/v1/knowledge/ingest", status_code=status.HTTP_201_CREATED)
-def ingest_knowledge(req: KnowledgeIngestRequest):
+def ingest_knowledge(
+    req: KnowledgeIngestRequest,
+    phase4: Dict[str, Any] = Depends(require_phase4_domain_access),
+):
     pipeline_steps = ["Collect", "Verify", "Classify", "Link", "Approve", "Publish"]
+    principal = phase4.get("principal")
+    tenant_id = phase4.get("tenant_id")
+    actor_subject = getattr(principal, "actor_id", None)
+    if not actor_subject or not tenant_id:
+        raise HTTPException(status_code=503, detail="Verified tenant context is required for knowledge ingestion")
 
-    KNOWLEDGE_REPOSITORY[req.item_id] = {
+    item = {
         "id": req.item_id,
         "domain": req.domain,
         "title": req.title,
         "status": "Published",
         "pipeline_completed": pipeline_steps,
-        "content": req.content
+        "content": req.content,
+        "tenant_id": tenant_id,
+        "created_by": actor_subject,
     }
-
-    persistence.upsert_knowledge(req.item_id, KNOWLEDGE_REPOSITORY[req.item_id], datetime.utcnow().isoformat())
-
+    persistence.upsert_ingested_knowledge(
+        req.item_id, item, datetime.utcnow().isoformat(),
+        tenant_id=tenant_id, bound_by_subject=actor_subject,
+    )
     log_action(
-        user_id=req.user_id,
+        user_id=actor_subject,
         action="INGEST_KNOWLEDGE",
         old_val=None,
         new_val=req.item_id,
-        reason="New entity successfully processed through Knowledge Engine pipeline."
+        reason="Knowledge ingested for the verified tenant; tenant binding and record are persisted atomically.",
     )
-
     return {
         "status": "Success",
         "message": "Item successfully published via Knowledge Engine pipeline.",
         "item_id": req.item_id,
-        "pipeline": pipeline_steps
+        "pipeline": pipeline_steps,
     }
 
 class EvidenceCreateRequest(BaseModel):
@@ -1619,7 +1753,7 @@ class EvidenceCreateRequest(BaseModel):
     notes: Optional[str] = None
 
 
-@app.post("/api/v1/evidence", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/evidence", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
     allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
     if req.evidence_level not in allowed_levels:
@@ -1658,7 +1792,7 @@ def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
     return record
 
 
-@app.get("/api/v1/evidence/{evidence_id}")
+@app.get("/api/v1/evidence/{evidence_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_evidence(evidence_id: str) -> Dict[str, Any]:
     record = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
     if record is None:
@@ -1666,7 +1800,7 @@ def get_evidence(evidence_id: str) -> Dict[str, Any]:
     return record
 
 
-@app.get("/api/v1/evidence")
+@app.get("/api/v1/evidence", dependencies=[Depends(require_phase4_route_access)])
 def list_evidence(subject_id: Optional[str] = None) -> Dict[str, Any]:
     records = persistence.list_evidence(subject_id) if persistence.is_postgres_enabled() else list(EVIDENCE_RECORDS.values())
     if subject_id:
@@ -1675,9 +1809,29 @@ def list_evidence(subject_id: Optional[str] = None) -> Dict[str, Any]:
 
 
 @app.get("/api/v1/audit/logs")
-def get_audit_logs():
-    logs = persistence.list_audit_logs() if persistence.is_postgres_enabled() else AUDIT_LOGS
-    return {"system": "KAIZO Audit-Ready System", "total_logs": len(logs), "logs": logs}
+def get_audit_logs(phase4_principal: Any = Depends(require_phase4_principal)):
+    # Global legacy audit logs have no guaranteed tenant predicate. Never expose
+    # them through an authenticated-but-unscoped endpoint; read only the
+    # canonical Phase 4 audit ledger for the verified tenant.
+    if not persistence.is_postgres_enabled():
+        raise HTTPException(status_code=503, detail="Tenant-scoped audit access requires PostgreSQL")
+    tenant_id = str(getattr(phase4_principal, "tenant_id", "") or "").strip()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Verified tenant scope is required")
+    try:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM kaizo_p14_audit_events WHERE tenant_id=%s LIMIT 500",
+                    (tenant_id,),
+                )
+                columns = [item[0] for item in cur.description]
+                logs = [dict(zip(columns, row)) for row in cur.fetchall()]
+    except Exception as exc:
+        # Fail closed rather than falling back to cross-tenant legacy logs.
+        raise HTTPException(status_code=503, detail="Tenant-scoped audit ledger is unavailable") from exc
+    return {"system": "KAIZO Audit-Ready System", "tenant_id": tenant_id,
+            "total_logs": len(logs), "logs": logs}
 
 @app.get("/api/v1/health")
 def health_check():
@@ -1694,7 +1848,7 @@ class DigitalTwinSyncRequest(BaseModel):
     coach_final_authority: bool = True
     expected_version: Optional[int] = None
 
-@app.post("/api/v1/digital-twin/sync", status_code=status.HTTP_200_OK)
+@app.post("/api/v1/digital-twin/sync", status_code=status.HTTP_200_OK, dependencies=[Depends(require_phase4_route_access)])
 def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
     if not req.coach_final_authority:
         output = {
@@ -1749,7 +1903,7 @@ def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
     log_action(req.case_id, "DIGITAL_TWIN_SYNCHRONIZED", current, new_state, "Runtime Digital Twin state synchronized under Coach Final Authority.")
     return output
 
-@app.get("/api/v1/digital-twin/{entity_id}")
+@app.get("/api/v1/digital-twin/{entity_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_digital_twin(entity_id: str) -> Dict[str, Any]:
     twin = persistence.get_digital_twin(entity_id) if persistence.is_postgres_enabled() else DIGITAL_TWIN_STATE.get(entity_id)
     if twin is None:
@@ -1773,7 +1927,7 @@ class StateSnapshotCreateRequest(BaseModel):
 STATE_SNAPSHOTS: Dict[str, Dict[str, Any]] = {}
 
 
-@app.post("/api/v1/state-snapshots", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/state-snapshots", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_phase4_route_access)])
 def create_state_snapshot(req: StateSnapshotCreateRequest) -> Dict[str, Any]:
     if req.snapshot_type not in {"baseline", "current_state"}:
         raise HTTPException(status_code=400, detail="snapshot_type must be baseline or current_state")
@@ -1825,7 +1979,7 @@ def create_state_snapshot(req: StateSnapshotCreateRequest) -> Dict[str, Any]:
     return snapshot
 
 
-@app.get("/api/v1/state-snapshots/{snapshot_id}")
+@app.get("/api/v1/state-snapshots/{snapshot_id}", dependencies=[Depends(require_phase4_route_access)])
 def get_state_snapshot(snapshot_id: str) -> Dict[str, Any]:
     snapshot = persistence.get_state_snapshot(snapshot_id) if persistence.is_postgres_enabled() else STATE_SNAPSHOTS.get(snapshot_id)
     if snapshot is None:
@@ -1833,7 +1987,7 @@ def get_state_snapshot(snapshot_id: str) -> Dict[str, Any]:
     return snapshot
 
 
-@app.get("/api/v1/state-snapshots")
+@app.get("/api/v1/state-snapshots", dependencies=[Depends(require_phase4_route_access)])
 def list_state_snapshots(athlete_id: Optional[str] = None) -> Dict[str, Any]:
     snapshots = persistence.list_state_snapshots(athlete_id) if persistence.is_postgres_enabled() else list(STATE_SNAPSHOTS.values())
     if athlete_id:
@@ -1849,7 +2003,7 @@ class DecisionLoopRequest(BaseModel):
     retest: Dict[str, Any]
     coach_final_authority: bool = True
 
-@app.post("/api/v1/decision/loop", status_code=status.HTTP_200_OK)
+@app.post("/api/v1/decision/loop", status_code=status.HTTP_200_OK, dependencies=[Depends(require_phase4_route_access)])
 def decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
     if not req.coach_final_authority:
         output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
@@ -1889,7 +2043,7 @@ class AdaptationRequest(BaseModel):
     composition_change: Optional[Dict[str, Any]] = None
     coach_final_authority: bool = True
 
-@app.post("/api/v1/decision/adapt", status_code=status.HTTP_200_OK)
+@app.post("/api/v1/decision/adapt", status_code=status.HTTP_200_OK, dependencies=[Depends(require_phase4_route_access)])
 def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
     allowed = {"individual_adaptation","team_adaptation","subgroup_recalculation","individual_change"}
     if req.operation not in allowed:
