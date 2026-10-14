@@ -2,7 +2,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from main import app, ATHLETE_RECORDS, ASSESSMENT_RECORDS
+from main import app, ATHLETE_RECORDS, ASSESSMENT_RECORDS, AUDIT_LOGS
 
 
 class FEAT011MeasurementPersistenceTests(unittest.TestCase):
@@ -79,15 +79,19 @@ if __name__ == "__main__":
 
 
 class FEAT046AuditSpineTests(unittest.TestCase):
-    def test_assessment_action_is_written_to_audit_spine(self):
+    def setUp(self):
         ATHLETE_RECORDS.clear()
         ASSESSMENT_RECORDS.clear()
-        client = TestClient(app)
+        AUDIT_LOGS.clear()
+        self.client = TestClient(app)
 
-        athlete = client.post("/api/v1/athletes", json={"display_name": "Audit Athlete"})
+    def test_assessment_action_is_written_to_audit_spine(self):
+        athlete = self.client.post(
+            "/api/v1/athletes", json={"display_name": "Audit Athlete"}
+        )
         self.assertEqual(athlete.status_code, 201)
 
-        created = client.post(
+        created = self.client.post(
             "/api/v1/assessments",
             json={
                 "athlete_id": athlete.json()["athlete_id"],
@@ -98,23 +102,27 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         )
         self.assertEqual(created.status_code, 201)
 
-        audit = client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
-        matching = [x for x in audit.json()["logs"] if x["action"] == "ASSESSMENT_RECORDED"]
+        # This verifies only the in-process event boundary; it is not evidence
+        # of durable or tenant-scoped production audit access.
+        matching = [
+            entry for entry in AUDIT_LOGS
+            if entry["action"] == "ASSESSMENT_RECORDED"
+        ]
         self.assertTrue(matching)
         self.assertEqual(matching[-1]["who"], "coach-audit")
-        self.assertEqual(matching[-1]["new_value"]["athlete_id"], athlete.json()["athlete_id"])
-        self.assertEqual(matching[-1]["why"], "Assessment measurements persisted with explicit athlete ownership and timestamp.")
+        self.assertEqual(
+            matching[-1]["new_value"]["athlete_id"],
+            athlete.json()["athlete_id"],
+        )
+        self.assertEqual(
+            matching[-1]["why"],
+            "Assessment measurements persisted with explicit athlete ownership and timestamp.",
+        )
 
-    def test_audit_log_preserves_old_and_new_values(self):
-        client = TestClient(app)
-        response = client.get("/api/v1/audit/logs")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("logs", response.json())
-        for entry in response.json()["logs"]:
-            self.assertIn("timestamp", entry)
-            self.assertIn("who", entry)
-            self.assertIn("action", entry)
-            self.assertIn("old_value", entry)
-            self.assertIn("new_value", entry)
-            self.assertIn("why", entry)
+    def test_legacy_audit_read_endpoint_fails_closed_without_verified_authorization(self):
+        response = self.client.get("/api/v1/audit/logs")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["detail"],
+            "Audit log access is temporarily disabled pending verified identity and tenant authorization.",
+        )
