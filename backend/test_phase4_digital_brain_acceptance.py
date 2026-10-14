@@ -134,6 +134,8 @@ def test_phase4_decision_to_plan_preserves_evidence_and_coach_authority():
     # The legacy audit-read endpoint must remain fail-closed until verified
     # OIDC identity and tenant-scoped authorization are deployed. Do not weaken
     # that production boundary just to inspect test audit records.
+    # Keep the legacy audit endpoint fail-closed until verified OIDC identity and
+    # tenant-scoped authorization are deployed. Never weaken this boundary for CI.
     audit = client.get("/api/v1/audit/logs")
     assert audit.status_code == 503
     assert "temporarily disabled" in audit.json()["detail"]
