@@ -56,8 +56,9 @@ class FEAT015BaselineCurrentStateSnapshotTests(unittest.TestCase):
         athlete,assessment,capture=self._fixtures()
         r=self.client.post("/api/v1/state-snapshots",json={"athlete_id":athlete["athlete_id"],"assessment_id":assessment["assessment_id"],"snapshot_type":"baseline","kpi_capture_ids":[capture["capture_id"]],"captured_by":"coach-feat015"})
         self.assertEqual(r.status_code,201)
-        logs=self.client.get("/api/v1/audit/logs").json()["logs"]
-        matches=[x for x in logs if x["action"]=="ATHLETE_STATE_SNAPSHOT_CREATED"]
+        # The public audit endpoint remains fail-closed until verified,
+        # tenant-scoped audit authorization is implemented and tested.
+        matches=[x for x in main.AUDIT_LOGS if x["action"]=="ATHLETE_STATE_SNAPSHOT_CREATED"]
         self.assertTrue(matches)
         self.assertEqual(matches[-1]["who"],"coach-feat015")
 

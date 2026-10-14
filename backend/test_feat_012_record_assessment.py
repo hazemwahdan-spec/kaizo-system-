@@ -96,9 +96,10 @@ class FEAT012RecordAthleteAssessmentTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 201)
 
-        audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
-        matches = [x for x in audit.json()["logs"] if x["action"] == "ASSESSMENT_RECORDED"]
+        # The legacy public audit endpoint is intentionally fail-closed (503)
+        # until verified identity and tenant-scoped audit authorization ships.
+        # Validate the internal audit event without weakening that production gate.
+        matches = [x for x in AUDIT_LOGS if x["action"] == "ASSESSMENT_RECORDED"]
         self.assertTrue(matches)
         self.assertEqual(matches[-1]["who"], "coach-feat012")
         self.assertEqual(matches[-1]["new_value"]["athlete_id"], athlete["athlete_id"])

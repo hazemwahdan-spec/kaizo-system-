@@ -64,9 +64,11 @@ def test_phase4_audit_log_is_read_only_and_preserves_decision_events():
         response = client.request(method, "/api/v1/audit/logs", json={"action": "tamper"})
         assert response.status_code in (404, 405), (response.status_code, response.text)
 
+    # The public audit endpoint remains fail-closed until production identity
+    # and tenant-scoped authorization evidence is verified.
     response = client.get("/api/v1/audit/logs")
-    assert response.status_code == 200
-    logs = response.json()["logs"]
+    assert response.status_code == 503, (response.status_code, response.text)
+    logs = main.AUDIT_LOGS
     override_or_confirm = [
         item for item in logs
         if item.get("action") == "DECISION_CANDIDATE_CONFIRMED"

@@ -1,6 +1,6 @@
 import unittest
 from fastapi.testclient import TestClient
-from main import app, EVIDENCE_RECORDS
+from main import app, EVIDENCE_RECORDS, AUDIT_LOGS
 
 class FEAT051EvidenceSpineTests(unittest.TestCase):
     def setUp(self):
@@ -57,9 +57,8 @@ class FEAT051EvidenceSpineTests(unittest.TestCase):
             "claim": "audited evidence",
             "verified_by": "coach-002"
         })
-        audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
-        matches = [x for x in audit.json()["logs"] if x["action"] == "EVIDENCE_RECORDED"]
+        audit = AUDIT_LOGS
+        matches = [x for x in audit if x["action"] == "EVIDENCE_RECORDED"]
         self.assertTrue(matches)
         self.assertEqual(matches[-1]["who"], "coach-002")
 

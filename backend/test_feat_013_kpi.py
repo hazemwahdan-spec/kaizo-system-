@@ -1,12 +1,12 @@
 import unittest
 from fastapi.testclient import TestClient
 
-import main
+from main import app, AUDIT_LOGS
 
 
 class FEAT013KPIAcceptanceTests(unittest.TestCase):
     def setUp(self):
-        self.client = TestClient(main.app)
+        self.client = TestClient(app)
         self.kpi_id = "KPI-FEAT013-001"
         self.athlete_id = self.client.post("/api/v1/athletes", json={"display_name": "FEAT-013 Athlete"}).json()["athlete_id"]
 
@@ -50,8 +50,10 @@ class FEAT013KPIAcceptanceTests(unittest.TestCase):
         self.assertEqual(capture["value"], 21.5)
         readback = self.client.get(f"/api/v1/kpis/captures/{capture['capture_id']}")
         self.assertEqual(readback.status_code, 200)
-        logs = self.client.get("/api/v1/audit/logs").json()["logs"]
-        actions = [entry for entry in logs if entry["action"] == "KPI_CAPTURED"]
+        # The legacy public audit endpoint intentionally remains fail-closed (503)
+        # until verified identity and tenant-scoped audit authorization ships.
+        # Assert the internal audit event without bypassing that production gate.
+        actions = [entry for entry in AUDIT_LOGS if entry["action"] == "KPI_CAPTURED"]
         self.assertTrue(actions)
         self.assertEqual(actions[-1]["who"], "coach-feat013")
         self.assertEqual(actions[-1]["new_value"]["athlete_id"], self.athlete_id)
