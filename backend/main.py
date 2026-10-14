@@ -1676,8 +1676,13 @@ def list_evidence(subject_id: Optional[str] = None) -> Dict[str, Any]:
 
 @app.get("/api/v1/audit/logs")
 def get_audit_logs():
-    logs = persistence.list_audit_logs() if persistence.is_postgres_enabled() else AUDIT_LOGS
-    return {"system": "KAIZO Audit-Ready System", "total_logs": len(logs), "logs": logs}
+    # SECURITY CONTAINMENT: this legacy deployment has no verified OIDC +
+    # tenant-scoped audit authorization boundary. Do not expose audit records
+    # until the fully tested Phase 4 authorization path is deployed.
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Audit log access is temporarily disabled pending verified identity and tenant authorization.",
+    )
 
 @app.get("/api/v1/health")
 def health_check():
