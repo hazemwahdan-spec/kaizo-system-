@@ -131,11 +131,14 @@ def test_phase4_decision_to_plan_preserves_evidence_and_coach_authority():
     assert readback.json()["plan_id"] == plan["plan_id"]
     assert readback.json()["execution_authorized"] is False
 
+    # Audit reads must remain fail-closed until verified OIDC identity and
+    # tenant-scoped authorization are enabled. Never weaken the boundary just
+    # to inspect CI audit records.
     audit = client.get("/api/v1/audit/logs")
-    assert audit.status_code == 200
-    actions = [item.get("action") for item in audit.json().get("logs", [])]
-    assert "DECISION_CANDIDATES_GENERATED" in actions
-    assert any("DECISION" in (action or "") for action in actions)
+    assert audit.status_code == 503, (audit.status_code, audit.text)
+    detail = audit.json().get("detail", "").lower()
+    assert "temporarily disabled" in detail
+    assert "tenant authorization" in detail
 
 
 def test_phase4_evidence_safety_fails_closed_without_coach_authority():
