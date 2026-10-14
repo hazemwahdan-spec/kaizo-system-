@@ -118,8 +118,14 @@ class FEAT017ProblemLibrarySelectionTests(unittest.TestCase):
     def test_selection_is_audited(self):
         response = self.client.post("/api/v1/problem-library/selections", json={"athlete_id": self.athlete_id, "assessment_id": self.assessment_id, "library_item_id": "PRB-017-001", "selected_by": "coach-017"})
         self.assertEqual(response.status_code, 201)
-        logs = self.client.get("/api/v1/audit/logs")
-        self.assertTrue(any(item["action"] == "PROBLEM_LIBRARY_SELECTED" and item["new_value"]["library_item_id"] == "PRB-017-001" for item in logs.json()["logs"]))
+        # The public audit endpoint is intentionally fail-closed until verified
+        # OIDC and tenant-scoped authorization is deployed. Verify the audit
+        # event at the unit boundary without bypassing that security control.
+        self.assertTrue(any(
+            item["action"] == "PROBLEM_LIBRARY_SELECTED"
+            and item["new_value"]["library_item_id"] == "PRB-017-001"
+            for item in main.AUDIT_LOGS
+        ))
 
 
 
