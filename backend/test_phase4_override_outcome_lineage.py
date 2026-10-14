@@ -93,9 +93,11 @@ def test_phase4_override_preserves_candidate_and_audit_history():
     assert decision["coach_final_authority"] is True
     assert decision["execution_authorized"] is False
 
+    # The public audit endpoint remains fail-closed until tenant-scoped authorization
+    # is verified. Assert audit events against the internal store instead.
     logs = client.get("/api/v1/audit/logs")
-    assert logs.status_code == 200
-    actions = [item.get("action") for item in logs.json().get("logs", [])]
+    assert logs.status_code == 503, logs.text
+    actions = [item.get("action") for item in main.AUDIT_LOGS]
     assert "DECISION_CANDIDATE_OVERRIDDEN" in actions
     assert any("DECISION" in (action or "") for action in actions)
 
