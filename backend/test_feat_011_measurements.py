@@ -110,7 +110,7 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         response = client.get("/api/v1/audit/logs")
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("logs", response.json())
-        for entry in main.AUDIT_LOGS:
+        for entry in AUDIT_LOGS:
             self.assertIn("timestamp", entry)
             self.assertIn("who", entry)
             self.assertIn("action", entry)
