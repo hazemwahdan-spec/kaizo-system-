@@ -1,12 +1,12 @@
 import unittest
 from fastapi.testclient import TestClient
 
-import main
+from main import app, AUDIT_LOGS
 
 
 class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
     def setUp(self):
-        self.client = TestClient(main.app)
+        self.client = TestClient(app)
         self.athlete_id = self.client.post(
             "/api/v1/athletes",
             json={"display_name": "FEAT-014 Athlete"},
@@ -117,8 +117,10 @@ class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 201)
-        logs = self.client.get("/api/v1/audit/logs").json()["logs"]
-        actions = [entry for entry in logs if entry["action"] == "ASSESSMENT_EVIDENCE_ATTACHED"]
+        # The legacy public audit endpoint intentionally remains fail-closed (503)
+        # until verified identity and tenant-scoped audit authorization ships.
+        # Assert the internal audit event without weakening that production gate.
+        actions = [entry for entry in AUDIT_LOGS if entry["action"] == "ASSESSMENT_EVIDENCE_ATTACHED"]
         self.assertTrue(actions)
         self.assertEqual(actions[-1]["who"], "coach-feat014")
         self.assertEqual(actions[-1]["new_value"]["assessment_id"], self.assessment_id)
