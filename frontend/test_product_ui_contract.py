@@ -26,3 +26,10 @@ def test_product_api_errors_are_visible_and_safe():
     assert 'response_excerpt:raw.slice(0,500)' in APP
     assert 'escapeHtml(message)' in APP
     assert 'HTTP '+ '"+r.status+' in APP
+
+ 
+def test_product_requests_require_verified_auth0_bearer():
+    assert 'window.KAIZO_AUTH_READY' in APP
+    assert '"Authorization":"Bearer "+token' in APP
+    assert 'function kaizoLogin()' in APP
+    assert 'X-KAIZO headers are not credentials' in APP
