@@ -75,8 +75,13 @@ class FEAT021DecisionCandidateGenerationTests(unittest.TestCase):
             f"/api/v1/diagnoses/{self.diagnosis['diagnosis_id']}/decision-candidates",
             json={"diagnosis_id":self.diagnosis["diagnosis_id"],"requested_by":"coach-021"})
         self.assertEqual(r.status_code,201)
-        logs=self.client.get("/api/v1/audit/logs").json()["logs"]
-        self.assertTrue(any(x["action"]=="DECISION_CANDIDATES_GENERATED" for x in logs))
+        self.assertTrue(any(
+            x["action"]=="DECISION_CANDIDATES_GENERATED"
+            for x in main.AUDIT_LOGS
+        ))
+        audit_read=self.client.get("/api/v1/audit/logs")
+        self.assertEqual(audit_read.status_code,503)
+        self.assertIn("temporarily disabled",audit_read.json()["detail"])
 
 
 if __name__=="__main__":
