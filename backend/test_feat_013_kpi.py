@@ -50,11 +50,18 @@ class FEAT013KPIAcceptanceTests(unittest.TestCase):
         self.assertEqual(capture["value"], 21.5)
         readback = self.client.get(f"/api/v1/kpis/captures/{capture['capture_id']}")
         self.assertEqual(readback.status_code, 200)
-        logs = self.client.get("/api/v1/audit/logs").json()["logs"]
-        actions = [entry for entry in logs if entry["action"] == "KPI_CAPTURED"]
+
+        # Verify the event emitted by this request without opening the legacy
+        # unauthenticated audit-read endpoint. This in-process buffer is test
+        # evidence only, not proof of durable or tenant-scoped production audit.
+        actions = [entry for entry in main.AUDIT_LOGS if entry["action"] == "KPI_CAPTURED"]
         self.assertTrue(actions)
         self.assertEqual(actions[-1]["who"], "coach-feat013")
         self.assertEqual(actions[-1]["new_value"]["athlete_id"], self.athlete_id)
+
+        audit_response = self.client.get("/api/v1/audit/logs")
+        self.assertEqual(audit_response.status_code, 503)
+        self.assertIn("temporarily disabled", audit_response.json()["detail"])
 
     def test_invalid_kpi_direction_is_rejected(self):
         response = self.client.post("/api/v1/kpis", json={
