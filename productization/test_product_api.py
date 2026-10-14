@@ -84,3 +84,34 @@ def test_product_api_fails_closed_without_production_identity(monkeypatch):
         },
     )
     assert response.status_code == 503
+
+
+def test_parent_progress_passes_bearer_token_to_identity_resolver(monkeypatch):
+    from productization import product_api
+    from productization.identity import IdentityNotConfiguredError, Principal
+
+    monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
+
+    def resolve_with_bearer(actor_id, role, tenant_id, owner, authorization=None):
+        if authorization != "Bearer verified-test-token":
+            raise IdentityNotConfiguredError("Bearer authentication is required")
+        return Principal(
+            actor_id="parent-sub",
+            role="parent",
+            tenant_id="T1",
+            resource_owner_id="athlete-1",
+            verified=True,
+            source="oidc_jwt",
+        )
+
+    monkeypatch.setattr(product_api, "resolve_principal", resolve_with_bearer)
+    response = client().get(
+        "/api/v1/product/parents/linked/athlete-1/progress",
+        params={"resource_tenant_id": "T1"},
+        headers={
+            **headers("parent", owner="athlete-1"),
+            "Authorization": "Bearer verified-test-token",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["athlete_id"] == "athlete-1"
