@@ -35,8 +35,13 @@ class FEAT022Tests(unittest.TestCase):
     def test_audit(self):
         r=self.c.post(f"/api/v1/decision-candidates/{self.cid}/rationale",json={"candidate_id":self.cid,"rationale":"Audit rationale","evidence_ids":["E22"],"recorded_by":"coach"})
         self.assertEqual(r.status_code,201)
-        logs=self.c.get("/api/v1/audit/logs").json()["logs"]
-        self.assertTrue(any(x["action"]=="DECISION_RATIONALE_RECORDED" for x in logs))
+        self.assertTrue(any(
+            x["action"] == "DECISION_RATIONALE_RECORDED"
+            for x in main.AUDIT_LOGS
+        ))
+        audit_read = self.c.get("/api/v1/audit/logs")
+        self.assertEqual(audit_read.status_code, 503)
+        self.assertIn("temporarily disabled", audit_read.json()["detail"])
 
 if __name__=="__main__":
     unittest.main()
