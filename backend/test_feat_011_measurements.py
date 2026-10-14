@@ -2,7 +2,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from main import app, ATHLETE_RECORDS, ASSESSMENT_RECORDS
+from main import app, ATHLETE_RECORDS, ASSESSMENT_RECORDS, AUDIT_LOGS
 
 
 class FEAT011MeasurementPersistenceTests(unittest.TestCase):
@@ -98,7 +98,7 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         )
         self.assertEqual(created.status_code, 201)
 
-        audit = main.AUDIT_LOGS
+        audit = AUDIT_LOGS
         matching = [x for x in audit if x["action"] == "ASSESSMENT_RECORDED"]
         self.assertTrue(matching)
         self.assertEqual(matching[-1]["who"], "coach-audit")
