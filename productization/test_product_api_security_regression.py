@@ -106,3 +106,35 @@ def test_intervention_with_coach_approval_stays_non_executing():
 def test_oidc_verify_rejects_missing_bearer():
     response = client().get("/api/v1/product/auth/oidc/verify")
     assert response.status_code == 401
+
+
+
+def test_parent_progress_forwards_bearer_token_to_identity_resolution(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+
+    seen = {}
+
+    def fake_resolve_principal(actor_id, role, tenant_id, resource_owner_id, authorization=None):
+        seen["authorization"] = authorization
+        return Principal(
+            actor_id=actor_id,
+            role=role,
+            tenant_id=tenant_id,
+            resource_owner_id=resource_owner_id,
+            verified=True,
+            source="oidc_jwt",
+        )
+
+    monkeypatch.setattr(product_api, "resolve_principal", fake_resolve_principal)
+    response = client().get(
+        "/api/v1/product/parents/linked/athlete-A/progress",
+        params={"resource_tenant_id": "TENANT-A"},
+        headers={
+            **headers(role="parent", tenant="TENANT-A", actor="guardian-A", owner="athlete-A"),
+            "Authorization": "Bearer test-token",
+        },
+    )
+
+    assert response.status_code == 200
+    assert seen["authorization"] == "Bearer test-token"
