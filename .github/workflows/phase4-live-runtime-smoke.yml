@@ -63,6 +63,21 @@ jobs:
           print(f"LIVE_OPENAPI_PASS: {len(paths)} paths; required Phase 4 paths present")
           PY
 
+      - name: Verify audit logs fail closed without verified identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
+          case "$status" in
+            401|403|503)
+              echo "LIVE_AUDIT_DENIAL_PASS: unauthenticated /api/v1/audit/logs returned HTTP $status"
+              ;;
+            *)
+              echo "LIVE_AUDIT_DENIAL_FAILED: unauthenticated /api/v1/audit/logs returned HTTP $status"
+              exit 1
+              ;;
+          esac
+
       - name: Verify deployed health endpoint
         shell: bash
         run: |
