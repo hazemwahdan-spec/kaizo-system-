@@ -19,3 +19,10 @@ def test_ui_does_not_authorize_execution():
 
 def test_product_title():
     assert "KAIZO SYSTEM" in INDEX
+
+
+def test_product_api_errors_are_visible_and_safe():
+    assert 'Core returned a non-JSON response' in APP
+    assert 'response_excerpt:raw.slice(0,500)' in APP
+    assert 'escapeHtml(message)' in APP
+    assert 'HTTP '+ '"+r.status+' in APP
