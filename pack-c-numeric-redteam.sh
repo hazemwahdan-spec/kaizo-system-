@@ -12,6 +12,10 @@ MISSING=$(curl -fsS -X POST "$BASE_URL/api/v1/rules/evaluate" -H "Content-Type: 
 echo "$MISSING"
 python -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="HOLD"; assert d["reason_code"]=="MISSING_REQUIRED_INPUT"' <<<"$MISSING"
 
-AUDIT=$(curl -fsS "$BASE_URL/api/v1/audit/logs")
-python -c 'import json,sys; d=json.load(sys.stdin); assert any(x.get("action")=="NUMERIC_CLAIM_VALIDATION_HOLD" for x in d.get("logs",[]))' <<<"$AUDIT"
+# Public audit-log listing must remain fail-closed until verified identity and
+# tenant-scoped authorization are deployed. Do not treat a 503 as a test failure.
+AUDIT_RESPONSE=$(curl -sS -w "\nHTTP_STATUS:%{http_code}\n" "$BASE_URL/api/v1/audit/logs")
+echo "$AUDIT_RESPONSE"
+grep -q 'HTTP_STATUS:503' <<<"$AUDIT_RESPONSE"
+grep -q 'disabled pending verified identity and tenant authorization' <<<"$AUDIT_RESPONSE"
 echo "PACK-C PRODUCTION NUMERIC-GOVERNANCE RED TEAM: PASS"
