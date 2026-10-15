@@ -3,7 +3,7 @@
   window.KAIZO_AUTH_READY = (async function () {
     try {
       if (!config.clientId) throw new Error("AUTH0_SPA_CLIENT_ID_REQUIRED: set the public clientId in frontend/auth-config.js and allow this site origin in Auth0 callback/web-origin settings.");
-      if (typeof window.createAuth0Client !== "function") throw new Error("AUTH0_SDK_UNAVAILABLE: Auth0 SPA SDK did not load.");
+      if (typeof window.createAuth0Client !== "function") throw new Error("AUTH0_SDK_UNAVAILABLE: Auth0 SPA SDK did not load. " + (window.KAIZO_AUTH_SDK_LOAD_ERROR || "No SDK loader diagnostic is available."));
       const client = await window.createAuth0Client({
         domain: config.domain,
         clientId: config.clientId,
