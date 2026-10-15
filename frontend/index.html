@@ -1,1 +1,31 @@
-<!doctype html><html lang="en" dir="ltr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KAIZO SYSTEM — Commercial Product</title><link rel="stylesheet" href="./styles.css"></head><body><div id="app"></div><script src="https://cdn.auth0.com/js/auth0-spa-js/2.1/auth0-spa-js.production.js"></script><script src="./auth-config.js"></script><script src="./auth.js"></script><script src="./app.js"></script></body></html>
+<!doctype html><html lang="en" dir="ltr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KAIZO SYSTEM — Commercial Product</title><link rel="stylesheet" href="./styles.css"></head><body><div id="app"></div><script>
+(function () {
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var script = document.createElement("script");
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = function () { script.remove(); reject(new Error("Script failed to load: " + src)); };
+      document.head.appendChild(script);
+    });
+  }
+  (async function () {
+    try {
+      await loadScript("https://cdn.auth0.com/js/auth0-spa-js/2.1/auth0-spa-js.production.js");
+    } catch (primaryError) {
+      try {
+        await loadScript("https://cdn.jsdelivr.net/npm/@auth0/auth0-spa-js@2.1.3/dist/auth0-spa-js.production.js");
+      } catch (fallbackError) {
+        window.KAIZO_AUTH_SDK_LOAD_ERROR = String(fallbackError && fallbackError.message || fallbackError);
+      }
+    }
+    await loadScript("./auth-config.js");
+    await loadScript("./auth.js");
+    await loadScript("./app.js");
+  })().catch(function (error) {
+    window.KAIZO_BOOT_ERROR = String(error && error.message || error);
+    var app = document.getElementById("app");
+    if (app) app.textContent = "KAIZO failed to initialize. Reload the page and inspect the runtime diagnostic.";
+  });
+})();
+</script></body></html>
