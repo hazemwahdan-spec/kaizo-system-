@@ -131,9 +131,11 @@ def test_phase4_decision_to_plan_preserves_evidence_and_coach_authority():
     assert readback.json()["plan_id"] == plan["plan_id"]
     assert readback.json()["execution_authorized"] is False
 
+    # Public audit-log access remains fail-closed without authenticated
+    # tenant authorization. Validate emitted events through the internal spine.
     audit = client.get("/api/v1/audit/logs")
-    assert audit.status_code == 200
-    actions = [item.get("action") for item in audit.json().get("logs", [])]
+    assert audit.status_code == 503
+    actions = [item.get("action") for item in main.AUDIT_LOGS]
     assert "DECISION_CANDIDATES_GENERATED" in actions
     assert any("DECISION" in (action or "") for action in actions)
 
