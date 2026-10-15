@@ -66,7 +66,7 @@ class FEAT016StructuredProblemStatementTests(unittest.TestCase):
             "athlete_id":athlete["athlete_id"],"assessment_id":assessment["assessment_id"],
             "statement":"Problem with entry timing.","problem_type":"timing","created_by":"coach-feat016"})
         self.assertEqual(r.status_code,201)
-        logs=self.client.get("/api/v1/audit/logs").json()["logs"]
+        logs=main.AUDIT_LOGS
         matches=[x for x in logs if x["action"]=="PROBLEM_STATEMENT_CREATED"]
         self.assertTrue(matches)
         self.assertEqual(matches[-1]["who"],"coach-feat016")
@@ -164,7 +164,7 @@ class FEAT018CauseContextFramingTests(unittest.TestCase):
         self.assertEqual(r.status_code,400)
         r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/cause-context",json={"problem_id":self.problem_id,"cause":"Late grip","framed_by":"coach-018"})
         self.assertEqual(r.status_code,201)
-        logs=self.client.get("/api/v1/audit/logs").json()["logs"]
+        logs=main.AUDIT_LOGS
         self.assertTrue(any(x["action"]=="PROBLEM_CAUSE_CONTEXT_FRAMED" and x["new_value"]["problem_id"]==self.problem_id for x in logs))
 
 
@@ -201,5 +201,5 @@ class FEAT019EvidenceLinkedDiagnosisTests(unittest.TestCase):
     def test_audit_trace_is_written(self):
         r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/diagnosis",json={"problem_id":self.problem_id,"evidence_ids":["EVID-019-001"],"diagnosis":"Evidence-supported timing issue","diagnosed_by":"coach-019"})
         self.assertEqual(r.status_code,201)
-        logs=self.client.get("/api/v1/audit/logs").json()["logs"]
+        logs=main.AUDIT_LOGS
         self.assertTrue(any(x["action"]=="EVIDENCE_LINKED_DIAGNOSIS_CREATED" and x["new_value"]["problem_id"]==self.problem_id for x in logs))

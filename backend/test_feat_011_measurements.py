@@ -2,7 +2,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from main import app, ATHLETE_RECORDS, ASSESSMENT_RECORDS
+from main import app, ATHLETE_RECORDS, ASSESSMENT_RECORDS, AUDIT_LOGS
 
 
 class FEAT011MeasurementPersistenceTests(unittest.TestCase):
@@ -98,9 +98,12 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         )
         self.assertEqual(created.status_code, 201)
 
+        # Public audit-log access remains fail-closed until identity and tenant
+        # authorization are established. Verify the event through the internal
+        # audit spine instead of weakening the endpoint's security boundary.
         audit = client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
-        matching = [x for x in audit.json()["logs"] if x["action"] == "ASSESSMENT_RECORDED"]
+        self.assertEqual(audit.status_code, 503)
+        matching = [x for x in AUDIT_LOGS if x["action"] == "ASSESSMENT_RECORDED"]
         self.assertTrue(matching)
         self.assertEqual(matching[-1]["who"], "coach-audit")
         self.assertEqual(matching[-1]["new_value"]["athlete_id"], athlete.json()["athlete_id"])
@@ -108,10 +111,13 @@ class FEAT046AuditSpineTests(unittest.TestCase):
 
     def test_audit_log_preserves_old_and_new_values(self):
         client = TestClient(app)
+        # Anonymous access must be denied while internal audit entries retain
+        # the complete old/new-value lineage needed for verification.
         response = client.get("/api/v1/audit/logs")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("logs", response.json())
-        for entry in response.json()["logs"]:
+        self.assertEqual(response.status_code, 503)
+        self.assertIsInstance(AUDIT_LOGS, list)
+        self.assertTrue(AUDIT_LOGS)
+        for entry in AUDIT_LOGS:
             self.assertIn("timestamp", entry)
             self.assertIn("who", entry)
             self.assertIn("action", entry)

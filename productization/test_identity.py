@@ -22,11 +22,14 @@ def test_unknown_role_is_rejected_in_development(monkeypatch):
         resolve_principal("x", "admin", "academy-a", None)
 
 
-def test_oidc_mode_fails_closed_without_provider_configuration(monkeypatch):
+def test_oidc_mode_rejects_invalid_token_with_default_trust_configuration(monkeypatch):
     monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
     for name in ("KAIZO_OIDC_ISSUER", "KAIZO_OIDC_AUDIENCE", "KAIZO_OIDC_JWKS_URL"):
         monkeypatch.delenv(name, raising=False)
-    with pytest.raises(IdentityNotConfiguredError, match="OIDC production identity"):
+    # The production Auth0 issuer, audience, and JWKS endpoint have safe,
+    # pinned defaults. A malformed token must still fail closed during JWT
+    # verification; absent optional overrides do not disable verification.
+    with pytest.raises(IdentityNotConfiguredError, match="OIDC token verification failed"):
         resolve_principal("ignored", "coach", "ignored", None, "Bearer test-token")
 
 
