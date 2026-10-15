@@ -76,3 +76,46 @@ This document is a repository-side handoff aid, not proof that Gemini has import
 
 ## 7. Exact resume point
 **Resume at live-state reconciliation, then compare PR #141 vs #134 and inspect current Actions results.** Do not start by rebuilding the system, merging a PR, changing production settings, or declaring the 17-step plan complete. The first output from Gemini should be a concise evidence table: item, current state, evidence URL/SHA, blocker, next action.
+
+## 7. Return path to the canonical 17-step master execution board
+
+The master board is the separate completion sequence in `docs/roadmaps/KAIZO_MASTER_EXECUTION_ROADMAP_RECONCILED_20261011.md`; do not confuse its 17 steps with Productization P01–P17 or Strategic Phases 1–5.
+
+1. Reconstruct project state — recorded closed with documented gaps.
+2. Audit previous phases — recorded closed with documented limitations.
+3. Reconcile roadmaps — recorded closed with explicit unmapped relationships.
+4. Close/classify conflicts — recorded closed with one owner-decision blocker in the 2026-10-11 baseline; refresh current evidence before relying on that status.
+5. Produce canonical roadmap — roadmap artifact exists; confirm its approval/status against current governance.
+6. Phase 4 entry gate — do not assume open or passed from historical CI alone; refresh gate evidence and preserve the explicit approval boundary.
+7. Execute Phase 4 — current practical work concerns verified identity, tenant-scoped resource authorization, guardian-consent enforcement/revocation, durable binding/audit, and live rejection tests.
+8. Test, validate, and red-team Phase 4 — independent positive and negative tests on the selected live target.
+9. Freeze Phase 4 — only after step 8 evidence is accepted.
+10. Execute remaining phases — follow dependencies and change control.
+11. End-to-end system integration.
+12. Final system test.
+13. Final red team.
+14. Final validation.
+15. Deployment readiness.
+16. Proof — current live production, persistence, identity, authorization, and user-journey evidence.
+17. Final freeze / Project Closed — only with explicit exit decision and saved archive.
+
+### Exact resume point after handoff snapshot (2026-10-15 UTC)
+
+- Repository `main` SHA rechecked: `424d5b0b8dc4f8f31be2ac91f40bc11c15b3f453`.
+- Handoff PR #142 remains OPEN and DRAFT. Eight relevant workflow runs on its head SHA `da6136ecce33e78786bc763fdd04852df861a762` completed successfully, including Phase 7 Core Runtime Integration Contract, Commercial Product UI/Runtime, Persistence Adapter Validation, FEAT-033–040 E2E, Identity RBAC Boundary, Product Surface Contract, and Runtime Adapter. These are scoped CI checks, not proof of Gemini import, live authorization, or production readiness.
+- PR #141 remains OPEN, not merged; its latest inspected head `915adb0803ce457d3d21addf64c7c17b911d8ab9` has successful scoped Phase 7 Product Surface Contract and Core Runtime Integration Contract runs. Recheck the full current check list before merge.
+- PR #134 remains OPEN and overlaps PR #141 but includes backend test changes; do not close it until every unique change is reconciled. Preserve HTTP 503 fail-closed assertions for unauthenticated public audit reads; never restore HTTP 200 merely to satisfy a legacy test.
+- The public audit read endpoint must remain fail-closed (HTTP 503) until verified identity and tenant authorization are actually deployed. The earlier FastAPI Cloud HTTP 200 result without authentication remains a security blocker for that target unless a fresh retest proves otherwise.
+- Phase 4 is NOT CLOSED: real live OIDC, cross-tenant denial, missing/revoked guardian consent rejection, durable resource binding, and durable audit evidence still require verification on the explicitly selected target.
+- Library transfer remains partial: 69 source files identified; 48 binary/document/archive items still require exact-byte transfer and SHA-256 verification in the audited baseline.
+- PACK-A remains NOT CLOSED until actual deployed production health execution evidence (A2) exists. CI success and an API docs page do not substitute for A2.
+
+### Next actions in order
+
+1. Keep PR #142 as a draft until the handoff document is reviewed; do not merge it or claim Gemini has imported it without explicit review/import evidence.
+2. Reconcile the live diffs and checks for PR #141 vs #134; port only demonstrably missing, security-preserving changes and retain all fail-closed checks. Do not merge either PR blindly.
+3. Refresh and decide the Phase 4 entry-gate state using current evidence. If gate approval is still valid, continue the active Phase 4 work; otherwise stop at the gate and record the exact missing evidence/owner decision.
+4. Run live positive/negative identity, tenant, consent, persistence, and audit checks on one explicitly named target; retain evidence URLs and independent retest results.
+5. Only after Phase 4 exit criteria pass, proceed sequentially through board steps 9–17. Do not skip ahead to deployment readiness or project closure.
+
+This handoff section is a time-stamped resume record, not a claim that any pending action above has been executed.
