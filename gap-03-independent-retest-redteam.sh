@@ -19,4 +19,8 @@ echo "G03-LOOP"; post_loop(){ curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -X POST
 post_loop '{"case_id":"G03-LOOP","decision":{"selected":"adaptation-A"},"intervention":{"action":"execute-A"},"response_kpi":{"metric":"response-observed"},"retest":{"result":"retested"}}'
 echo "REDTEAM-LOOP-MISSING"; out="$(curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -X POST "$BASE_URL/api/v1/decision/loop" -H 'Content-Type: application/json' -d '{"case_id":"G03-LOOP-MISSING","decision":{"selected":"A"},"intervention":{"action":"A"},"response_kpi":{"metric":"KPI"}}')"; echo "$out"; grep -q 'HTTP_STATUS:422' <<<"$out"
 echo "REDTEAM-LOOP-AUTHORITY"; out="$(curl -sS -X POST "$BASE_URL/api/v1/decision/loop" -H 'Content-Type: application/json' -d '{"case_id":"G03-LOOP-AUTHORITY","decision":{"selected":"A"},"intervention":{"action":"A"},"response_kpi":{"metric":"KPI"},"retest":{"result":"R"},"coach_final_authority":false}')"; echo "$out"; grep -q '"status":"HOLD"' <<<"$out"
-echo "AUDIT"; curl -fsS "$BASE_URL/api/v1/audit/logs"; echo
+echo "AUDIT-FAIL-CLOSED"
+AUDIT_RESPONSE="$(curl -sS -w "\\nHTTP_STATUS:%{http_code}\\n" "$BASE_URL/api/v1/audit/logs")"
+echo "$AUDIT_RESPONSE"
+grep -q 'HTTP_STATUS:503' <<<"$AUDIT_RESPONSE"
+grep -q 'disabled pending verified identity and tenant authorization' <<<"$AUDIT_RESPONSE"
