@@ -3,13 +3,15 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
+from phase4_route_guard import create_athlete_with_tenant, enforce_athlete_access, require_phase4_principal
+from productization.identity import Principal
 from evidence_store import EVIDENCE_RECORDS
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
@@ -64,7 +66,10 @@ class AthleteUpdateRequest(BaseModel):
 
 
 @app.post("/api/v1/athletes", status_code=status.HTTP_201_CREATED)
-def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
+def create_athlete(
+    req: AthleteCreateRequest,
+    principal: Principal = Depends(require_phase4_principal),
+) -> Dict[str, Any]:
     display_name = req.display_name.strip()
     if not display_name:
         raise HTTPException(status_code=400, detail="display_name is required")
@@ -78,20 +83,26 @@ def create_athlete(req: AthleteCreateRequest) -> Dict[str, Any]:
         "created_at": now,
         "updated_at": now,
     }
+    # Persist athlete + server-derived academy binding atomically; no body tenant label.
+    create_athlete_with_tenant(principal, athlete)
     ATHLETE_RECORDS[athlete["athlete_id"]] = athlete
-    persistence.upsert_athlete(athlete)
     log_action(
-        "system",
+        principal.actor_id,
         "ATHLETE_CREATED",
         None,
         athlete,
-        "Athlete record created with stable identity and lifecycle state.",
+        "Athlete and academy ownership binding persisted under verified identity.",
     )
     return athlete
 
 
 @app.get("/api/v1/athletes/{athlete_id}")
-def get_athlete(athlete_id: str) -> Dict[str, Any]:
+def get_athlete(
+    athlete_id: str,
+    principal: Principal = Depends(require_phase4_principal),
+) -> Dict[str, Any]:
+    # Authorization is checked before loading/returning the protected resource.
+    enforce_athlete_access(principal, athlete_id, action="read")
     athlete = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if athlete is None:
         raise HTTPException(status_code=404, detail="athlete not found")
@@ -99,7 +110,13 @@ def get_athlete(athlete_id: str) -> Dict[str, Any]:
 
 
 @app.patch("/api/v1/athletes/{athlete_id}")
-def update_athlete(athlete_id: str, req: AthleteUpdateRequest) -> Dict[str, Any]:
+def update_athlete(
+    athlete_id: str,
+    req: AthleteUpdateRequest,
+    principal: Principal = Depends(require_phase4_principal),
+) -> Dict[str, Any]:
+    # Mutations are limited to coach/academy roles with persisted tenant scope.
+    enforce_athlete_access(principal, athlete_id, action="update")
     current = persistence.get_athlete(athlete_id) if persistence.is_postgres_enabled() else ATHLETE_RECORDS.get(athlete_id)
     if current is None:
         raise HTTPException(status_code=404, detail="athlete not found")
