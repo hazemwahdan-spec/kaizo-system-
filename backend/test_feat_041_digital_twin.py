@@ -1,12 +1,13 @@
 import unittest
 
 from fastapi.testclient import TestClient
-from main import app, DIGITAL_TWIN_STATE
+from main import app, DIGITAL_TWIN_STATE, AUDIT_LOGS
 
 
 class FEAT041DigitalTwinStateTests(unittest.TestCase):
     def setUp(self):
         DIGITAL_TWIN_STATE.clear()
+        AUDIT_LOGS.clear()
         self.client = TestClient(app)
 
     def test_sync_creates_versioned_state_and_read_returns_it(self):
@@ -101,10 +102,12 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
+        # Anonymous audit-log access must remain fail-closed. Verify the
+        # synchronization event via the internal audit spine instead.
         audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 200)
+        self.assertEqual(audit.status_code, 503)
         matches = [
-            x for x in audit.json()["logs"]
+            x for x in AUDIT_LOGS
             if x["action"] == "DIGITAL_TWIN_SYNCHRONIZED"
         ]
         self.assertTrue(matches)
