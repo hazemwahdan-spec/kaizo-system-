@@ -89,3 +89,18 @@ Remain blocked until an operator confirms the intended deployment and Auth0 audi
 - PR #128 remains draft/open/unmerged.
 
 **Evidence Before Claim.**
+
+## Cross-PR regression check — 2026-10-18
+
+A separate, narrow follow-up PR was inspected: [#148 — forward verified identity context for parent progress](https://github.com/hazemwahdan-spec/kaizo-system-/pull/148), head `c766844bb7219719fabc04e3b4e9eb6cf5bc6113`, based on `main` at `cf4a895885b836b56540bf113f7b8074af0f4769`.
+
+- The patch forwards the incoming Authorization header to the parent-progress identity context.
+- It adds a focused regression test asserting the header reaches that context.
+- The following candidate-code CI runs were retrieved and their jobs reported success:
+  - [Commercial Security Regression run 39073541978](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/39073541978)
+  - [Identity RBAC Boundary run 39073541975](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/39073541975)
+  - [Persistence Adapter Validation run 39073541995](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/39073541995)
+- PR #148 is still draft/open/unmerged. Its test isolates route wiring; it is not a live Auth0, tenant-isolation, guardian-consent, or deployed-production authorization test.
+- This PR is based on `main`, not the Phase 4 candidate branch. Its green runs must not be attributed to PR #128 or treated as Phase 4 exit evidence.
+
+Decision remains unchanged: `P4-REQ-011 = OPEN / NOT PROVEN`; `Phase 4 EXIT = BLOCKED`. Do not merge or close based solely on these checks.
