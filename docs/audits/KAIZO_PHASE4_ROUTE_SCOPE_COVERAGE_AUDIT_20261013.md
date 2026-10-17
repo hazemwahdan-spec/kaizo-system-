@@ -66,3 +66,26 @@ Execution evidence was rechecked:
 The corrected workflow has been inspected in the candidate branch, but no dispatch/run result is available in this execution context. Therefore the audit records no claim that Auth0 token issuance, live OIDC verification, or live resource authorization has passed. Before closure, execute the workflow from the candidate branch and then independently exercise protected production routes with both allowed and denied cases (including cross-tenant access and missing/revoked guardian consent), reconcile runtime route coverage, and capture independent retest plus rollback/regression evidence.
 
 Governance remains unchanged: `P4-REQ-011 = OPEN / NOT PROVEN`; `Phase 4 EXIT = BLOCKED`; PR #128 remains draft/open/unmerged. Evidence Before Claim.
+
+
+## Resume checkpoint — 2026-10-18
+
+This checkpoint records a fresh source inspection only; it does not claim a new workflow execution or live security pass.
+
+- Commercial evidence workflow blob inspected: `203104101d54336a99471a81d6f836d0f48362f1`.
+- Configured target in that file: `https://kaizo-system.fastapicloud.dev`.
+- Workflow steps present in source: Auth0 client-credentials token request (masked), positive OIDC verification, invalid-bearer rejection expecting HTTP 401, and production health verification.
+- Actual-app route inventory test blob inspected: `d2fdd4059ed9546b57049c38cc123831d4a2b3ce`. It checks that registered Core API routes are represented in the manifest and that the shared identity/scope guards are wired.
+- The same test explicitly documents that the generic mounted-route guard is not a substitute for route-specific ownership, role, consent, and audit policies.
+
+### Closure decision
+
+No fresh dispatch result was available from this inspection. Source presence is not execution evidence. No claim is made that the live OIDC workflow passed on 2026-10-18, that the candidate branch is deployed, or that live protected-resource allow/deny cases passed.
+
+Remain blocked until an operator confirms the intended deployment and Auth0 audience/configuration, runs the workflow, and obtains independent live positive/negative resource-authorization evidence. The route-by-route policy, trusted guardian verification, generated-feature ownership, shared catalog policy, durable-audit proof, and independent retest/rollback evidence remain open.
+
+- `P4-REQ-011 = OPEN / NOT PROVEN`
+- `Phase 4 EXIT = BLOCKED`
+- PR #128 remains draft/open/unmerged.
+
+**Evidence Before Claim.**
