@@ -37,7 +37,9 @@ def payload(evidence_refs=None, **overrides):
 
 
 def create_rule_evidence(evidence_id, status="VERIFIED", level="E2"):
-    response = client.post("/api/v1/evidence", json={
+    # Trusted fixture: exercise rule-governance semantics without reopening
+    # the anonymous public evidence-ingestion endpoint.
+    record = {
         "evidence_id": evidence_id,
         "subject_type": "rule",
         "subject_id": "P4-RULE-SUBJECT",
@@ -46,10 +48,13 @@ def create_rule_evidence(evidence_id, status="VERIFIED", level="E2"):
         "source_ref": f"SOURCE-{evidence_id}",
         "claim": "Rule evidence validation fixture",
         "observed_value": {"threshold": 5},
-        "verified_by": "phase4-rule-test",
-    })
-    assert response.status_code == 201, response.text
-    return response.json()
+        "verified_by": "trusted-test-fixture",
+        "verified_at": "2026-10-18T00:00:00Z",
+        "notes": None,
+    }
+    persistence.upsert_evidence(record)
+    main.EVIDENCE_RECORDS[evidence_id] = record
+    return record
 
 def test_approved_versioned_rule_is_recorded_without_authorizing_execution():
     create_rule_evidence("P4-RULE-SOURCE-001")
