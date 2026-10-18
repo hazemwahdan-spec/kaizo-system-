@@ -1,5 +1,6 @@
 """Regression tests for fail-closed global evidence publisher authorization."""
 from types import SimpleNamespace
+import uuid
 
 import pytest
 from fastapi import HTTPException
@@ -90,6 +91,7 @@ def test_publisher_gate_rejects_wrong_global_tenant(monkeypatch):
 def test_verified_publisher_write_ignores_client_verified_by_and_audits_atomically(monkeypatch):
     _override_publisher()
     monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: True)
+    monkeypatch.setattr(persistence, "get_evidence", lambda _evidence_id: None)
     persisted = {}
     monkeypatch.setattr(
         persistence,
@@ -162,3 +164,62 @@ def test_publisher_cannot_read_tenant_owned_evidence(monkeypatch):
         assert response.status_code == 404
     finally:
         _clear_override()
+
+
+def test_duplicate_evidence_id_is_rejected_without_overwrite(monkeypatch):
+    _override_publisher()
+    monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: True)
+    monkeypatch.setattr(persistence, "get_evidence", lambda _evidence_id: {
+        "evidence_id": "existing-id", "subject_type": "assessment", "subject_id": "tenant-assessment"
+    })
+    monkeypatch.setattr(
+        persistence, "upsert_evidence_with_audit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not overwrite")),
+    )
+    try:
+        response = client.post("/api/v1/evidence", json={
+            "evidence_id": "existing-id",
+            "subject_type": "rule",
+            "subject_id": "global-rule-001",
+            "evidence_level": "E2",
+            "status": "VERIFIED",
+            "claim": "Must not reclassify an existing tenant record",
+        })
+        assert response.status_code == 409
+    finally:
+        _clear_override()
+
+
+def test_atomic_persistence_writes_global_evidence_and_audit_together():
+    persistence.initialize()
+    evidence_id = "atomic-publisher-test-" + uuid.uuid4().hex
+    timestamp = "2026-10-18T00:00:00Z"
+    record = {
+        "evidence_id": evidence_id,
+        "subject_type": "rule",
+        "subject_id": "atomic-test-rule",
+        "evidence_level": "E2",
+        "status": "VERIFIED",
+        "source_ref": "test://atomic-audit",
+        "claim": "Evidence and audit share a transaction",
+        "observed_value": {"result": "PASS"},
+        "verified_by": "auth0|approved-publisher",
+        "verified_at": timestamp,
+        "notes": None,
+    }
+    persistence.upsert_evidence_with_audit(
+        record,
+        timestamp=timestamp,
+        who="auth0|approved-publisher",
+        action="EVIDENCE_RECORDED",
+        why="Atomic publisher persistence regression test",
+    )
+    stored = persistence.get_evidence(evidence_id)
+    assert stored is not None
+    assert stored["verified_by"] == "auth0|approved-publisher"
+    audit = persistence.list_audit_logs()
+    assert any(
+        item.get("action") == "EVIDENCE_RECORDED"
+        and (item.get("new_value") or {}).get("evidence_id") == evidence_id
+        for item in audit
+    )
