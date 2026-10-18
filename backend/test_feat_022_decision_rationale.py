@@ -15,7 +15,9 @@ class FEAT022Tests(unittest.TestCase):
         self.sid=s.json()["assessment_id"]
         p=self.c.post("/api/v1/problem-statements",json={"athlete_id":self.aid,"assessment_id":self.sid,"statement":"problem","problem_type":"timing","created_by":"coach"}); self.assertEqual(p.status_code,201)
         self.pid=p.json()["problem_id"]
-        e=self.c.post("/api/v1/evidence",json={"evidence_id":"E22","subject_type":"assessment","subject_id":self.sid,"evidence_level":"E3","status":"verified","claim":"observed","observed_value":{"n":1},"verified_by":"coach"}); self.assertEqual(e.status_code,201)
+        # Seed a trusted fixture; public evidence writes remain fail-closed until verified publisher authorization is deployed.
+        evidence={"evidence_id":"E22","subject_type":"assessment","subject_id":self.sid,"evidence_level":"E3","status":"verified","source_ref":"assessment://FEAT-022","claim":"observed","observed_value":{"n":1},"verified_by":"trusted-test-fixture","verified_at":"2026-10-18T00:00:00Z","notes":None}
+        persistence.upsert_evidence(evidence); main.EVIDENCE_RECORDS[evidence["evidence_id"]]=evidence
         d=self.c.post(f"/api/v1/problem-statements/{self.pid}/diagnosis",json={"problem_id":self.pid,"evidence_ids":["E22"],"diagnosis":"diagnosis","confidence":"HIGH","diagnosed_by":"coach"}); self.assertEqual(d.status_code,201)
         g=self.c.post(f"/api/v1/diagnoses/{d.json()['diagnosis_id']}/decision-candidates",json={"diagnosis_id":d.json()["diagnosis_id"],"requested_by":"coach"}); self.assertEqual(g.status_code,201)
         self.cid=g.json()["candidates"][0]["candidate_id"]

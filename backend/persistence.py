@@ -589,6 +589,49 @@ def upsert_evidence(record: Dict[str, Any]) -> None:
         conn.commit()
 
 
+def upsert_evidence_with_audit(
+    record: Dict[str, Any],
+    *,
+    timestamp: str,
+    who: str,
+    action: str,
+    why: str,
+) -> None:
+    """Atomically persist global evidence and its durable audit event."""
+    if not is_postgres_enabled():
+        raise PersistenceConfigurationError(
+            "Global evidence publishing requires durable PostgreSQL persistence"
+        )
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO kaizo_evidence_records
+                    (evidence_id, subject_type, subject_id, evidence_level, status,
+                     source_ref, claim, observed_value, verified_by, verified_at, notes)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
+                """,
+                (
+                    record["evidence_id"], record["subject_type"], record["subject_id"],
+                    record["evidence_level"], record["status"], record.get("source_ref"),
+                    record["claim"], json.dumps(record.get("observed_value")),
+                    record["verified_by"], record["verified_at"], record.get("notes"),
+                ),
+            )
+            cur.execute(
+                """
+                INSERT INTO kaizo_audit_logs
+                    (timestamp, who, action, old_value, new_value, why)
+                VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s)
+                """,
+                (
+                    timestamp, who, action, json.dumps(None),
+                    json.dumps(record), why,
+                ),
+            )
+        conn.commit()
+
+
 def get_evidence(evidence_id: str) -> Optional[Dict[str, Any]]:
     if not is_postgres_enabled():
         return None

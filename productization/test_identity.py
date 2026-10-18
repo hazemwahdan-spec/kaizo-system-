@@ -40,3 +40,18 @@ def test_oidc_requires_bearer(monkeypatch):
     monkeypatch.setenv("KAIZO_OIDC_JWKS_URL", "https://issuer.example/.well-known/jwks.json")
     with pytest.raises(IdentityNotConfiguredError, match="Bearer authentication"):
         resolve_principal("ignored", "coach", "ignored", None, None)
+
+
+def test_namespaced_auth0_claims_resolve_global_publisher():
+    from productization.identity import _claims_to_principal
+
+    principal = _claims_to_principal({
+        "sub": "auth0|approved-publisher",
+        "https://kaizo.system/kaizo_role": "publisher",
+        "https://kaizo.system/tenant_id": "global",
+    })
+    assert principal.actor_id == "auth0|approved-publisher"
+    assert principal.role == "publisher"
+    assert principal.tenant_id == "global"
+    assert principal.verified is True
+    assert principal.source == "oidc_jwt"

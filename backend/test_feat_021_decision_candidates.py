@@ -23,11 +23,23 @@ class FEAT021DecisionCandidateGenerationTests(unittest.TestCase):
             "athlete_id":self.athlete_id, "assessment_id":self.assessment_id,
             "statement":"Late entry under resistance","problem_type":"timing","created_by":"coach-021"})
         self.assertEqual(problem.status_code, 201)
-        evidence = self.client.post("/api/v1/evidence", json={
-            "evidence_id":"EVID-021-001","subject_type":"assessment",
-            "subject_id":self.assessment_id,"evidence_level":"E3","status":"verified",
-            "claim":"Late entry observed","observed_value":{"count":4},"verified_by":"coach-021"})
-        self.assertEqual(evidence.status_code, 201)
+        # Trusted fixture: public evidence writes are fail-closed pending
+        # verified publisher identity and tenant-scoped authorization.
+        evidence = {
+            "evidence_id": "EVID-021-001",
+            "subject_type": "assessment",
+            "subject_id": self.assessment_id,
+            "evidence_level": "E3",
+            "status": "verified",
+            "source_ref": "assessment://FEAT-021",
+            "claim": "Late entry observed",
+            "observed_value": {"count": 4},
+            "verified_by": "trusted-test-fixture",
+            "verified_at": "2026-10-18T00:00:00Z",
+            "notes": None,
+        }
+        persistence.upsert_evidence(evidence)
+        main.EVIDENCE_RECORDS[evidence["evidence_id"]] = evidence
         diagnosis = self.client.post(
             f"/api/v1/problem-statements/{problem.json()['problem_id']}/diagnosis",
             json={"problem_id":problem.json()["problem_id"],"evidence_ids":["EVID-021-001"],

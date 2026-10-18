@@ -33,7 +33,7 @@ class Principal:
     source: str
 
 
-VALID_ROLES = {"academy", "coach", "athlete", "parent"}
+VALID_ROLES = {"academy", "coach", "athlete", "parent", "publisher"}
 
 # Public, deployment-specific OIDC trust configuration. These are not secrets.
 # Pinning the expected issuer and audience avoids a fail-open path when the
@@ -54,10 +54,24 @@ def _oidc_settings() -> tuple[str, str, str]:
 
 
 def _claims_to_principal(claims: dict[str, Any]) -> Principal:
+    # Auth0 custom claims should be namespaced. Keep legacy unnamespaced claim
+    # aliases for existing deployments, but prefer the KAIZO namespace.
+    namespace = os.getenv("KAIZO_OIDC_CLAIM_NAMESPACE", "https://kaizo.system/").strip()
+    if namespace and not namespace.endswith("/"):
+        namespace += "/"
     actor_id = claims.get("sub")
-    role = claims.get("kaizo_role") or claims.get("role")
-    tenant_id = claims.get("tenant_id") or claims.get("kaizo_tenant_id")
-    owner = claims.get("resource_owner_id")
+    role = (
+        claims.get(f"{namespace}kaizo_role")
+        or claims.get("kaizo_role")
+        or claims.get("role")
+    )
+    tenant_id = (
+        claims.get(f"{namespace}tenant_id")
+        or claims.get(f"{namespace}kaizo_tenant_id")
+        or claims.get("tenant_id")
+        or claims.get("kaizo_tenant_id")
+    )
+    owner = claims.get(f"{namespace}resource_owner_id") or claims.get("resource_owner_id")
     if not actor_id or role not in VALID_ROLES or not tenant_id:
         raise IdentityNotConfiguredError(
             "verified identity is missing required KAIZO claims: sub, role, tenant_id"

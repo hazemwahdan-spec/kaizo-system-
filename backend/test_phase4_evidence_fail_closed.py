@@ -40,7 +40,9 @@ def context():
 
 
 def create_evidence(suffix, coach, problem, status, level="E2"):
-    return post("/api/v1/evidence", {
+    # Seed the configured database directly as a trusted test fixture. These
+    # tests target diagnosis/rationale/candidate guards, not public ingestion.
+    record = {
         "evidence_id": f"P4-GUARD-{suffix}-{status}-{level}",
         "subject_type": "problem",
         "subject_id": problem["problem_id"],
@@ -49,8 +51,13 @@ def create_evidence(suffix, coach, problem, status, level="E2"):
         "source_ref": f"P4-SOURCE-{suffix}",
         "claim": "Evidence status guard test",
         "observed_value": {"score": 4},
-        "verified_by": coach,
-    })
+        "verified_by": "trusted-test-fixture",
+        "verified_at": "2026-10-18T00:00:00Z",
+        "notes": None,
+    }
+    persistence.upsert_evidence(record)
+    main.EVIDENCE_RECORDS[record["evidence_id"]] = record
+    return record
 
 
 def diagnose(problem, evidence_id, coach):
@@ -81,7 +88,7 @@ def test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified():
     assert response.json()["detail"]["decision_state"] == "HOLD"
 
 
-def test_phase4_unknown_evidence_status_is_rejected_at_ingestion():
+def test_phase4_public_evidence_ingestion_is_denied_until_publisher_auth_exists():
     suffix, coach, problem = context()
     response = client.post("/api/v1/evidence", json={
         "evidence_id": f"P4-INVALID-STATUS-{suffix}",
@@ -90,12 +97,12 @@ def test_phase4_unknown_evidence_status_is_rejected_at_ingestion():
         "evidence_level": "E2",
         "status": "TRUST_ME",
         "source_ref": "P4-INVALID-SOURCE",
-        "claim": "Unknown status must fail closed",
+        "claim": "Anonymous ingestion must fail closed",
         "observed_value": {"score": 4},
         "verified_by": coach,
     })
-    assert response.status_code == 400, response.text
-    assert "invalid_evidence_status" in response.text
+    assert response.status_code == 503, response.text
+    assert "publisher-role configuration" in response.text
 
 
 
@@ -191,7 +198,7 @@ def test_phase4_candidate_generation_revalidates_legacy_or_changed_evidence():
 if __name__ == "__main__":
     test_phase4_unverified_stale_conflicted_or_rejected_evidence_is_blocked()
     test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified()
-    test_phase4_unknown_evidence_status_is_rejected_at_ingestion()
+    test_phase4_public_evidence_ingestion_is_denied_until_publisher_auth_exists()
     test_phase4_unverified_and_e0_evidence_cannot_support_decision_rationale()
     test_phase4_missing_evidence_returns_explicit_hold_reason()
     test_phase4_candidate_generation_revalidates_legacy_or_changed_evidence()

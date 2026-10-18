@@ -2,8 +2,11 @@ import os
 os.environ["KAIZO_PERSISTENCE_MODE"]="memory"
 
 from fastapi.testclient import TestClient
+import main
 from main import app
 from feature_runtime import CONTRACTS
+import evidence_store
+import persistence
 
 client=TestClient(app)
 
@@ -67,12 +70,21 @@ def test_feature_list_and_get():
     assert any(x["record_id"]==rid for x in l.json()["records"])
 
 def test_canonical_domain_validation_is_enforced():
-    evidence = client.post("/api/v1/evidence", json={
-        "evidence_id":"RULE-SOURCE-029","subject_type":"rule","subject_id":"athlete-1",
-        "evidence_level":"E2","status":"VERIFIED","source_ref":"RULE-REF-029",
-        "claim":"Verified progression-rule source","observed_value":{"threshold":8},
-        "verified_by":"coach-1"})
-    assert evidence.status_code == 201, evidence.text
+    # Seed the internal evidence registry for this feature-contract test.
+    # Public evidence writes are intentionally denied until verified publisher
+    # authorization is deployed; endpoint denial is tested separately.
+    evidence = {
+        "evidence_id": "RULE-SOURCE-029", "subject_type": "rule",
+        "subject_id": "athlete-1", "evidence_level": "E2", "status": "VERIFIED",
+        "source_ref": "RULE-REF-029", "claim": "Verified progression-rule source",
+        "observed_value": {"threshold": 8}, "verified_by": "trusted-test-fixture",
+        "verified_at": "2026-10-18T00:00:00Z", "notes": None,
+    }
+    # Persistence Adapter Validation runs with PostgreSQL enabled; seed the
+    # authoritative test database as well as the in-memory registries.
+    persistence.upsert_evidence(evidence)
+    main.EVIDENCE_RECORDS[evidence["evidence_id"]] = evidence
+    evidence_store.EVIDENCE_RECORDS[evidence["evidence_id"]] = evidence
     r=client.post("/api/v1/features/feat-029/progression-regression-rules",json={
         "subject_id":"athlete-1","actor_id":"coach-1",
         "payload":{"metric":"technical_quality","threshold":8,"action":"PROGRESS","adjustment":1,
