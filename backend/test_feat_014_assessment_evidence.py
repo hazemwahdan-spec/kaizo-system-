@@ -22,24 +22,26 @@ class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
         ).json()["assessment_id"]
 
     def _record_evidence(self, evidence_id, subject_id=None):
-        return self.client.post(
-            "/api/v1/evidence",
-            json={
-                "evidence_id": evidence_id,
-                "subject_type": "assessment",
-                "subject_id": subject_id or self.assessment_id,
-                "evidence_level": "E3",
-                "status": "VERIFIED",
-                "source_ref": "assessment://FEAT-014",
-                "claim": "Assessment measurement is supported by attached evidence.",
-                "observed_value": {"grip_strength": 21.5},
-                "verified_by": "coach-feat014",
-            },
-        )
+        # Internal fixture only: public evidence writes must remain denied until
+        # verified identity, tenant ownership and audit policy are deployed.
+        record = {
+            "evidence_id": evidence_id,
+            "subject_type": "assessment",
+            "subject_id": subject_id or self.assessment_id,
+            "evidence_level": "E3",
+            "status": "VERIFIED",
+            "source_ref": "assessment://FEAT-014",
+            "claim": "Assessment measurement is supported by attached evidence.",
+            "observed_value": {"grip_strength": 21.5},
+            "verified_by": "trusted-test-fixture",
+            "verified_at": "2026-10-18T00:00:00Z",
+            "notes": None,
+        }
+        main.EVIDENCE_RECORDS[evidence_id] = record
+        return record
 
     def test_attach_evidence_to_assessment_and_read_back(self):
-        evidence = self._record_evidence("EVIDENCE-FEAT014-001")
-        self.assertEqual(evidence.status_code, 201)
+        self._record_evidence("EVIDENCE-FEAT014-001")
 
         response = self.client.post(
             f"/api/v1/assessments/{self.assessment_id}/evidence",
@@ -93,8 +95,8 @@ class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
             },
         ).json()["assessment_id"]
         self.assertEqual(
-            self._record_evidence("EVIDENCE-FEAT014-002", other_assessment).status_code,
-            201,
+            self._record_evidence("EVIDENCE-FEAT014-002", other_assessment)["evidence_id"],
+            "EVIDENCE-FEAT014-002",
         )
         response = self.client.post(
             f"/api/v1/assessments/{self.assessment_id}/evidence",
