@@ -58,6 +58,13 @@ def test_evidence_write_is_denied_when_publisher_gate_is_disabled(monkeypatch):
     assert response.status_code == 503
 
 
+def test_publisher_gate_accepts_verified_global_publisher(monkeypatch):
+    monkeypatch.setenv("KAIZO_EVIDENCE_PUBLISHER_ENABLED", "true")
+    expected = publisher()
+    monkeypatch.setattr(evidence_authorization, "resolve_bearer_principal", lambda _: expected)
+    assert evidence_authorization.require_global_evidence_publisher("Bearer signed") is expected
+
+
 def test_publisher_gate_rejects_non_publisher_oidc_role(monkeypatch):
     monkeypatch.setenv("KAIZO_EVIDENCE_PUBLISHER_ENABLED", "true")
     monkeypatch.setattr(
