@@ -610,15 +610,6 @@ def upsert_evidence_with_audit(
                     (evidence_id, subject_type, subject_id, evidence_level, status,
                      source_ref, claim, observed_value, verified_by, verified_at, notes)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
-                ON CONFLICT (evidence_id) DO UPDATE SET
-                    evidence_level=EXCLUDED.evidence_level,
-                    status=EXCLUDED.status,
-                    source_ref=EXCLUDED.source_ref,
-                    claim=EXCLUDED.claim,
-                    observed_value=EXCLUDED.observed_value,
-                    verified_by=EXCLUDED.verified_by,
-                    verified_at=EXCLUDED.verified_at,
-                    notes=EXCLUDED.notes
                 """,
                 (
                     record["evidence_id"], record["subject_type"], record["subject_id"],
