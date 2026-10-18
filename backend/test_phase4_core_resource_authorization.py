@@ -1042,3 +1042,63 @@ def test_actual_evidence_reads_reject_missing_identity_before_scope_or_data_acce
     assert [response.status_code for response in responses] == [401, 401]
     assert scope_lookups == []
     assert data_reads == []
+
+
+def test_actual_evidence_write_uses_verified_actor_not_caller_verified_by(monkeypatch):
+    """Caller-controlled verifier labels never become the authenticated actor."""
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    principal = _principal()
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: principal)
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    monkeypatch.setattr(main, "assert_resource_tenant", lambda **_: None)
+    monkeypatch.setattr(main, "_resolve_athlete_id", lambda *_args, **_kwargs: "athlete-a")
+    monkeypatch.setattr(main, "assert_minor_consent", lambda **_: None)
+    monkeypatch.setattr(main.persistence, "is_postgres_enabled", lambda: False)
+    monkeypatch.setattr(main.persistence, "upsert_evidence", lambda _record: None)
+    monkeypatch.setattr(main, "log_action", lambda *_args, **_kwargs: None)
+    main.EVIDENCE_RECORDS.pop("phase4-verifier-spoof", None)
+
+    response = client.post(
+        "/api/v1/evidence",
+        json={
+            "evidence_id": "phase4-verifier-spoof",
+            "subject_type": "assessment",
+            "subject_id": "assessment-a",
+            "evidence_level": "E2",
+            "status": "VERIFIED",
+            "claim": "synthetic authorization regression",
+            "verified_by": "caller-claims-to-be-admin",
+        },
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["verified_by"] == principal.actor_id
+    assert response.json()["verified_by"] != "caller-claims-to-be-admin"
+    main.EVIDENCE_RECORDS.pop("phase4-verifier-spoof", None)
+
+
+def test_actual_global_rule_evidence_write_denies_without_publisher_policy(monkeypatch):
+    """Global/shared evidence stays unavailable to OIDC callers until a publisher role is approved."""
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(boundary, "resolve_bearer_principal", lambda _: _principal())
+    monkeypatch.setattr(authz, "has_active_membership", lambda **_: True)
+    writes = []
+    monkeypatch.setattr(main.persistence, "upsert_evidence", lambda record: writes.append(record))
+
+    response = client.post(
+        "/api/v1/evidence",
+        json={
+            "evidence_id": "phase4-unapproved-global-rule",
+            "subject_type": "rule",
+            "subject_id": "GLOBAL-RULE-1",
+            "evidence_level": "E3",
+            "status": "VERIFIED",
+            "claim": "must not be accepted without publisher policy",
+            "verified_by": "caller-supplied-publisher",
+        },
+        headers={"Authorization": "Bearer signed-test-token"},
+    )
+
+    assert response.status_code == 403
+    assert writes == []
