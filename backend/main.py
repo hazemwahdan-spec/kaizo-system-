@@ -1621,6 +1621,13 @@ class EvidenceCreateRequest(BaseModel):
 
 @app.post("/api/v1/evidence", status_code=status.HTTP_201_CREATED)
 def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
+    # SECURITY CONTAINMENT: this legacy deployment does not yet have the verified
+    # Phase 4 identity, tenant ownership, consent, and durable-audit boundary.
+    # Fail closed rather than accepting caller-asserted verifier/subject fields.
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Evidence writes are temporarily disabled pending verified identity and tenant authorization.",
+    )
     allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
     if req.evidence_level not in allowed_levels:
         raise HTTPException(status_code=400, detail="invalid evidence level")
@@ -1660,6 +1667,11 @@ def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
 
 @app.get("/api/v1/evidence/{evidence_id}")
 def get_evidence(evidence_id: str) -> Dict[str, Any]:
+    # SECURITY CONTAINMENT: no unauthenticated evidence disclosure.
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Evidence reads are temporarily disabled pending verified identity and tenant authorization.",
+    )
     record = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
     if record is None:
         raise HTTPException(status_code=404, detail="evidence not found")
@@ -1668,6 +1680,11 @@ def get_evidence(evidence_id: str) -> Dict[str, Any]:
 
 @app.get("/api/v1/evidence")
 def list_evidence(subject_id: Optional[str] = None) -> Dict[str, Any]:
+    # SECURITY CONTAINMENT: no unauthenticated evidence disclosure.
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Evidence reads are temporarily disabled pending verified identity and tenant authorization.",
+    )
     records = persistence.list_evidence(subject_id) if persistence.is_postgres_enabled() else list(EVIDENCE_RECORDS.values())
     if subject_id:
         records = [r for r in records if r["subject_id"] == subject_id]
