@@ -6,6 +6,7 @@ import main
 from main import app
 from feature_runtime import CONTRACTS
 import evidence_store
+import persistence
 
 client=TestClient(app)
 
@@ -79,6 +80,9 @@ def test_canonical_domain_validation_is_enforced():
         "observed_value": {"threshold": 8}, "verified_by": "trusted-test-fixture",
         "verified_at": "2026-10-18T00:00:00Z", "notes": None,
     }
+    # Persistence Adapter Validation runs with PostgreSQL enabled; seed the
+    # authoritative test database as well as the in-memory registries.
+    persistence.upsert_evidence(evidence)
     main.EVIDENCE_RECORDS[evidence["evidence_id"]] = evidence
     evidence_store.EVIDENCE_RECORDS[evidence["evidence_id"]] = evidence
     r=client.post("/api/v1/features/feat-029/progression-regression-rules",json={
