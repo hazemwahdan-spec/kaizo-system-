@@ -33,7 +33,7 @@ class Principal:
     source: str
 
 
-VALID_ROLES = {"academy", "coach", "athlete", "parent"}
+VALID_ROLES = {"academy", "coach", "athlete", "parent", "publisher"}
 
 # Public, deployment-specific OIDC trust configuration. These are not secrets.
 # Pinning the expected issuer and audience avoids a fail-open path when the
