@@ -44,20 +44,23 @@ class FEAT020DiagnosisConfidenceTests(unittest.TestCase):
         self.assertEqual(problem.status_code, 201)
         self.problem_id = problem.json()["problem_id"]
 
-        evidence = self.client.post(
-            "/api/v1/evidence",
-            json={
-                "evidence_id": "EVID-020-001",
-                "subject_type": "assessment",
-                "subject_id": self.assessment_id,
-                "evidence_level": "E3",
-                "status": "verified",
-                "claim": "Late entry observed repeatedly",
-                "observed_value": {"count": 4},
-                "verified_by": "coach-020",
-            },
-        )
-        self.assertEqual(evidence.status_code, 201)
+        # Trusted test fixture: public evidence writes stay fail-closed
+        # until verified publisher and tenant authorization are deployed.
+        evidence = {
+            "evidence_id": "EVID-020-001",
+            "subject_type": "assessment",
+            "subject_id": self.assessment_id,
+            "evidence_level": "E3",
+            "status": "verified",
+            "source_ref": "assessment://FEAT-020",
+            "claim": "Late entry observed repeatedly",
+            "observed_value": {"count": 4},
+            "verified_by": "trusted-test-fixture",
+            "verified_at": "2026-10-18T00:00:00Z",
+            "notes": None,
+        }
+        persistence.upsert_evidence(evidence)
+        main.EVIDENCE_RECORDS[evidence["evidence_id"]] = evidence
 
     def _diagnosis(self, **overrides):
         payload = {
