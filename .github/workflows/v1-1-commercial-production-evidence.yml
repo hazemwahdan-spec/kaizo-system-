@@ -85,8 +85,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          code=$(curl -sS --connect-timeout 10 --max-time 25 -o /tmp/oidc-invalid.json -w "%{http_code}" \\
-            -H "Authorization: Bearer kaizo-phase4-invalid-token-probe" \\
+          code=$(curl -sS --connect-timeout 10 --max-time 25 -o /tmp/oidc-invalid.json -w "%{http_code}" \
+            -H "Authorization: Bearer kaizo-phase4-invalid-token-probe" \
             "${KAIZO_PRODUCTION_BASE_URL}/api/v1/product/auth/oidc/verify" || true)
           if [ "$code" != "401" ]; then
             echo "OIDC_INVALID_BEARER_DENIAL: FAIL (expected HTTP 401, got $code)"
