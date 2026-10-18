@@ -81,6 +81,41 @@ jobs:
           print("OIDC_LIVE_VERIFICATION: PASS")
           PY
 
+      - name: Verify invalid bearer token is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS --connect-timeout 10 --max-time 25 -o /tmp/oidc-invalid.json -w "%{http_code}" \\
+            -H "Authorization: Bearer kaizo-phase4-invalid-token-probe" \\
+            "${KAIZO_PRODUCTION_BASE_URL}/api/v1/product/auth/oidc/verify" || true)
+          if [ "$code" != "401" ]; then
+            echo "OIDC_INVALID_BEARER_DENIAL: FAIL (expected HTTP 401, got $code)"
+            exit 1
+          fi
+          echo "OIDC_INVALID_BEARER_DENIAL: PASS (HTTP 401)"
+
+      - name: Verify anonymous evidence list and detail are denied
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in "/api/v1/evidence" "/api/v1/evidence/phase4-anonymous-denial-probe"; do
+            code=$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "${KAIZO_PRODUCTION_BASE_URL}$path" || true)
+            case "$code" in
+              401|403|503) echo "ANONYMOUS_EVIDENCE_DENIAL: PASS (GET $path returned HTTP $code)" ;;
+              *) echo "ANONYMOUS_EVIDENCE_DENIAL: FAIL (GET $path returned HTTP $code; 404 is not authorization proof)"; exit 1 ;;
+            esac
+          done
+
+      - name: Verify anonymous audit-log access is denied
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "${KAIZO_PRODUCTION_BASE_URL}/api/v1/audit/logs" || true)
+          case "$code" in
+            401|403|503) echo "ANONYMOUS_AUDIT_DENIAL: PASS (HTTP $code)" ;;
+            *) echo "ANONYMOUS_AUDIT_DENIAL: FAIL (expected 401/403/503, got $code)"; exit 1 ;;
+          esac
+
       - name: Verify production health
         shell: bash
         run: |
