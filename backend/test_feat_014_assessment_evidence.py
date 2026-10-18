@@ -2,6 +2,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 import main
+import persistence
 
 
 class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
@@ -37,6 +38,9 @@ class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
             "verified_at": "2026-10-18T00:00:00Z",
             "notes": None,
         }
+        # Seed both configured persistence and the in-memory registry so the
+        # same acceptance test works in PostgreSQL and memory-mode test runs.
+        persistence.upsert_evidence(record)
         main.EVIDENCE_RECORDS[evidence_id] = record
         return record
 
