@@ -1635,6 +1635,10 @@ def record_evidence(
         )
     if not persistence.is_postgres_enabled():
         raise HTTPException(status_code=503, detail="Durable evidence persistence is required.")
+    # Evidence IDs are immutable. Never let a global publisher overwrite or
+    # reclassify an existing tenant-owned or global record.
+    if persistence.get_evidence(req.evidence_id) is not None:
+        raise HTTPException(status_code=409, detail="evidence_id already exists; use a new immutable identifier")
 
     allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
     if req.evidence_level not in allowed_levels:
