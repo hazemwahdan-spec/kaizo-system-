@@ -1006,3 +1006,39 @@ def test_training_workflow_routes_with_unowned_drill_ids_remain_default_deny(
     assert response.status_code == 503
     assert "drill_id" in response.text
     assert writes == []
+
+
+def test_actual_evidence_reads_reject_missing_identity_before_scope_or_data_access(monkeypatch):
+    """Regression: evidence list/detail routes must not return data anonymously."""
+    monkeypatch.setenv("KAIZO_PHASE4_IDENTITY_ENFORCEMENT", "oidc")
+    monkeypatch.setattr(
+        boundary,
+        "resolve_bearer_principal",
+        lambda _: (_ for _ in ()).throw(IdentityNotConfiguredError("missing bearer")),
+    )
+
+    scope_lookups = []
+    data_reads = []
+    monkeypatch.setattr(
+        authz,
+        "get_resource_tenant",
+        lambda **kwargs: scope_lookups.append(kwargs) or "academy-a",
+    )
+    monkeypatch.setattr(
+        main.persistence,
+        "get_evidence",
+        lambda evidence_id: data_reads.append(("get", evidence_id)),
+    )
+    monkeypatch.setattr(
+        main.persistence,
+        "list_evidence",
+        lambda subject_id: data_reads.append(("list", subject_id)) or [],
+    )
+
+    responses = [
+        client.get("/api/v1/evidence", params={"subject_id": "phase4-anonymous-probe"}),
+        client.get("/api/v1/evidence/phase4-anonymous-probe"),
+    ]
+    assert [response.status_code for response in responses] == [401, 401]
+    assert scope_lookups == []
+    assert data_reads == []
