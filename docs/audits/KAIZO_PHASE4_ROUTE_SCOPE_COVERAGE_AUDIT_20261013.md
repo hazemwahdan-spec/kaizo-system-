@@ -143,3 +143,22 @@ Fresh PR metadata and workflow-run associations were retrieved:
 4. Dispatch the commercial production evidence workflow and perform independent live positive/negative authorization tests only when an authorized maintainer can run it and production identity secrets/configuration are available.
 
 No fresh workflow dispatch, production request, Auth0 dashboard mutation, secret change, or merge was performed in this checkpoint. `P4-REQ-011 = OPEN / NOT PROVEN`; `Phase 4 EXIT = BLOCKED`.
+
+## Branch divergence and evidence refresh — 2026-10-18
+
+### PR #128 ancestry / CI refresh
+
+A fresh compare of `main` against `feat/phase4-core-resource-authorization` returned `status=diverged`, `ahead_by=255`, `behind_by=54`, with merge base `cd42f2f6503812434fb06ef96746444718f90dd6` and current `main` base commit `cf4a895885b836b56540bf113f7b8074af0f4769`. PR #128 remains open/draft and GitHub reports `mergeable=false`. This confirms substantial branch divergence, but the connector response does not expose a definitive file-by-file conflict list. Do not attempt a blind merge, rebase, or force-update; resolve conflicts against the current base and rerun the required checks on the final candidate head.
+
+The audit file exists on the Phase 4 branch but was not found on `main` at the same path. A workflow-run lookup for audit commit `618ed37631c22282001bbe9faad5c5b713cc4f65` returned no PR-triggered workflow runs, and combined commit status returned no statuses. Therefore this documentation commit has no fresh CI evidence from those endpoints; it must not be represented as a code-validation run.
+
+### Separate candidate fixes / remaining live proof
+
+- PR #148 is open/draft and mergeable according to GitHub metadata; its focused patch forwards the Authorization header to `ctx(...)` and asserts forwarding. Its green candidate workflows are not evidence for PR #128 or #133.
+- PR #133 is open/non-draft but reported not mergeable. Its patch is broader and includes fail-closed audit endpoint expectations; review the complete diff before selecting it over #148. Do not integrate both copies of the same forwarding fix.
+- PR #147 remains open/draft. Its frontend scope request has green candidate-code checks, but Auth0 API permission configuration and a live token's audience/scope remain unverified.
+- The commercial production evidence workflow has not been freshly dispatched in this checkpoint. No production request, Auth0 change, secret mutation, or merge was performed.
+
+### Current gate
+
+`P4-REQ-011 = OPEN / NOT PROVEN`; `Phase 4 EXIT = BLOCKED`. Remaining proof includes route-level identity/role/tenant/ownership enforcement, guardian relationship and active consent, durable audit, independent live positive and negative authorization tests, and fresh CI on the final integrated candidate.
