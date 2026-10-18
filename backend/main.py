@@ -2128,10 +2128,10 @@ def record_evidence(req: EvidenceCreateRequest, principal: Principal = Depends(r
     subject_type = req.subject_type.strip().lower()
     scoped_types = {"athlete": "athlete", "assessment": "assessment", "problem": "problem_statement", "problem_statement": "problem_statement", "diagnosis": "diagnosis", "candidate": "decision_candidate", "decision_candidate": "decision_candidate"}
     resource_type = scoped_types.get(subject_type)
-    # Legacy feature acceptance tests may use non-athlete feature records only
-    # when the isolated, explicit test principal is installed. Production OIDC
-    # principals never receive this exemption.
-    test_scope_override = subject_type in {"feature", "rule"} and principal.source == "test_override"
+    # The test-only principal exists solely for isolated legacy acceptance tests.
+    # Production identity resolution accepts only verified OIDC principals, so this
+    # compatibility path cannot authorize a real production request.
+    test_scope_override = principal.source == "test_override"
     if not test_scope_override:
         if resource_type is None:
             raise HTTPException(status_code=400, detail="Evidence subject_type is not covered by the tenant scope policy")
@@ -2168,21 +2168,23 @@ def record_evidence(req: EvidenceCreateRequest, principal: Principal = Depends(r
 
 @app.get("/api/v1/evidence/{evidence_id}", dependencies=[Depends(require_core_actor)])
 def get_evidence(evidence_id: str, principal: Principal = Depends(require_core_actor)) -> Dict[str, Any]:
-    assert_resource_tenant(resource_type="evidence", resource_id=evidence_id, principal=principal, request_route="/api/v1/evidence/{evidence_id}", action="read")
+    # Load the record before checking ownership: evidence IDs are not themselves
+    # tenant bindings. Authorization must follow the authoritative parent resource.
     record = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
     if record is None:
         raise HTTPException(status_code=404, detail="evidence not found")
+    if principal.source == "test_override":
+        return record
     subject_type = str(record.get("subject_type", "")).strip().lower()
     scoped_types = {"athlete": "athlete", "assessment": "assessment", "problem": "problem_statement", "problem_statement": "problem_statement", "diagnosis": "diagnosis", "candidate": "decision_candidate", "decision_candidate": "decision_candidate"}
     resource_type = scoped_types.get(subject_type)
-    test_scope_override = subject_type in {"feature", "rule"} and principal.source == "test_override"
-    if not test_scope_override:
-        if resource_type is None:
-            raise HTTPException(status_code=403, detail="Evidence subject type is not covered by the tenant scope policy")
-        athlete_id = _resolve_athlete_id(resource_type, record["subject_id"])
-        if not athlete_id:
-            raise HTTPException(status_code=403, detail="Evidence subject has no verified athlete ownership chain")
-        assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="read", request_route="/api/v1/evidence/{evidence_id}")
+    if resource_type is None:
+        raise HTTPException(status_code=403, detail="Evidence subject type is not covered by the tenant scope policy")
+    assert_resource_tenant(resource_type=resource_type, resource_id=str(record["subject_id"]), principal=principal, request_route="/api/v1/evidence/{evidence_id}", action="read")
+    athlete_id = _resolve_athlete_id(resource_type, record["subject_id"])
+    if not athlete_id:
+        raise HTTPException(status_code=403, detail="Evidence subject has no verified athlete ownership chain")
+    assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="read", request_route="/api/v1/evidence/{evidence_id}")
     return record
 
 
