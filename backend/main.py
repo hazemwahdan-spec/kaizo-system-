@@ -3,7 +3,7 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
@@ -11,6 +11,7 @@ from datetime import datetime
 
 import persistence
 from evidence_store import EVIDENCE_RECORDS
+from evidence_authorization import GLOBAL_EVIDENCE_SUBJECT_TYPES, require_global_evidence_publisher
 from feature_runtime import router as feature_runtime_router
 from training_workflow import router as training_workflow_router
 from knowledge_runtime import router as knowledge_runtime_router
@@ -1615,19 +1616,26 @@ class EvidenceCreateRequest(BaseModel):
     source_ref: Optional[str] = None
     claim: str
     observed_value: Optional[Dict[str, Any]] = None
-    verified_by: str
+    # This client field is never treated as identity; the signed OIDC subject
+    # becomes the authoritative verifier for global evidence.
+    verified_by: Optional[str] = None
     notes: Optional[str] = None
 
 
 @app.post("/api/v1/evidence", status_code=status.HTTP_201_CREATED)
-def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
-    # SECURITY CONTAINMENT: this legacy deployment does not yet have the verified
-    # Phase 4 identity, tenant ownership, consent, and durable-audit boundary.
-    # Fail closed rather than accepting caller-asserted verifier/subject fields.
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Evidence writes are temporarily disabled pending verified identity and tenant authorization.",
-    )
+def record_evidence(
+    req: EvidenceCreateRequest,
+    principal=Depends(require_global_evidence_publisher),
+) -> Dict[str, Any]:
+    subject_type = req.subject_type.strip().lower()
+    if subject_type not in GLOBAL_EVIDENCE_SUBJECT_TYPES:
+        raise HTTPException(
+            status_code=403,
+            detail="This endpoint accepts global rule/catalog evidence only; tenant-owned evidence requires a scoped resource route.",
+        )
+    if not persistence.is_postgres_enabled():
+        raise HTTPException(status_code=503, detail="Durable evidence persistence is required.")
+
     allowed_levels = {"E0", "E1", "E2", "E3", "E4", "E5", "E6"}
     if req.evidence_level not in allowed_levels:
         raise HTTPException(status_code=400, detail="invalid evidence level")
@@ -1637,57 +1645,68 @@ def record_evidence(req: EvidenceCreateRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail={"invalid_evidence_status": normalized_status, "allowed": sorted(allowed_statuses)})
     if not req.evidence_id.strip() or not req.subject_id.strip() or not req.claim.strip():
         raise HTTPException(status_code=400, detail="evidence_id, subject_id and claim are required")
-    if not req.verified_by.strip():
-        raise HTTPException(status_code=400, detail="verified_by is required")
+
     now = datetime.utcnow().isoformat()
     record = {
         "evidence_id": req.evidence_id,
-        "subject_type": req.subject_type,
+        "subject_type": subject_type,
         "subject_id": req.subject_id,
         "evidence_level": req.evidence_level,
         "status": normalized_status,
         "source_ref": req.source_ref,
         "claim": req.claim,
         "observed_value": req.observed_value,
-        "verified_by": req.verified_by,
+        "verified_by": principal.actor_id,
         "verified_at": now,
         "notes": req.notes,
     }
-    EVIDENCE_RECORDS[req.evidence_id] = record
-    persistence.upsert_evidence(record)
-    log_action(
-        req.verified_by,
-        "EVIDENCE_RECORDED",
-        None,
+    reason = "Global evidence recorded by a verified OIDC publisher; client-supplied verifier identity ignored."
+    # Evidence and durable audit are committed in one PostgreSQL transaction.
+    persistence.upsert_evidence_with_audit(
         record,
-        "Evidence recorded with explicit subject, level, status, provenance and verifier.",
+        timestamp=now,
+        who=principal.actor_id,
+        action="EVIDENCE_RECORDED",
+        why=reason,
     )
+    EVIDENCE_RECORDS[req.evidence_id] = record
+    AUDIT_LOGS.append({
+        "timestamp": now,
+        "who": principal.actor_id,
+        "action": "EVIDENCE_RECORDED",
+        "old_value": None,
+        "new_value": record,
+        "why": reason,
+    })
     return record
 
 
 @app.get("/api/v1/evidence/{evidence_id}")
-def get_evidence(evidence_id: str) -> Dict[str, Any]:
-    # SECURITY CONTAINMENT: no unauthenticated evidence disclosure.
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Evidence reads are temporarily disabled pending verified identity and tenant authorization.",
-    )
-    record = persistence.get_evidence(evidence_id) if persistence.is_postgres_enabled() else EVIDENCE_RECORDS.get(evidence_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="evidence not found")
+def get_evidence(
+    evidence_id: str,
+    principal=Depends(require_global_evidence_publisher),
+) -> Dict[str, Any]:
+    if not persistence.is_postgres_enabled():
+        raise HTTPException(status_code=503, detail="Durable evidence persistence is required.")
+    record = persistence.get_evidence(evidence_id)
+    if record is None or record.get("subject_type", "").strip().lower() not in GLOBAL_EVIDENCE_SUBJECT_TYPES:
+        # Do not reveal whether a tenant-owned evidence record exists.
+        raise HTTPException(status_code=404, detail="global evidence record not found")
     return record
 
 
 @app.get("/api/v1/evidence")
-def list_evidence(subject_id: Optional[str] = None) -> Dict[str, Any]:
-    # SECURITY CONTAINMENT: no unauthenticated evidence disclosure.
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Evidence reads are temporarily disabled pending verified identity and tenant authorization.",
-    )
-    records = persistence.list_evidence(subject_id) if persistence.is_postgres_enabled() else list(EVIDENCE_RECORDS.values())
-    if subject_id:
-        records = [r for r in records if r["subject_id"] == subject_id]
+def list_evidence(
+    subject_id: Optional[str] = None,
+    principal=Depends(require_global_evidence_publisher),
+) -> Dict[str, Any]:
+    if not persistence.is_postgres_enabled():
+        raise HTTPException(status_code=503, detail="Durable evidence persistence is required.")
+    records = persistence.list_evidence(subject_id)
+    records = [
+        record for record in records
+        if record.get("subject_type", "").strip().lower() in GLOBAL_EVIDENCE_SUBJECT_TYPES
+    ]
     return {"total_evidence": len(records), "records": records}
 
 
