@@ -124,3 +124,22 @@ Both PR patches change `productization/product_api.py` to pass the Authorization
 ### Gate disposition
 
 These findings improve review clarity but do not satisfy the Phase 4 production authorization exit criteria. Keep `P4-REQ-011 = OPEN / NOT PROVEN` and `Phase 4 EXIT = BLOCKED`. No production configuration, secrets, or live data were changed.
+
+
+## Next-step checkpoint — PR state and CI refresh — 2026-10-18
+
+Fresh PR metadata and workflow-run associations were retrieved:
+
+- **PR #128** remains open/draft; its current head is this audit checkpoint commit `618ed37631c22282001bbe9faad5c5b713cc4f65`. The PR is not mergeable according to current GitHub metadata. No merge or activation was attempted.
+- **PR #148** remains open/draft at `c766844bb7219719fabc04e3b4e9eb6cf5bc6113`. Ten associated candidate-code workflows returned `success`, including [Commercial Security Regression](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/39073541978), [Identity RBAC Boundary](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/39073541975), and [Persistence Adapter Validation](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/39073541995). This is green CI for PR #148's own candidate head only.
+- **PR #133** remains open/non-draft at `a3f57ea932661e7587c27e88c4f80cd5aeb2d1f8`; the retrieved associated workflows were successful, but the PR is reported not mergeable. Its wider patch is not interchangeable with the narrow PR #148 change. Do not treat the two branches' green checks as one candidate's evidence.
+- **PR #147** remains draft/open at `dfd668739bfd27a011ad875319154dc9420a3aa5`; its retrieved workflows are green, but the Auth0 dashboard permission grant and live access-token scope/audience are not verified.
+
+### Immediate sequencing decision
+
+1. Resolve the mergeability/conflict state of the Phase 4 PR #128 and refresh its CI on the final candidate head.
+2. Review the complete diffs and branch ancestry of PR #133 and #148; choose a canonical route-forwarding fix only after confirming whether PR #133's broader changes are required. Avoid double-merging.
+3. Keep PR #147 draft until frontend tests and provider-side scope/audience validation are available.
+4. Dispatch the commercial production evidence workflow and perform independent live positive/negative authorization tests only when an authorized maintainer can run it and production identity secrets/configuration are available.
+
+No fresh workflow dispatch, production request, Auth0 dashboard mutation, secret change, or merge was performed in this checkpoint. `P4-REQ-011 = OPEN / NOT PROVEN`; `Phase 4 EXIT = BLOCKED`.
