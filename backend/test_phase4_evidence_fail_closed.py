@@ -102,7 +102,7 @@ def test_phase4_public_evidence_ingestion_is_denied_until_publisher_auth_exists(
         "verified_by": coach,
     })
     assert response.status_code == 503, response.text
-    assert "temporarily disabled" in response.text
+    assert "publisher-role configuration" in response.text
 
 
 
