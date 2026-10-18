@@ -90,6 +90,23 @@ jobs:
           print("OIDC_LIVE_VERIFICATION: PASS")
           PY
 
+      - name: Verify anonymous global evidence reads are denied on canonical production
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in "/api/v1/evidence" "/api/v1/evidence/phase4-anonymous-denial-probe"; do
+            code="$(curl -sS --connect-timeout 5 --max-time 15 -o /dev/null -w "%{http_code}" "${KAIZO_PRODUCTION_BASE_URL}${path}" || true)"
+            case "$code" in
+              401|403|503)
+                echo "EVIDENCE_ANONYMOUS_DENIAL: PASS (GET $path returned HTTP $code)"
+                ;;
+              *)
+                echo "EVIDENCE_ANONYMOUS_DENIAL: FAIL (GET $path returned HTTP $code; 404 is not authorization proof)"
+                exit 1
+                ;;
+            esac
+          done
+
       - name: Verify invalid bearer is rejected by production OIDC endpoint
         shell: bash
         run: |
