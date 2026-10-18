@@ -184,8 +184,25 @@ class FEAT019EvidenceLinkedDiagnosisTests(unittest.TestCase):
         self.assessment_id=a.json()["assessment_id"]
         p=self.client.post("/api/v1/problem-statements",json={"athlete_id":self.athlete_id,"assessment_id":self.assessment_id,"statement":"Late entry","problem_type":"timing","created_by":"coach-019"})
         self.problem_id=p.json()["problem_id"]
-        e=self.client.post("/api/v1/evidence",json={"evidence_id":"EVID-019-001","subject_type":"assessment","subject_id":self.assessment_id,"evidence_level":"E3","status":"verified","claim":"Late entry observed","observed_value":{"count":4},"verified_by":"coach-019"})
-        self.assertEqual(e.status_code,201)
+        # Trusted test fixture: public evidence writes are intentionally
+        # fail-closed until verified publisher/tenant authorization is deployed.
+        # Seed the configured persistence adapter so FEAT-019 still exercises
+        # evidence-linked diagnosis against the real PostgreSQL test database.
+        evidence = {
+            "evidence_id": "EVID-019-001",
+            "subject_type": "assessment",
+            "subject_id": self.assessment_id,
+            "evidence_level": "E3",
+            "status": "verified",
+            "source_ref": "assessment://FEAT-019",
+            "claim": "Late entry observed",
+            "observed_value": {"count": 4},
+            "verified_by": "trusted-test-fixture",
+            "verified_at": "2026-10-18T00:00:00Z",
+            "notes": None,
+        }
+        persistence.upsert_evidence(evidence)
+        main.EVIDENCE_RECORDS[evidence["evidence_id"]] = evidence
 
     def test_diagnosis_requires_linked_evidence_and_reads_back(self):
         r=self.client.post(f"/api/v1/problem-statements/{self.problem_id}/diagnosis",json={"problem_id":self.problem_id,"evidence_ids":["EVID-019-001"],"diagnosis":"Timing breakdown under pressure","confidence":"medium","diagnosed_by":"coach-019"})
