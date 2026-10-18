@@ -104,3 +104,23 @@ A separate, narrow follow-up PR was inspected: [#148 — forward verified identi
 - This PR is based on `main`, not the Phase 4 candidate branch. Its green runs must not be attributed to PR #128 or treated as Phase 4 exit evidence.
 
 Decision remains unchanged: `P4-REQ-011 = OPEN / NOT PROVEN`; `Phase 4 EXIT = BLOCKED`. Do not merge or close based solely on these checks.
+
+
+## Follow-up triage — overlapping identity fix and Auth0 scope — 2026-10-18
+
+### Parent-progress Authorization forwarding
+
+Two open requests contain the same one-line production-route change and essentially the same focused regression assertion:
+
+- [PR #133](https://github.com/hazemwahdan-spec/kaizo-system-/pull/133), head `a3f57ea932661e7587c27e88c4f80cd5aeb2d1f8`, currently open and non-draft.
+- [PR #148](https://github.com/hazemwahdan-spec/kaizo-system-/pull/148), head `c766844bb7219719fabc04e3b4e9eb6cf5bc6113`, currently open and draft.
+
+Both PR patches change `productization/product_api.py` to pass the Authorization header to `ctx(...)`. Both include a regression test for header forwarding. CI runs retrieved for PR #133's head and PR #148's head reported success for their respective listed workflows. These are separate candidate branches; the same change must not be merged twice or their test results combined as if one candidate had all coverage. A maintainer should select a canonical PR after reviewing the complete diff and base/branch freshness, then close or supersede the duplicate only after the chosen change is integrated and verified. No merge was performed.
+
+### Auth0 product API scope request
+
+[PR #147](https://github.com/hazemwahdan-spec/kaizo-system-/pull/147), head `dfd668739bfd27a011ad875319154dc9420a3aa5`, requests the `product` scope in Auth0 SPA initialization, redirect login, and silent token acquisition. The retrieved candidate-code runs listed for this head reported success, including [Persistence Adapter Validation run 39029745998](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/39029745998) and [Identity RBAC Boundary run 39029746010](https://github.com/hazemwahdan-spec/kaizo-system-/actions/runs/39029746010). PR #147 remains draft/open/unmerged. CI cannot grant the permission in the Auth0 dashboard or prove that the configured API audience/scope is accepted by the live provider. Provider-side permission and live token claims remain unverified.
+
+### Gate disposition
+
+These findings improve review clarity but do not satisfy the Phase 4 production authorization exit criteria. Keep `P4-REQ-011 = OPEN / NOT PROVEN` and `Phase 4 EXIT = BLOCKED`. No production configuration, secrets, or live data were changed.
