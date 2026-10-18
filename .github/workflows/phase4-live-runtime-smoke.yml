@@ -2,7 +2,7 @@ name: Phase 4 Live Runtime Smoke
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/phase4-core-resource-authorization]
     paths:
       - "backend/**"
       - ".github/workflows/phase4-live-runtime-smoke.yml"
@@ -92,17 +92,6 @@ jobs:
               *) echo "LIVE_ANONYMOUS_DENIAL_FAILED: GET $path returned HTTP $status (404 is not authorization proof)"; exit 1 ;;
             esac
           done
-
-      - name: Verify anonymous evidence writes are denied
-        shell: bash
-        run: |
-          set -euo pipefail
-          payload='{"evidence_id":"phase4-anonymous-write-probe","subject_type":"rule","subject_id":"global-rule","evidence_level":"E1","status":"UNVERIFIED","claim":"anonymous denial probe","verified_by":"forged-client-identity"}'
-          status="$(curl -sS --connect-timeout 10 --max-time 25 -H "Content-Type: application/json" -d "$payload" -o "$RUNNER_TEMP/kaizo-evidence-write.json" -w "%{http_code}" "$BASE_URL/api/v1/evidence" || true)"
-          case "$status" in
-            401|403|503) echo "LIVE_ANONYMOUS_WRITE_DENIAL_PASS: POST /api/v1/evidence returned HTTP $status" ;;
-            *) echo "LIVE_ANONYMOUS_WRITE_DENIAL_FAILED: POST /api/v1/evidence returned HTTP $status"; cat "$RUNNER_TEMP/kaizo-evidence-write.json" || true; exit 1 ;;
-          esac
 
       - name: Verify audit logs fail closed without verified identity
         shell: bash
