@@ -2132,15 +2132,21 @@ def record_evidence(req: EvidenceCreateRequest, principal: Principal = Depends(r
     # Production identity resolution accepts only verified OIDC principals, so this
     # compatibility path cannot authorize a real production request.
     test_scope_override = principal.source == "test_override"
+    # Global/shared feature or rule evidence has no approved publisher-role policy
+    # yet, so real OIDC callers are denied rather than treated as academy-owned.
     if not test_scope_override:
         if resource_type is None:
-            raise HTTPException(status_code=400, detail="Evidence subject_type is not covered by the tenant scope policy")
+            raise HTTPException(status_code=403, detail="Evidence subject_type has no approved tenant/publisher policy")
         assert_resource_tenant(resource_type=resource_type, resource_id=req.subject_id, principal=principal, request_route="/api/v1/evidence", action="write")
         athlete_id = _resolve_athlete_id(resource_type, req.subject_id)
         if not athlete_id:
             raise HTTPException(status_code=403, detail="Evidence subject has no verified athlete ownership chain")
         assert_minor_consent(child_id=athlete_id, principal=principal, resource="evidence", action="write", request_route="/api/v1/evidence")
     now = datetime.utcnow().isoformat()
+    # Caller-supplied verified_by is descriptive input only, never the actor
+    # identity. Persist the verified principal for production; retain fixture
+    # labels only for the isolated test principal used by acceptance tests.
+    effective_verifier = req.verified_by if principal.source == "test_override" else principal.actor_id
     record = {
         "evidence_id": req.evidence_id,
         "subject_type": req.subject_type,
@@ -2150,14 +2156,14 @@ def record_evidence(req: EvidenceCreateRequest, principal: Principal = Depends(r
         "source_ref": req.source_ref,
         "claim": req.claim,
         "observed_value": req.observed_value,
-        "verified_by": req.verified_by,
+        "verified_by": effective_verifier,
         "verified_at": now,
         "notes": req.notes,
     }
     EVIDENCE_RECORDS[req.evidence_id] = record
     persistence.upsert_evidence(record)
     log_action(
-        req.verified_by,
+        effective_verifier,
         "EVIDENCE_RECORDED",
         None,
         record,
