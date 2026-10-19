@@ -41,7 +41,7 @@ def test_anonymous_evidence_list_is_denied_before_publisher_gate(monkeypatch):
 def test_anonymous_evidence_detail_is_denied_before_publisher_gate(monkeypatch):
     monkeypatch.delenv("KAIZO_EVIDENCE_PUBLISHER_ENABLED", raising=False)
     response = client.get("/api/v1/evidence/containment-probe")
-    assert response.status_code == 503
+    assert response.status_code == 401
 
 
 def test_anonymous_evidence_write_is_denied_before_publisher_gate(monkeypatch):
@@ -55,7 +55,7 @@ def test_anonymous_evidence_write_is_denied_before_publisher_gate(monkeypatch):
         "claim": "containment regression probe",
         "verified_by": "caller-supplied-value",
     })
-    assert response.status_code == 503
+    assert response.status_code == 401
 
 
 def test_publisher_gate_accepts_verified_global_publisher(monkeypatch):
