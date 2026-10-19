@@ -58,7 +58,7 @@ class FEAT013KPIAcceptanceTests(unittest.TestCase):
         self.assertEqual(actions[-1]["who"], "coach-feat013")
         self.assertEqual(actions[-1]["new_value"]["athlete_id"], self.athlete_id)
         audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 503)
+        self.assertEqual(audit.status_code, 401)
 
     def test_invalid_kpi_direction_is_rejected(self):
         response = self.client.post("/api/v1/kpis", json={
