@@ -88,22 +88,28 @@ def test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified():
     assert response.json()["detail"]["decision_state"] == "HOLD"
 
 
-def test_phase4_public_evidence_ingestion_is_denied_until_publisher_auth_exists():
+def test_phase4_public_evidence_reads_and_writes_authenticate_before_feature_gate():
+    # With the feature flag unset/false, anonymous callers must still receive
+    # an authorization response, not the feature's 503 activation response.
+    os.environ.pop("KAIZO_EVIDENCE_PUBLISHER_ENABLED", None)
     suffix, coach, problem = context()
-    response = client.post("/api/v1/evidence", json={
-        "evidence_id": f"P4-INVALID-STATUS-{suffix}",
-        "subject_type": "problem",
-        "subject_id": problem["problem_id"],
-        "evidence_level": "E2",
-        "status": "TRUST_ME",
-        "source_ref": "P4-INVALID-SOURCE",
-        "claim": "Anonymous ingestion must fail closed",
-        "observed_value": {"score": 4},
-        "verified_by": coach,
-    })
-    assert response.status_code == 503, response.text
-    assert "publisher-role configuration" in response.text
-
+    for response in (
+        client.get("/api/v1/evidence"),
+        client.get("/api/v1/evidence/phase4-anonymous-auth-order-probe"),
+        client.post("/api/v1/evidence", json={
+            "evidence_id": f"P4-INVALID-STATUS-{suffix}",
+            "subject_type": "problem",
+            "subject_id": problem["problem_id"],
+            "evidence_level": "E2",
+            "status": "TRUST_ME",
+            "source_ref": "P4-INVALID-SOURCE",
+            "claim": "Anonymous ingestion must fail closed",
+            "observed_value": {"score": 4},
+            "verified_by": coach,
+        }),
+    ):
+        assert response.status_code == 401, (response.status_code, response.text)
+        assert "publisher identity" in response.text.lower() or "verified oidc identity" in response.text.lower()
 
 
 def candidate_context():
@@ -195,10 +201,11 @@ def test_phase4_candidate_generation_revalidates_legacy_or_changed_evidence():
         assert response.json()["detail"]["decision_state"] == "HOLD"
         assert expected_reason in response.text
 
+
 if __name__ == "__main__":
     test_phase4_unverified_stale_conflicted_or_rejected_evidence_is_blocked()
     test_phase4_e0_cannot_drive_diagnosis_even_when_marked_verified()
-    test_phase4_public_evidence_ingestion_is_denied_until_publisher_auth_exists()
+    test_phase4_public_evidence_reads_and_writes_authenticate_before_feature_gate()
     test_phase4_unverified_and_e0_evidence_cannot_support_decision_rationale()
     test_phase4_missing_evidence_returns_explicit_hold_reason()
     test_phase4_candidate_generation_revalidates_legacy_or_changed_evidence()
