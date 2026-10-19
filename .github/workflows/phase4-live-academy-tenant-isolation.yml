@@ -1,0 +1,145 @@
+name: KAIZO Phase 4 Live Academy Tenant Isolation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-academy-tenant-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAIZO_PRODUCTION_BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-system.fastapicloud.dev' }}
+      AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
+      AUTH0_AUDIENCE: https://api.kaizo.system
+      A_CLIENT_ID: ${{ secrets.AUTH0_ACADEMY_A_CLIENT_ID }}
+      A_CLIENT_SECRET: ${{ secrets.AUTH0_ACADEMY_A_CLIENT_SECRET }}
+      B_CLIENT_ID: ${{ secrets.AUTH0_ACADEMY_B_CLIENT_ID }}
+      B_CLIENT_SECRET: ${{ secrets.AUTH0_ACADEMY_B_CLIENT_SECRET }}
+    steps:
+      - name: Validate configuration without exposing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AUTH0_DOMAIN A_CLIENT_ID A_CLIENT_SECRET B_CLIENT_ID B_CLIENT_SECRET; do
+            if [ -z "${!name}" ]; then echo "MISSING_CONFIGURATION: $name"; exit 1; fi
+          done
+          echo "Both academy client configurations are present."
+
+      - name: Obtain short-lived academy tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          domain="$(printf '%s' "$AUTH0_DOMAIN" | tr -d '\r\n' | sed -E 's#^https?://##; s#/$##')"
+          for name in "$domain"; do
+            if [[ ! "$name" =~ ^[A-Za-z0-9.-]+$ ]]; then echo "INVALID_AUTH0_DOMAIN"; exit 1; fi
+          done
+          for academy in A B; do
+            id_var="${academy}_CLIENT_ID"; secret_var="${academy}_CLIENT_SECRET"
+            response="$(curl -fsS --retry 2 --retry-delay 1 -X POST "https://${domain}/oauth/token" \
+              -H 'content-type: application/x-www-form-urlencoded' \
+              --data-urlencode 'grant_type=client_credentials' \
+              --data-urlencode "client_id=${!id_var}" \
+              --data-urlencode "client_secret=${!secret_var}" \
+              --data-urlencode "audience=${AUTH0_AUDIENCE}")"
+            token="$(printf '%s' "$response" | python -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))')"
+            test -n "$token" || { echo "TOKEN_ISSUANCE_FAILED: academy $academy"; exit 1; }
+            echo "::add-mask::$token"
+            printf 'KAIZO_ACADEMY_%s_TOKEN=%s\n' "$academy" "$token" >> "$GITHUB_ENV"
+          done
+          echo "SHORT_LIVED_TOKEN_ISSUANCE: PASS"
+
+      - name: Verify distinct signed academy tenant claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, json, base64, sys
+          ns = "https://kaizo.system/"
+          tenants = {}
+          for academy in ("A", "B"):
+              token = os.environ["KAIZO_ACADEMY_"+academy+"_TOKEN"]
+              try:
+                  part = token.split(".")[1]
+                  claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+              except Exception:
+                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (token is not a readable JWT)")
+                  sys.exit(1)
+              role = claims.get(ns+"kaizo_role") or claims.get("kaizo_role") or claims.get("role")
+              tenant = claims.get(ns+"tenant_id") or claims.get(ns+"kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id")
+              if role != "academy" or not isinstance(tenant, str) or not tenant.strip():
+                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (academy role or tenant claim missing)")
+                  sys.exit(1)
+              tenants[academy] = tenant
+              print(f"ACADEMY_{academy}_CLAIMS: PASS (role=academy; tenant claim present; value withheld)")
+          if tenants["A"] == tenants["B"]:
+              print("DISTINCT_TENANT_IDENTITIES: FAIL (both clients resolve to the same tenant)")
+              sys.exit(1)
+          print("DISTINCT_TENANT_IDENTITIES: PASS")
+          PY
+
+      - name: Prove live tenant-scoped audit reads and reject tenant spoofing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, json, base64, urllib.request, urllib.error, sys
+          base = os.environ["KAIZO_PRODUCTION_BASE_URL"].rstrip("/")
+          ns = "https://kaizo.system/"
+          def tenant(token):
+              claims=json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=" * (-len(token.split(".")[1]) % 4)))
+              return claims.get(ns+"tenant_id") or claims.get(ns+"kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id")
+          def get(path, token):
+              req=urllib.request.Request(base+path, headers={"Authorization":"Bearer "+token})
+              try:
+                  with urllib.request.urlopen(req, timeout=25) as r: return r.status, json.loads(r.read())
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read() or b"{}")
+          a=os.environ["KAIZO_ACADEMY_A_TOKEN"]; b=os.environ["KAIZO_ACADEMY_B_TOKEN"]
+          ta,tb=tenant(a),tenant(b)
+          for label,token,own,other in (("A",a,ta,tb),("B",b,tb,ta)):
+              code,body=get("/api/v1/audit/logs",token)
+              if code != 200:
+                  print(f"LIVE_AUDIT_READ_{label}: BLOCKED (HTTP {code}; durable scoped audit access not proven)")
+                  sys.exit(1)
+              if body.get("tenant_id") != own:
+                  print(f"LIVE_AUDIT_SCOPE_{label}: FAIL (response tenant differs from signed identity)")
+                  sys.exit(1)
+              logs=body.get("logs")
+              if not isinstance(logs,list) or not logs:
+                  print(f"LIVE_AUDIT_DATA_{label}: BLOCKED (no persisted tenant records; isolation cannot be proven from an empty result)")
+                  sys.exit(1)
+              if any(row.get("tenant_id") != own for row in logs):
+                  print(f"LIVE_AUDIT_SCOPE_{label}: FAIL (foreign or unscoped row returned)")
+                  sys.exit(1)
+              code2,spoof=get("/api/v1/audit/logs?tenant_id="+other,token)
+              if code2 != 200 or spoof.get("tenant_id") != own:
+                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (query parameter altered or blocked the signed tenant scope)")
+                  sys.exit(1)
+              if any(row.get("tenant_id") != own for row in spoof.get("logs",[])):
+                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (foreign tenant row returned)")
+                  sys.exit(1)
+              ids=lambda d: sorted(str(x.get("id",x.get("audit_id",x.get("event_id","")))) for x in d.get("logs",[]))
+              if ids(body) != ids(spoof):
+                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (result set changed when caller supplied tenant_id)")
+                  sys.exit(1)
+              print(f"LIVE_AUDIT_SCOPE_{label}: PASS (persisted records are tenant-bound)")
+              print(f"TENANT_SPOOF_RESISTANCE_{label}: PASS")
+          print("PHASE4_LIVE_CROSS_TENANT_ISOLATION: PASS")
+          PY
+
+      - name: Confirm target health and record evidence boundary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 10 --max-time 25 "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/health.json'))
+          assert d.get("status") == "Online"
+          print("PRODUCTION_HEALTH: PASS")
+          PY
+          echo "Evidence is valid only for KAIZO_PRODUCTION_BASE_URL shown above; do not attribute it to another host."
