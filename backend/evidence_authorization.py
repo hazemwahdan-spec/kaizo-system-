@@ -24,14 +24,13 @@ GLOBAL_EVIDENCE_SUBJECT_TYPES = frozenset({"rule", "catalog"})
 
 
 def require_global_evidence_publisher(authorization: str | None = Header(default=None)):
-    """Require explicit enablement plus a signed OIDC publisher identity."""
-    enabled = os.getenv("KAIZO_EVIDENCE_PUBLISHER_ENABLED", "false").strip().lower()
-    if enabled != "true":
-        raise HTTPException(
-            status_code=503,
-            detail="Global evidence publishing is disabled pending publisher-role configuration.",
-        )
+    """Authenticate and authorize first; keep feature activation separately gated.
 
+    This ordering makes anonymous/invalid requests observably unauthorized
+    (401), and valid non-publishers or wrong-tenant principals forbidden (403),
+    even while the feature is disabled. A verified, correctly scoped publisher
+    still receives 503 until production activation is explicitly approved.
+    """
     try:
         principal = resolve_bearer_principal(authorization)
     except IdentityNotConfiguredError as exc:
@@ -50,5 +49,12 @@ def require_global_evidence_publisher(authorization: str | None = Header(default
     expected_tenant = os.getenv("KAIZO_EVIDENCE_GLOBAL_TENANT_ID", "global").strip()
     if not expected_tenant or principal.tenant_id != expected_tenant:
         raise HTTPException(status_code=403, detail="Global evidence tenant scope denied.")
+
+    enabled = os.getenv("KAIZO_EVIDENCE_PUBLISHER_ENABLED", "false").strip().lower()
+    if enabled != "true":
+        raise HTTPException(
+            status_code=503,
+            detail="Global evidence publishing is disabled pending production activation.",
+        )
 
     return principal
