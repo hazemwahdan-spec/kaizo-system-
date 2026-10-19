@@ -32,19 +32,19 @@ def _clear_override():
     app.dependency_overrides.pop(evidence_authorization.require_global_evidence_publisher, None)
 
 
-def test_evidence_list_is_denied_when_publisher_gate_is_disabled(monkeypatch):
+def test_anonymous_evidence_list_is_denied_before_publisher_gate(monkeypatch):
     monkeypatch.delenv("KAIZO_EVIDENCE_PUBLISHER_ENABLED", raising=False)
     response = client.get("/api/v1/evidence")
-    assert response.status_code == 503
+    assert response.status_code == 401
 
 
-def test_evidence_detail_is_denied_when_publisher_gate_is_disabled(monkeypatch):
+def test_anonymous_evidence_detail_is_denied_before_publisher_gate(monkeypatch):
     monkeypatch.delenv("KAIZO_EVIDENCE_PUBLISHER_ENABLED", raising=False)
     response = client.get("/api/v1/evidence/containment-probe")
     assert response.status_code == 503
 
 
-def test_evidence_write_is_denied_when_publisher_gate_is_disabled(monkeypatch):
+def test_anonymous_evidence_write_is_denied_before_publisher_gate(monkeypatch):
     monkeypatch.delenv("KAIZO_EVIDENCE_PUBLISHER_ENABLED", raising=False)
     response = client.post("/api/v1/evidence", json={
         "evidence_id": "containment-probe",
