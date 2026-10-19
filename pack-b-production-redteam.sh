@@ -34,12 +34,11 @@ payload=$(jq -n --arg case "${CASE}-AUTH" --arg entity "$ENTITY" '{case_id:$case
 authority=$(curl -fsS -X POST "$BASE_URL/api/v1/digital-twin/sync" -H "Content-Type: application/json" --data "$payload")
 python -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="HOLD"; assert d["reason_code"]=="COACH_FINAL_AUTHORITY_REQUIRED"; assert d["diagnostic_required"] is True' <<<"$authority"
 
-# Public audit-log listing must remain fail-closed until verified identity and
-# tenant-scoped authorization are deployed. Internal audit provenance is tested in CI.
+# Anonymous audit-log requests must be rejected before any tenant data is returned.
 echo "AUDIT-FAIL-CLOSED"
 AUDIT_RESPONSE=$(curl -sS -w "\\nHTTP_STATUS:%{http_code}\\n" "$BASE_URL/api/v1/audit/logs")
 echo "$AUDIT_RESPONSE"
-grep -q 'HTTP_STATUS:503' <<<"$AUDIT_RESPONSE"
-grep -qi 'disabled pending verified identity and tenant authorization' <<<"$AUDIT_RESPONSE"
+grep -q 'HTTP_STATUS:401' <<<"$AUDIT_RESPONSE"
+grep -qi 'valid OIDC identity is required' <<<"$AUDIT_RESPONSE"
 echo "PACK-B PUBLIC AUDIT BOUNDARY: PASS"
 echo "PACK-B PRODUCTION RED TEAM: PASS"

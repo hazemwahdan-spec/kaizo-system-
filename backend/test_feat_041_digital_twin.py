@@ -105,7 +105,7 @@ class FEAT041DigitalTwinStateTests(unittest.TestCase):
         # Anonymous audit-log access must remain fail-closed. Verify the
         # synchronization event via the internal audit spine instead.
         audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 503)
+        self.assertEqual(audit.status_code, 401)
         matches = [
             x for x in AUDIT_LOGS
             if x["action"] == "DIGITAL_TWIN_SYNCHRONIZED"

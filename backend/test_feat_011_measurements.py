@@ -102,7 +102,7 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         # authorization are established. Verify the event through the internal
         # audit spine instead of weakening the endpoint's security boundary.
         audit = client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 503)
+        self.assertEqual(audit.status_code, 401)
         matching = [x for x in AUDIT_LOGS if x["action"] == "ASSESSMENT_RECORDED"]
         self.assertTrue(matching)
         self.assertEqual(matching[-1]["who"], "coach-audit")
@@ -114,7 +114,7 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         # Anonymous access must be denied while internal audit entries retain
         # the complete old/new-value lineage needed for verification.
         response = client.get("/api/v1/audit/logs")
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 401)
         self.assertIsInstance(AUDIT_LOGS, list)
         self.assertTrue(AUDIT_LOGS)
         for entry in AUDIT_LOGS:

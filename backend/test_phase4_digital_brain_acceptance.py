@@ -144,7 +144,7 @@ def test_phase4_decision_to_plan_preserves_evidence_and_coach_authority():
     # Public audit-log access remains fail-closed without authenticated
     # tenant authorization. Validate emitted events through the internal spine.
     audit = client.get("/api/v1/audit/logs")
-    assert audit.status_code == 503
+    assert audit.status_code == 401
     actions = [item.get("action") for item in main.AUDIT_LOGS]
     assert "DECISION_CANDIDATES_GENERATED" in actions
     assert any("DECISION" in (action or "") for action in actions)

@@ -120,3 +120,6 @@ jobs:
 
       - name: Run tenant-scoped audit storage isolation tests
         run: PYTHONPATH=..:. pytest -q test_tenant_scoped_audit_storage.py
+
+      - name: Run verified tenant audit authorization and endpoint tests
+        run: PYTHONPATH=..:. pytest -q test_audit_authorization.py test_audit_log_access_containment.py

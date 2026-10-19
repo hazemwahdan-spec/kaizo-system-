@@ -104,12 +104,11 @@ def test_phase4_override_preserves_candidate_and_audit_history():
     assert decision["coach_final_authority"] is True
     assert decision["execution_authorized"] is False
 
-    # Audit log listing is intentionally fail-closed until verified OIDC and
-    # tenant-scoped authorization are deployed. Do not weaken this boundary
-    # just to make an acceptance test pass.
+    # Anonymous audit reads must be rejected at the verified OIDC boundary.
+    # Internal audit lineage is asserted above; this request must not expose logs.
     logs = client.get("/api/v1/audit/logs")
-    assert logs.status_code == 503, logs.text
-    assert "disabled pending verified identity and tenant authorization" in logs.json()["detail"]
+    assert logs.status_code == 401, logs.text
+    assert "valid OIDC identity is required" in logs.json()["detail"]
 
 
 def test_phase4_decision_plan_kpi_retest_lineage_keeps_baseline():

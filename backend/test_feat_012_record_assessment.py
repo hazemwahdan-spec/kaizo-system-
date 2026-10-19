@@ -106,7 +106,7 @@ class FEAT012RecordAthleteAssessmentTests(unittest.TestCase):
         self.assertEqual(matches[-1]["new_value"]["template_id"], "ASSESSMENT-U11-GRIP")
 
         audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 503)
+        self.assertEqual(audit.status_code, 401)
 
 
 if __name__ == "__main__":
