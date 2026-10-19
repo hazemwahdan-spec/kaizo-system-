@@ -102,7 +102,7 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         # authorization are established. Verify the event through the internal
         # audit spine instead of weakening the endpoint's security boundary.
         audit = client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 503)
+        self.assertEqual(audit.status_code, 401)
         matching = [x for x in AUDIT_LOGS if x["action"] == "ASSESSMENT_RECORDED"]
         self.assertTrue(matching)
         self.assertEqual(matching[-1]["who"], "coach-audit")
