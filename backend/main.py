@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import persistence
+from audit_authorization import require_tenant_audit_reader
 from evidence_store import EVIDENCE_RECORDS
 from evidence_authorization import GLOBAL_EVIDENCE_SUBJECT_TYPES, require_global_evidence_publisher
 from feature_runtime import router as feature_runtime_router
@@ -1715,14 +1716,22 @@ def list_evidence(
 
 
 @app.get("/api/v1/audit/logs")
-def get_audit_logs():
-    # SECURITY CONTAINMENT: this legacy deployment has no verified OIDC +
-    # tenant-scoped audit authorization boundary. Do not expose audit records
-    # until the fully tested Phase 4 authorization path is deployed.
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Audit log access is temporarily disabled pending verified identity and tenant authorization.",
-    )
+def get_audit_logs(principal=Depends(require_tenant_audit_reader)):
+    # Tenant scope comes only from the verified OIDC principal; never accept a
+    # tenant_id query parameter. Unscoped legacy events are excluded by storage.
+    if not persistence.is_postgres_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Durable tenant-scoped audit storage is required.",
+        )
+    try:
+        records = persistence.list_tenant_audit_logs(tenant_id=principal.tenant_id)
+    except (RuntimeError, persistence.PersistenceConfigurationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Durable tenant-scoped audit storage is unavailable.",
+        ) from exc
+    return {"tenant_id": principal.tenant_id, "total_logs": len(records), "logs": records}
 
 @app.get("/api/v1/health")
 def health_check():
