@@ -84,3 +84,34 @@ def test_product_api_fails_closed_without_production_identity(monkeypatch):
         },
     )
     assert response.status_code == 503
+
+
+def test_parent_progress_forwards_authorization_header_to_identity_context(monkeypatch):
+    # This isolates route wiring: the real identity resolver is tested elsewhere.
+    # The assertion prevents the handler from silently dropping the bearer token.
+    from productization import product_api
+
+    observed = {}
+
+    def fake_ctx(actor_id, role, tenant_id, owner, authorization=None):
+        observed["authorization"] = authorization
+        return object()
+
+    class FakeSurface:
+        def parent_progress(self, context, resource_tenant_id, athlete_id, extra):
+            return {"ok": True}
+
+    monkeypatch.setattr(product_api, "ctx", fake_ctx)
+    monkeypatch.setattr(product_api, "get_surface", lambda: FakeSurface())
+
+    response = client().get(
+        "/api/v1/product/parents/linked/athlete-2/progress",
+        params={"resource_tenant_id": "T1"},
+        headers={
+            **headers("parent", owner="athlete-2"),
+            "Authorization": "Bearer regression-token",
+        },
+    )
+
+    assert response.status_code == 200
+    assert observed["authorization"] == "Bearer regression-token"

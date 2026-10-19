@@ -135,6 +135,6 @@ def parent_progress(
     authorization: str | None = Header(None, alias="Authorization"),
 ):
     try:
-        return get_surface().parent_progress(ctx(actor_id, role, tenant_id, owner), resource_tenant_id, athlete_id, [])
+        return get_surface().parent_progress(ctx(actor_id, role, tenant_id, owner, authorization), resource_tenant_id, athlete_id, [])
     except RuntimeAuthorizationError as exc:
         deny(exc)
