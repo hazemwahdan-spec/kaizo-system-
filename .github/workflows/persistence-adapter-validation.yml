@@ -117,3 +117,6 @@ jobs:
 
       - name: Run audit log containment regression tests
         run: PYTHONPATH=..:. pytest -q test_audit_log_access_containment.py
+
+      - name: Run tenant-scoped audit storage isolation tests
+        run: PYTHONPATH=..:. pytest -q test_tenant_scoped_audit_storage.py
