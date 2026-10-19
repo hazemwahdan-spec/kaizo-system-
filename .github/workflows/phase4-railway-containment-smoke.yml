@@ -1,0 +1,75 @@
+name: KAIZO Railway Phase 4 Containment Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/phase4-railway-containment-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  railway-containment-smoke:
+    runs-on: ubuntu-latest
+    env:
+      KAIZO_RAILWAY_BASE_URL: https://kaizo-core-engine-production.up.railway.app
+    steps:
+      - name: Checkout and report evidence identity
+        uses: actions/checkout@v4
+      - name: Report tested host and workflow commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "EVIDENCE_CLASS=CONTAINMENT_HOLD_ONLY"
+          echo "TARGET_HOST=${KAIZO_RAILWAY_BASE_URL}"
+          echo "WORKFLOW_COMMIT=${GITHUB_SHA}"
+          echo "NOTE=Workflow commit is not asserted to equal the deployed runtime commit."
+
+      - name: Verify Railway health is online
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS --connect-timeout 10 --max-time 25 -o /tmp/health.json -w "%{http_code}" "${KAIZO_RAILWAY_BASE_URL}/api/v1/health")
+          if [ "$code" != "200" ]; then
+            echo "RAILWAY_HEALTH: FAIL (expected HTTP 200, got $code)"
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/health.json'))
+          assert d.get("status") == "Online", f"unexpected health status: {d.get('status')!r}"
+          print("RAILWAY_HEALTH: PASS (HTTP 200; status Online)")
+          PY
+
+      - name: Verify all four audit-trace routes remain fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_hold() {
+            local method="$1"
+            local path="$2"
+            local body="$3"
+            local code
+            code=$(curl -sS --connect-timeout 10 --max-time 25 -X "$method" \
+              -H "content-type: application/json" \
+              -d "$body" -o /tmp/containment-response.json -w "%{http_code}" \
+              "${KAIZO_RAILWAY_BASE_URL}$path" || true)
+            if [ "$code" != "503" ]; then
+              echo "CONTAINMENT_HOLD: FAIL ($method $path expected HTTP 503, got $code)"
+              exit 1
+            fi
+            echo "CONTAINMENT_HOLD: PASS ($method $path returned HTTP 503)"
+          }
+          check_hold POST "/api/v1/audit-trace/feat-052/trace" '{"actor_id":"phase4-smoke","action":"containment-probe","coach_final_authority":true}'
+          check_hold POST "/api/v1/audit-trace/feat-053/governance" '{"object_id":"phase4-smoke","object_type":"probe","governance_status":"probe","owner":"phase4-smoke","coach_final_authority":true}'
+          check_hold POST "/api/v1/audit-trace/feat-054/review" '{"query":"phase4-smoke","reviewed_by":"phase4-smoke","coach_final_authority":true}'
+          check_hold POST "/api/v1/audit-trace/feat-055/trace" '{"product_action":"containment-probe","source_record_ids":["phase4-smoke"],"trace_reason":"containment verification","traced_by":"phase4-smoke","coach_final_authority":true}'
+
+      - name: Record explicit non-authorization conclusion
+        if: always()
+        shell: bash
+        run: |
+          echo "RESULT_MEANING=Temporary fail-closed containment only."
+          echo "NOT_PROVEN=OIDC identity, positive/negative RBAC, tenant isolation, guardian consent, or durable tenant-scoped audit."
+          echo "PHASE4_STATUS=OPEN"
