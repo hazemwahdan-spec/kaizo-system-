@@ -114,3 +114,6 @@ jobs:
 
       - name: Run Phase 4 audit and plan authority acceptance tests
         run: PYTHONPATH=. python test_phase4_audit_authority.py
+
+      - name: Run audit log containment regression tests
+        run: PYTHONPATH=..:. pytest -q test_audit_log_access_containment.py
