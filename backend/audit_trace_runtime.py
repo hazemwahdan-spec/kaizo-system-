@@ -6,11 +6,12 @@ execution authorization is permanently false.
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from uuid import uuid4
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 import persistence
+from audit_trace_security import require_audit_trace_ready
 
-router=APIRouter(prefix="/api/v1/audit-trace",tags=["Audit Trace"])
+router=APIRouter(prefix="/api/v1/audit-trace",tags=["Audit Trace"],dependencies=[Depends(require_audit_trace_ready)])
 MEMORY_EVENTS:List[Dict[str,Any]]=[]
 MEMORY_GOVERNANCE:Dict[str,Dict[str,Any]]={}
 MEMORY_LINKS:List[Dict[str,Any]]=[]
