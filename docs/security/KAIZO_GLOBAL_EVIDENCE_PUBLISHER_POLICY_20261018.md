@@ -5,13 +5,14 @@
 
 ## Policy decision
 
-1. The endpoint is disabled by default. Missing or false `KAIZO_EVIDENCE_PUBLISHER_ENABLED` returns HTTP 503.
-2. When explicitly enabled, every list, detail, and write request requires a verified OIDC JWT resolved by the existing KAIZO identity boundary.
-3. The signed principal must carry `role=publisher` (or the configured `kaizo_role=publisher` claim) and the exact global tenant claim configured by `KAIZO_EVIDENCE_GLOBAL_TENANT_ID` (default `global`).
-4. The client-supplied `verified_by` value is never treated as identity. Stored verifier identity and audit actor are derived from the verified JWT subject.
-5. This endpoint accepts only global `rule` and `catalog` evidence. Academy-owned athlete, assessment, and problem evidence is denied here and must use a separate route that proves authenticated tenant membership, parent-resource ownership, applicable guardian consent, and durable authorization audit.
-6. Global evidence writes and their durable audit event are committed in one PostgreSQL transaction. Memory-mode persistence cannot authorize this endpoint.
-7. Global list/detail reads filter to global subject types only. Tenant-owned records are not disclosed through the global API.
+1. Authentication and authorization run before the feature-activation gate. Anonymous or invalid identity requests return HTTP 401; verified non-publishers and wrong-tenant principals return HTTP 403. This makes the authorization boundary observable even while publishing is disabled.
+2. After a verified publisher identity and exact global tenant scope are established, missing or false `KAIZO_EVIDENCE_PUBLISHER_ENABLED` returns HTTP 503. The feature remains unavailable until production activation is explicitly approved.
+3. Every list, detail, and write request requires a verified OIDC JWT resolved by the existing KAIZO identity boundary.
+4. The signed principal must carry `role=publisher` (or the configured `kaizo_role=publisher` claim) and the exact global tenant claim configured by `KAIZO_EVIDENCE_GLOBAL_TENANT_ID` (default `global`).
+5. The client-supplied `verified_by` value is never treated as identity. Stored verifier identity and audit actor are derived from the verified JWT subject.
+6. This endpoint accepts only global `rule` and `catalog` evidence. Academy-owned athlete, assessment, and problem evidence is denied here and must use a separate route that proves authenticated tenant membership, parent-resource ownership, applicable guardian consent, and durable authorization audit.
+7. Global evidence writes and their durable audit event are committed in one PostgreSQL transaction. Memory-mode persistence cannot authorize this endpoint.
+8. Global list/detail reads filter to global subject types only. Tenant-owned records are not disclosed through the global API.
 
 ## Production activation gates
 
