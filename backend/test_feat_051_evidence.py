@@ -16,11 +16,11 @@ class FEAT051EvidenceSpineTests(unittest.TestCase):
 
     def test_anonymous_evidence_list_is_denied(self):
         response = self.client.get("/api/v1/evidence?subject_id=FEAT-051")
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 401)
 
     def test_anonymous_evidence_detail_is_denied(self):
         response = self.client.get("/api/v1/evidence/EVD-FEAT051-001")
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 401)
 
     def test_public_write_is_denied_and_cannot_forge_verified_by(self):
         response = self.client.post("/api/v1/evidence", json={
@@ -35,7 +35,7 @@ class FEAT051EvidenceSpineTests(unittest.TestCase):
             "verified_by": "forged-client-identity",
             "notes": "Acceptance evidence",
         })
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 401)
         self.assertNotIn("EVD-FEAT051-001", EVIDENCE_RECORDS)
 
 
