@@ -114,7 +114,7 @@ class FEAT046AuditSpineTests(unittest.TestCase):
         # Anonymous access must be denied while internal audit entries retain
         # the complete old/new-value lineage needed for verification.
         response = client.get("/api/v1/audit/logs")
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 401)
         self.assertIsInstance(AUDIT_LOGS, list)
         self.assertTrue(AUDIT_LOGS)
         for entry in AUDIT_LOGS:
