@@ -15,18 +15,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verify known protected Core endpoints deny anonymous access
+      - name: Verify known protected Core endpoints enforce authentication
         shell: bash
         run: |
           set -euo pipefail
           base="https://kaizo-system.fastapicloud.dev"
           failed=0
           # Only known deployed routes are tested. A 404 is never authorization evidence.
+          # 503 means fail-closed configuration/availability, not proof of an auth policy.
           for route in "/api/v1/audit/logs" "/api/v1/evidence"; do
             status="$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "$base$route" || true)"
             case "$status" in
-              401|403|503) echo "ANONYMOUS_DENIAL_PASS $route HTTP $status" ;;
-              *) echo "ANONYMOUS_DENIAL_FAIL $route HTTP $status (expected 401, 403, or 503)"; failed=1 ;;
+              401|403) echo "AUTHORIZATION_DENIAL_PASS $route HTTP $status" ;;
+              503) echo "AUTHORIZATION_DENIAL_HOLD $route HTTP 503 (fail-closed, but authorization is not proven)"; failed=1 ;;
+              *) echo "AUTHORIZATION_DENIAL_FAIL $route HTTP $status (expected 401 or 403; 404 is not authorization evidence)"; failed=1 ;;
             esac
           done
           if [[ "$failed" != "0" ]]; then
