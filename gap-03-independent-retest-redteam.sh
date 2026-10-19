@@ -22,5 +22,5 @@ echo "REDTEAM-LOOP-AUTHORITY"; out="$(curl -sS -X POST "$BASE_URL/api/v1/decisio
 echo "AUDIT-FAIL-CLOSED"
 AUDIT_RESPONSE="$(curl -sS -w "\\nHTTP_STATUS:%{http_code}\\n" "$BASE_URL/api/v1/audit/logs")"
 echo "$AUDIT_RESPONSE"
-grep -q 'HTTP_STATUS:503' <<<"$AUDIT_RESPONSE"
-grep -q 'disabled pending verified identity and tenant authorization' <<<"$AUDIT_RESPONSE"
+grep -q 'HTTP_STATUS:401' <<<"$AUDIT_RESPONSE"
+grep -q 'valid OIDC identity is required' <<<"$AUDIT_RESPONSE"
