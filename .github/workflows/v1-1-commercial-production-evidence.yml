@@ -15,6 +15,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Report commercial evidence target and workflow identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "EVIDENCE_CLASS=COMMERCIAL_LIVE_AUTHORIZATION_PROBE"
+          echo "TARGET_HOST=${KAIZO_PRODUCTION_BASE_URL}"
+          echo "WORKFLOW_COMMIT=${GITHUB_SHA}"
+          echo "WORKFLOW_REF=${GITHUB_REF}"
+          echo "NOTE=Workflow commit identifies the checked-out workflow code, not the deployed runtime commit."
+          echo "NOTE=Evidence from this FastAPI Cloud target must not be attributed to Railway."
+
+
       - name: Validate required Auth0 configuration without exposing values
         shell: bash
         run: |
