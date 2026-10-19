@@ -123,14 +123,14 @@ class FEAT014AssessmentEvidenceAcceptanceTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 201)
-        # Audit events remain available to the internal audit spine, while the
-        # public listing stays fail-closed pending verified identity/tenant access.
+        # Audit events remain available internally; anonymous public reads must
+        # be rejected with 401 by the verified-identity boundary.
         actions = [entry for entry in main.AUDIT_LOGS if entry["action"] == "ASSESSMENT_EVIDENCE_ATTACHED"]
         self.assertTrue(actions)
         self.assertEqual(actions[-1]["who"], "coach-feat014")
         self.assertEqual(actions[-1]["new_value"]["assessment_id"], self.assessment_id)
         audit = self.client.get("/api/v1/audit/logs")
-        self.assertEqual(audit.status_code, 503)
+        self.assertEqual(audit.status_code, 401)
 
 
 if __name__ == "__main__":
