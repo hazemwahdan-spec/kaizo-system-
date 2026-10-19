@@ -66,6 +66,34 @@ jobs:
           echo "KAIZO_OIDC_BEARER_TOKEN=$token" >> "$GITHUB_ENV"
           echo "AUTH0_TOKEN_ISSUANCE: PASS (token value masked and not persisted)"
 
+      - name: Preflight publisher role and global tenant claims without exposing token
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Diagnostic only: the following live API step independently verifies JWT signature,
+          # issuer, audience and expiry. Never treat an unverified local decode as authentication.
+          python - <<'PY'
+          import base64, json, os, sys
+          token = os.environ.get("KAIZO_OIDC_BEARER_TOKEN", "")
+          try:
+              payload = token.split(".")[1]
+              payload += "=" * (-len(payload) % 4)
+              claims = json.loads(base64.urlsafe_b64decode(payload.encode()))
+          except Exception:
+              print("PUBLISHER_CLAIM_PREFLIGHT: BLOCKED (access token is not a readable JWT; no claim values exposed)")
+              sys.exit(1)
+          role = (claims.get("https://kaizo.system/kaizo_role") or claims.get("kaizo_role") or claims.get("role"))
+          tenant = (claims.get("https://kaizo.system/tenant_id") or claims.get("https://kaizo.system/kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id"))
+          role_ok = role == "publisher"
+          tenant_ok = tenant == "global"
+          print(f"PUBLISHER_ROLE_CLAIM: {'PRESENT' if role_ok else 'MISSING_OR_NOT_PUBLISHER'}")
+          print(f"GLOBAL_TENANT_CLAIM: {'PRESENT' if tenant_ok else 'MISSING_OR_NOT_GLOBAL'}")
+          if not (role_ok and tenant_ok):
+              print("PUBLISHER_CLAIM_PREFLIGHT: BLOCKED; configure approved Auth0 custom claims for this client before production publisher activation.")
+              sys.exit(1)
+          print("PUBLISHER_CLAIM_PREFLIGHT: PASS (claim values not printed; signature verification is performed by the live API)")
+          PY
+
       - name: Verify live OIDC identity
         shell: bash
         run: |
