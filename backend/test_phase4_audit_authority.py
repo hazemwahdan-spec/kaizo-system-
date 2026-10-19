@@ -78,7 +78,7 @@ def test_phase4_audit_log_is_read_only_and_preserves_decision_events():
     # Public audit-log access must fail closed without authenticated tenant
     # authorization. Verify the emitted events through the internal audit spine.
     response = client.get("/api/v1/audit/logs")
-    assert response.status_code == 503
+    assert response.status_code == 401
     logs = main.AUDIT_LOGS
     override_or_confirm = [
         item for item in logs
