@@ -101,7 +101,8 @@ jobs:
           for path in "/api/v1/evidence" "/api/v1/evidence/phase4-anonymous-denial-probe"; do
             code=$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "${KAIZO_PRODUCTION_BASE_URL}$path" || true)
             case "$code" in
-              401|403|503) echo "ANONYMOUS_EVIDENCE_DENIAL: PASS (GET $path returned HTTP $code)" ;;
+              401|403) echo "ANONYMOUS_EVIDENCE_DENIAL: PASS (GET $path returned HTTP $code)" ;;
+            503) echo "ANONYMOUS_EVIDENCE_DENIAL: HOLD (GET $path returned HTTP 503; fail-closed, but not proof of authorization)" ; exit 1 ;;
               *) echo "ANONYMOUS_EVIDENCE_DENIAL: FAIL (GET $path returned HTTP $code; 404 is not authorization proof)"; exit 1 ;;
             esac
           done
@@ -112,11 +113,13 @@ jobs:
           set -euo pipefail
           code=$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "${KAIZO_PRODUCTION_BASE_URL}/api/v1/audit/logs" || true)
           case "$code" in
-            401|403|503) echo "ANONYMOUS_AUDIT_DENIAL: PASS (HTTP $code)" ;;
+            401|403) echo "ANONYMOUS_AUDIT_DENIAL: PASS (HTTP $code)" ;;
+            503) echo "ANONYMOUS_AUDIT_DENIAL: HOLD (HTTP 503; fail-closed, but not proof of authorization)" ; exit 1 ;;
             *) echo "ANONYMOUS_AUDIT_DENIAL: FAIL (expected 401/403/503, got $code)"; exit 1 ;;
           esac
 
       - name: Verify production health
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -129,6 +132,7 @@ jobs:
           PY
 
       - name: Record governed evidence boundary
+        if: always()
         shell: bash
         run: |
           echo "Short-lived Auth0 access token was requested at runtime and masked."
