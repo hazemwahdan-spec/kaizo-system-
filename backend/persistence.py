@@ -75,8 +75,14 @@ CREATE TABLE IF NOT EXISTS kaizo_audit_logs (
     action TEXT NOT NULL,
     old_value JSONB,
     new_value JSONB,
-    why TEXT NOT NULL
+    why TEXT NOT NULL,
+    tenant_id TEXT
 );
+
+-- Existing rows remain unscoped (NULL); never infer a tenant for legacy events.
+ALTER TABLE kaizo_audit_logs ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_kaizo_audit_logs_tenant_id_id
+    ON kaizo_audit_logs (tenant_id, id);
 
 CREATE TABLE IF NOT EXISTS kaizo_evidence_records (
     evidence_id TEXT PRIMARY KEY,
@@ -389,6 +395,71 @@ def append_audit(
                 ),
             )
         conn.commit()
+
+
+def append_tenant_audit(
+    *,
+    tenant_id: str,
+    timestamp: str,
+    who: str,
+    action: str,
+    old_value: Any,
+    new_value: Any,
+    why: str,
+) -> None:
+    """Persist an audit event with an explicit, trusted tenant scope.
+
+    Callers must supply tenant_id from a verified server-side principal, never
+    from request payload. Legacy append_audit remains unscoped by design.
+    """
+    if not isinstance(tenant_id, str) or not tenant_id.strip():
+        raise ValueError("tenant_id is required for tenant-scoped audit events")
+    if not is_postgres_enabled():
+        raise RuntimeError("durable tenant-scoped audit storage requires PostgreSQL")
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO kaizo_audit_logs
+                    (timestamp, who, action, old_value, new_value, why, tenant_id)
+                VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
+                """,
+                (timestamp, who, action, json.dumps(old_value), json.dumps(new_value), why, tenant_id),
+            )
+        conn.commit()
+
+
+def list_tenant_audit_logs(*, tenant_id: str) -> list[Dict[str, Any]]:
+    """List only records explicitly tagged to the supplied tenant.
+
+    This storage primitive is not an authorization boundary by itself; callers
+    must derive tenant_id from a verified principal and authorize its role.
+    Unscoped legacy rows are deliberately excluded.
+    """
+    if not isinstance(tenant_id, str) or not tenant_id.strip():
+        raise ValueError("tenant_id is required for tenant-scoped audit reads")
+    if not is_postgres_enabled():
+        raise RuntimeError("tenant-scoped audit reads require PostgreSQL")
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT timestamp, who, action, old_value, new_value, why, tenant_id
+                FROM kaizo_audit_logs
+                WHERE tenant_id = %s
+                ORDER BY id
+                """,
+                (tenant_id,),
+            )
+            rows = cur.fetchall()
+    return [
+        {
+            "timestamp": row[0], "who": row[1], "action": row[2],
+            "old_value": row[3], "new_value": row[4], "why": row[5],
+            "tenant_id": row[6],
+        }
+        for row in rows
+    ]
 
 
 def list_audit_logs() -> list[Dict[str, Any]]:
