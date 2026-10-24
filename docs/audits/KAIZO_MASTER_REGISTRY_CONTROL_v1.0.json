@@ -1,0 +1,36 @@
+{
+  "registry_id": "KAIZO-MASTER-REQ-EVIDENCE-REGISTRY",
+  "version": "1.0",
+  "created_at": "2026-10-24",
+  "repository": "hazemwahdan-spec/kaizo-system-",
+  "branch": "audit/master-requirements-evidence-registry-2026-10-24",
+  "baseline_status": "INITIAL_SEED_INCOMPLETE",
+  "inventory_complete": false,
+  "baseline_approved": false,
+  "duplicates_reconciled": false,
+  "conflicts_resolved": false,
+  "weights_frozen": false,
+  "independent_audit_approved": false,
+  "official_percentage_allowed": false,
+  "whole_project_percentage": null,
+  "scope_note": "Initial controlled baseline: 95 registry rows (20 project/governance controls plus 75 feature-level traceability rows); not a complete project denominator until all required controls are approved.",
+  "completion_policy": {
+    "credited_status": "CLOSED_VERIFIED",
+    "required_evidence_status": "VERIFIED_PASS",
+    "requires_proof_url": true,
+    "requires_closure_approver": true,
+    "requires_closure_date": true,
+    "requires_acceptance_criteria": true,
+    "partial_credit_allowed": false,
+    "unknown_counts_as_complete": false,
+    "historical_only_counts_as_current_pass": false
+  },
+  "weight_policy": {
+    "status": "PROVISIONAL",
+    "weights_must_be_approved_before_official_calculation": true,
+    "weights_must_not_be_changed_to_raise_completion": true
+  },
+  "control_owner": "KAIZO Project Governance",
+  "last_reviewed_at": "2026-10-24",
+  "change_control": "Any baseline change must preserve history, identify the source/decision, and trigger recalculation plus independent review."
+}
