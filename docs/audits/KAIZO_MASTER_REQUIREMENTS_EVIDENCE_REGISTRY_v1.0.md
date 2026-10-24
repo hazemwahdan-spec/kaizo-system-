@@ -10,7 +10,7 @@
 
 Create one auditable control surface that links each requirement to its origin, implementation location, acceptance criteria, verification method, evidence, blockers, and weighted completion contribution.
 
-This v1.0 is an **initial seed**, not a claim that every KAIZO requirement has already been discovered. The full inventory must be reconciled against all source documents, features, epics, phases, issues, pull requests, workflows, code, runtime evidence, and the original KAIZO Library before an official whole-project percentage can be issued.
+This v1.0 is an **initial controlled baseline**, not a claim that every KAIZO requirement has already been discovered. The full inventory must be reconciled against all source documents, features, epics, phases, issues, pull requests, workflows, code, runtime evidence, and the original KAIZO Library before an official whole-project percentage can be issued.
 
 ## Files
 
@@ -85,7 +85,7 @@ Evidence ledger entries must not overwrite each other. Add a new evidence row wh
 
 ## Initial scope notes
 
-The seed rows prioritize known governance, library-transfer, production-target, Phase 4 security, persistence, and requirement-inventory controls. They are deliberately not represented as the full 75-feature inventory. The scope crosswalk indexes 5 strategic phases, 17 recovered board steps, 17 product portfolio items, 15 epics, and 75 feature IDs. The feature IDs are placeholders only where the authoritative feature titles/charters have not been recovered; no names or statuses have been invented. Feature-level, original-phase-plan, and source-library-level reconciliation remains required.
+The registry now contains 95 rows: 20 governance/project-control requirements plus 75 feature-level traceability requirements derived from the frozen master backlog. The scope crosswalk contains 129 entities: 5 strategic phases, 17 recovered board steps, 17 product portfolio items, 15 epics, and all 75 feature IDs with source-backed names, epics, priorities, horizons, and dependencies. Feature-level acceptance criteria, route/test evidence, current deployment proof, the original overall 17-phase plan, and source-library transfer reconciliation remain open. The PR #81 traceability map is a draft audit aid and its range-level coverage is not a feature-closure certificate.
 
 ## Official reporting gate
 
