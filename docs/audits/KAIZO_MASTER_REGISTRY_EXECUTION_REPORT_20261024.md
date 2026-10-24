@@ -19,14 +19,13 @@ The following artifacts were added or updated on the audit branch:
 
 ## 2. Structural checks performed
 
-- Initial requirements CSV: 20 rows, 26 columns, all rows consistent.
-- Initial evidence ledger: 11 rows, 16 columns, all rows consistent.
-- Initial scope crosswalk: 129 rows, 10 columns, all rows consistent.
-- Control JSON parsed successfully.
-- After recovering the authoritative frozen backlog, 75 feature-level requirements were appended to the main registry, the crosswalk was expanded with source-backed feature names and traceability columns, and three source/evidence records were added.
+- Final requirements CSV: **95 rows / 26 columns**, including 75 feature-level rows; no inconsistent row widths or duplicate requirement IDs found.
+- Final evidence ledger: **14 rows / 16 columns**; no inconsistent row widths or duplicate evidence IDs found.
+- Final scope crosswalk: **129 rows / 20 columns**, including all 75 feature IDs with source-backed names; no inconsistent row widths found.
+- Control JSON parsed successfully; `inventory_complete=false`, `baseline_approved=false`, and `official_percentage_allowed=false` remain intentional.
 - Current PR #166 is open as a draft, not merged into `main`.
 
-The first structural checks occurred before the 75 feature rows were appended. The final expanded CSVs still require a fresh structural validation and a successful GitHub Actions run. The connected workflow-run/status response did not expose a run for the latest head at the time of this report; do not assume CI passed.
+The final structural checks pass. They do not prove that the Python workflow has passed in GitHub Actions. The connected workflow-run/status response did not expose a run for the latest head at the time of this report; do not assume CI passed.
 
 ## 3. Authoritative 75-feature backlog recovered
 
