@@ -85,12 +85,15 @@ def main() -> int:
     if duplicate_evidence:
         errors.append("Duplicate evidence IDs: " + ", ".join(duplicate_evidence))
     known_ids = set(ids)
+    evidence_by_requirement: dict[str, list[dict[str, str]]] = {}
     for item in evidence_rows:
-        if item.get("requirement_id", "").strip() not in known_ids:
+        req_id = item.get("requirement_id", "").strip()
+        if req_id not in known_ids:
             errors.append(
                 f"Evidence {item.get('evidence_id', '')} references unknown requirement "
-                f"{item.get('requirement_id', '')}."
+                f"{req_id}."
             )
+        evidence_by_requirement.setdefault(req_id, []).append(item)
         status = item.get("evidence_status", "").strip()
         if status and status not in ALLOWED_EVIDENCE_STATUSES:
             errors.append(f"Unknown evidence status {status!r} on {item.get('evidence_id', '')}.")
@@ -147,6 +150,14 @@ def main() -> int:
             and bool(row.get("closure_approved_by", "").strip())
             and bool(row.get("closure_date", "").strip())
             and bool(row.get("acceptance_criteria", "").strip())
+            and any(
+                item.get("evidence_status", "").strip() == CREDITED_EVIDENCE
+                and bool(item.get("source_url", "").strip())
+                and bool(item.get("source_commit_or_run", "").strip())
+                and bool(item.get("environment", "").strip())
+                and bool(item.get("observed_at", "").strip())
+                for item in evidence_by_requirement.get(row.get("requirement_id", "").strip(), [])
+            )
         )
         if can_credit:
             earned_weight += weight
