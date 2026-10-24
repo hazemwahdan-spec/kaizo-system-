@@ -1,33 +1,45 @@
 # KAIZO Master Requirements & Evidence Registry — Execution Report
 
 **Date:** 2026-10-24  
-**Status:** INITIAL REGISTRY IMPLEMENTED — FULL BASELINE NOT YET APPROVED  
+**Status:** INITIAL CONTROLLED BASELINE IMPLEMENTED — OFFICIAL PERCENTAGE SUPPRESSED  
 **Working branch:** `audit/master-requirements-evidence-registry-2026-10-24`  
 **Draft PR:** [#166 — Establish KAIZO Master Requirements & Evidence Registry](https://github.com/hazemwahdan-spec/kaizo-system-/pull/166)
 
 ## 1. Work completed
 
-The following artifacts were added on the audit branch:
+The following artifacts were added or updated on the audit branch:
 
 1. `docs/audits/KAIZO_MASTER_REQUIREMENTS_EVIDENCE_REGISTRY_v1.0.md` — governance, status vocabulary, evidence policy, calculation policy, and change control.
-2. `docs/audits/KAIZO_MASTER_REQUIREMENTS_EVIDENCE_REGISTRY_v1.0.csv` — 20 initial atomic/control requirements with source, acceptance criteria, status, provisional weight, blockers, and notes.
-3. `docs/audits/KAIZO_MASTER_EVIDENCE_LEDGER_v1.0.csv` — 11 evidence records; historical evidence is explicitly distinguished from current verified proof.
+2. `docs/audits/KAIZO_MASTER_REQUIREMENTS_EVIDENCE_REGISTRY_v1.0.csv` — **95 rows**: 20 governance/project-control requirements plus 75 feature-level traceability requirements.
+3. `docs/audits/KAIZO_MASTER_EVIDENCE_LEDGER_v1.0.csv` — **14 evidence records**, distinguishing historical documentation and candidate audit artifacts from current verified proof.
 4. `docs/audits/KAIZO_MASTER_REGISTRY_CONTROL_v1.0.json` — official percentage disabled until baseline gates are approved.
-5. `docs/audits/KAIZO_MASTER_SCOPE_CROSSWALK_v1.0.csv` — 129 scope entities: five strategic phases, 17 master-board steps, 17 P01–P17 portfolio items, 15 product epics, and FEAT-001–FEAT-075 identifiers.
-6. `tools/kaizo_registry_completion.py` — standard-library validator and conservative weighted calculator.
-7. `.github/workflows/kaizo-registry-validation.yml` — CI workflow to validate the registry on audit-branch pushes and relevant pull requests.
+5. `docs/audits/KAIZO_MASTER_SCOPE_CROSSWALK_v1.0.csv` — **129 entities**: 5 strategic phases, 17 master-board steps, 17 P01–P17 portfolio items, 15 product epics, and all 75 feature IDs with source-backed names, epics, priorities, horizons, and dependencies.
+6. `tools/kaizo_registry_completion.py` — standard-library validator and conservative weighted calculator. Only a closed requirement with current verified PASS evidence, source URL, commit/run, environment, observation time, proof URL, closure approver, and closure date can earn credit.
+7. `.github/workflows/kaizo-registry-validation.yml` — CI workflow for audit-branch pushes and relevant pull requests.
 
 ## 2. Structural checks performed
 
-- Requirements CSV: 20 rows, 26 columns; no inconsistent row widths found.
-- Evidence ledger CSV: 11 rows, 16 columns; no inconsistent row widths found.
-- Scope crosswalk CSV: 129 rows, 10 columns; no inconsistent row widths found.
-- Control JSON: parsed successfully.
-- Pull request #166 is open as a draft and is not merged into `main`.
+- Initial requirements CSV: 20 rows, 26 columns, all rows consistent.
+- Initial evidence ledger: 11 rows, 16 columns, all rows consistent.
+- Initial scope crosswalk: 129 rows, 10 columns, all rows consistent.
+- Control JSON parsed successfully.
+- After recovering the authoritative frozen backlog, 75 feature-level requirements were appended to the main registry, the crosswalk was expanded with source-backed feature names and traceability columns, and three source/evidence records were added.
+- Current PR #166 is open as a draft, not merged into `main`.
 
-These are structural checks only. They do not prove the Python workflow has passed in GitHub Actions, nor do they prove that project capabilities are complete.
+The first structural checks occurred before the 75 feature rows were appended. The final expanded CSVs still require a fresh structural validation and a successful GitHub Actions run. The connected workflow-run/status response did not expose a run for the latest head at the time of this report; do not assume CI passed.
 
-## 3. Evidence-backed blockers
+## 3. Authoritative 75-feature backlog recovered
+
+The canonical planning file was found:
+[KAIZO-MASTER-FEATURE-BACKLOG-V1-20261005.md](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/product/KAIZO-MASTER-FEATURE-BACKLOG-V1-20261005.md).
+
+It provides all 75 feature IDs, names, primary epics, priorities, horizons, and key dependencies.
+
+The open draft [PR #81](https://github.com/hazemwahdan-spec/kaizo-system-/pull/81) provides a 75-row evidence traceability CSV with source-matrix coverage, route mappings, named test mappings, limitations, and next actions. It is useful audit input, but its own note says coverage is range-level in places, production/human validation is not established by the matrix, and feature-specific acceptance evidence remains incomplete.
+
+Therefore the 75 features are now represented individually in the registry, but all 75 remain `PARTIAL` with historical-only evidence status in this initial baseline. This is a conservative registry status, not a claim that all 75 features are broken or unimplemented.
+
+## 4. Remaining evidence-backed blockers
 
 ### A. Original overall 17-phase plan
 
@@ -35,15 +47,13 @@ The recovery checkpoint states that the original overall 17-phase plan was not r
 
 Source: [17-phase recovery checkpoint](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/audits/KAIZO_17_PHASE_RECOVERY_AND_EXECUTION_CHECKPOINT_20261011.md).
 
-### B. Authoritative 75-feature backlog
+### B. Feature-level acceptance and evidence
 
-The master project record explicitly states that the complete 75-row feature register is incomplete in that record and requires source extraction. Therefore the crosswalk records FEAT-001–FEAT-075 IDs but deliberately does not invent feature titles, epics, statuses, test evidence, PRs, commits, or production states.
-
-Source: [KAIZO Master Project Record](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/governance/KAIZO_MASTER_PROJECT_RECORD_v1.0.md).
+The feature backlog gives planning metadata, while the quality matrix gives range-level implementation coverage. Neither alone establishes individual feature acceptance, production deployment, human expert validation, or commercial readiness. Each feature needs a specific acceptance criterion and links to its owning implementation, test(s), CI run/commit, and production proof when that claim is made.
 
 ### C. Phase 4 and production evidence
 
-Issue #151 and related PR descriptions distinguish historical or candidate-code tests from proof of current live production authorization. The registry keeps unresolved gates for canonical production target, current OIDC/build identity, route-specific policy, tenant isolation, guardian consent, durable audit, and independent retest.
+Issue #151 and related PR descriptions distinguish historical/candidate-code tests from proof of current live production authorization. The registry keeps unresolved gates for canonical production target, current OIDC/build identity, route-specific policy, tenant isolation, guardian consent, durable audit, and independent retest.
 
 Sources:
 - [Issue #151](https://github.com/hazemwahdan-spec/kaizo-system-/issues/151)
@@ -58,33 +68,32 @@ The source inventory snapshot identifies 69 source artifacts, including 48 binar
 
 Source: [Complete Library Transfer Status](https://github.com/hazemwahdan-spec/kaizo-system-/blob/main/docs/audits/complete-library-transfer-status.md).
 
-## 4. Completion accounting decision
+## 5. Completion accounting decision
 
 **Official whole-project completion percentage: SUPPRESSED.**
 
 Reasons:
-- Full requirement inventory is not yet established.
-- The canonical 75-feature backlog source is not yet reconciled into the registry.
-- The original overall 17-phase plan is not recovered or replaced through an approved decision.
+- The original overall 17-phase plan remains unrecovered or unreplaced by an approved decision.
+- Feature-level acceptance criteria and evidence links are not complete for all 75 features.
 - Taxonomy duplicates/conflicts and mappings are not fully resolved.
 - Initial weights are provisional and not frozen.
 - Independent audit approval is pending.
 - Current evidence is insufficient to close critical production gates.
 
-A seed-only ratio, if produced by the calculator, must not be described as whole-project completion.
+A provisional registry-only ratio must not be described as whole-project completion.
 
-## 5. Next execution sequence
+## 6. Next execution sequence
 
-1. Locate and recover the authoritative 75-feature backlog and exact acceptance criteria.
-2. Add one source-backed registry row per feature and link each to code, tests, PR/commit, dependencies, and production evidence where applicable.
-3. Recover the original 17-phase plan and closure records, or obtain explicit owner approval for a replacement baseline.
-4. Expand the registry to all in-scope requirements from the strategic roadmap, epics, product capabilities, architecture, governance, data, security, testing, deployment, and commercial user journeys.
+1. Reconcile the 75-feature traceability CSV from PR #81 with the frozen backlog and keep all source limitations.
+2. For each feature, source the approved acceptance criterion, identify the owning route/contract, link named tests, and attach exact CI run/commit.
+3. Recover the original overall 17-phase plan and closure records, or obtain explicit owner approval for a replacement baseline.
+4. Reconcile all architecture, governance, data, security, deployment, and commercial user-journey requirements.
 5. Resolve duplicates and conflicts while preserving source lineage.
 6. Approve and freeze the denominator, scope, criticality, and weights.
-7. Confirm the registry validation workflow actually passes on the current PR head.
+7. Confirm the registry validation workflow passes on the current PR head.
 8. Independently recompute a sample of the weighted calculation.
 9. Only then enable the official percentage control.
 
-## 6. Governance disposition
+## 7. Governance disposition
 
 No production settings, secrets, databases, or live application behavior were changed. No existing issue or pull request was closed. PR #166 remains a draft pending review. This report does not declare Phase 4, the commercial product, or KAIZO as a whole complete.
