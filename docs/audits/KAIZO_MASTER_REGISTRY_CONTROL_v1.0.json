@@ -13,7 +13,7 @@
   "independent_audit_approved": false,
   "official_percentage_allowed": false,
   "whole_project_percentage": null,
-  "scope_note": "Seed rows only. Do not report seed-only ratio as whole-project completion.",
+  "scope_note": "Initial controlled baseline: 95 registry rows (20 project/governance controls plus 75 feature-level traceability rows); not a complete project denominator until all required controls are approved.",
   "completion_policy": {
     "credited_status": "CLOSED_VERIFIED",
     "required_evidence_status": "VERIFIED_PASS",
