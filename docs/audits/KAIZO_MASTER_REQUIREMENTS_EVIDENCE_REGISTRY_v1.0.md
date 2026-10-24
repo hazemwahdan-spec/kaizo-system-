@@ -17,6 +17,7 @@ This v1.0 is an **initial seed**, not a claim that every KAIZO requirement has a
 - `KAIZO_MASTER_REQUIREMENTS_EVIDENCE_REGISTRY_v1.0.csv` — one row per atomic requirement.
 - `KAIZO_MASTER_EVIDENCE_LEDGER_v1.0.csv` — one row per evidence item; retain multiple items per requirement.
 - `KAIZO_MASTER_REGISTRY_CONTROL_v1.0.json` — completeness and calculation guardrails.
+- `KAIZO_MASTER_SCOPE_CROSSWALK_v1.0.csv` — 129-row index of strategic phases, board steps, product portfolio items, epics, and FEAT-001–075 IDs, with unresolved mappings preserved.
 - `tools/kaizo_registry_completion.py` — deterministic CSV validation and calculation.
 
 ## Non-negotiable rules
@@ -84,7 +85,7 @@ Evidence ledger entries must not overwrite each other. Add a new evidence row wh
 
 ## Initial scope notes
 
-The seed rows prioritize known governance, library-transfer, production-target, Phase 4 security, persistence, and requirement-inventory controls. They are deliberately not represented as the full 75-feature inventory. Feature-level, phase-level, and source-library-level reconciliation remains required.
+The seed rows prioritize known governance, library-transfer, production-target, Phase 4 security, persistence, and requirement-inventory controls. They are deliberately not represented as the full 75-feature inventory. The scope crosswalk indexes 5 strategic phases, 17 recovered board steps, 17 product portfolio items, 15 epics, and 75 feature IDs. The feature IDs are placeholders only where the authoritative feature titles/charters have not been recovered; no names or statuses have been invented. Feature-level, original-phase-plan, and source-library-level reconciliation remains required.
 
 ## Official reporting gate
 
