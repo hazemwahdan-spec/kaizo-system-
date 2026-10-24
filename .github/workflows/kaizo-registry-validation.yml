@@ -1,0 +1,27 @@
+name: KAIZO Master Registry Validation
+
+on:
+  pull_request:
+    paths:
+      - "docs/audits/KAIZO_MASTER_REQUIREMENTS_EVIDENCE_REGISTRY_v1.0.csv"
+      - "docs/audits/KAIZO_MASTER_EVIDENCE_LEDGER_v1.0.csv"
+      - "docs/audits/KAIZO_MASTER_REGISTRY_CONTROL_v1.0.json"
+      - "tools/kaizo_registry_completion.py"
+      - ".github/workflows/kaizo-registry-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate registry and calculate seed-only ratio
+        run: python tools/kaizo_registry_completion.py
