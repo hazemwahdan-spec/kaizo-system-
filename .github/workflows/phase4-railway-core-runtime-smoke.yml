@@ -1,0 +1,113 @@
+name: Phase 4 Railway Core Runtime Smoke
+
+on:
+  push:
+    branches: [feat/phase4-railway-runtime-smoke-20261028]
+    paths:
+      - ".github/workflows/phase4-railway-core-runtime-smoke.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/phase4-railway-core-runtime-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  railway-runtime-contract:
+    name: Railway health, OpenAPI routes, and runtime identity report
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://kaizo-core-engine-production.up.railway.app
+    steps:
+      - name: Report exact test target and workflow identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "EVIDENCE_CLASS=PHASE4_RAILWAY_CORE_RUNTIME_SMOKE"
+          echo "TARGET_HOST=${BASE_URL}"
+          echo "WORKFLOW_COMMIT=${GITHUB_SHA}"
+          echo "WORKFLOW_REF=${GITHUB_REF}"
+          echo "NOTE=Workflow commit is not assumed to equal the deployed runtime commit."
+          echo "NOTE=Railway deployment ID and deployed SHA must be recorded separately from Railway platform metadata."
+
+      - name: Verify live health and OpenAPI route inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$RUNNER_TEMP/kaizo-railway"
+          mkdir -p "$tmp"
+          health_status="$(curl -sS --connect-timeout 10 --max-time 25 -o "$tmp/health.json" -w "%{http_code}" "$BASE_URL/api/v1/health" || true)"
+          if [[ "$health_status" != "200" ]]; then
+            echo "RAILWAY_HEALTH: FAIL (HTTP $health_status)"
+            exit 1
+          fi
+          python - "$tmp/health.json" <<'PY'
+          import json,sys
+          body=json.load(open(sys.argv[1],encoding="utf-8"))
+          print("RAILWAY_HEALTH: HTTP 200")
+          print("HEALTH_SYSTEM:", body.get("system","not-reported"))
+          print("HEALTH_STATUS:", body.get("status","not-reported"))
+          PY
+
+          openapi_status="$(curl -sS --connect-timeout 10 --max-time 25 -o "$tmp/openapi.json" -w "%{http_code}" "$BASE_URL/openapi.json" || true)"
+          if [[ "$openapi_status" != "200" ]]; then
+            echo "RAILWAY_OPENAPI: FAIL (HTTP $openapi_status)"
+            exit 1
+          fi
+          python - "$tmp/openapi.json" <<'PY'
+          import json,sys
+          schema=json.load(open(sys.argv[1],encoding="utf-8"))
+          info=schema.get("info",{})
+          paths=schema.get("paths",{})
+          print("OPENAPI_TITLE:",info.get("title","not-reported"))
+          print("OPENAPI_VERSION:",info.get("version","not-reported"))
+          required={
+            "/api/v1/health",
+            "/api/v1/evidence",
+            "/api/v1/problem-statements/{problem_id}/diagnosis",
+            "/api/v1/diagnoses/{diagnosis_id}/decision-candidates",
+            "/api/v1/decision-candidates/{candidate_id}/rationale",
+            "/api/v1/features/feat-029/progression-regression-rules",
+            "/api/v1/knowledge-runtime/feat-047/provenance",
+            "/api/v1/audit/logs",
+            "/api/v1/audit-trace/feat-052/trace",
+            "/api/v1/audit-trace/feat-053/governance",
+            "/api/v1/audit-trace/feat-054/review",
+            "/api/v1/audit-trace/feat-055/trace",
+          }
+          missing=sorted(required-set(paths))
+          print(f"OPENAPI_PATH_COUNT: {len(paths)}")
+          if missing:
+            print("RAILWAY_REQUIRED_PATHS: FAIL")
+            for path in missing: print("MISSING_PATH:",path)
+            sys.exit(1)
+          print("RAILWAY_REQUIRED_PATHS: PASS (all required Phase 4 paths present)")
+          PY
+
+  railway-anonymous-denial:
+    name: Protected-route denial classification
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://kaizo-core-engine-production.up.railway.app
+    steps:
+      - name: Require authorization denial, never treat 503 as PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
+          case "$status" in
+            401|403)
+              echo "RAILWAY_ANONYMOUS_AUDIT_DENIAL: PASS (HTTP $status)"
+              ;;
+            503)
+              echo "RAILWAY_ANONYMOUS_AUDIT_DENIAL: HOLD — HTTP 503 is containment/service-unavailable, NOT authorization PASS."
+              exit 1
+              ;;
+            *)
+              echo "RAILWAY_ANONYMOUS_AUDIT_DENIAL: FAIL (unexpected HTTP $status; expected 401 or 403)"
+              exit 1
+              ;;
+          esac
