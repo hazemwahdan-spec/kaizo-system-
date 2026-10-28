@@ -13,7 +13,7 @@ app.innerHTML=[
 '<section id="coach-adapt-decision" class="card span-6"><h3>Adapt Decision</h3><div class="row"><div class="field"><label>Operation</label><select id="operation"><option>individual_adaptation</option><option>team_adaptation</option><option>subgroup_recalculation</option><option>individual_change</option></select></div><div class="field"><label>Dynamic Inputs</label><input id="dynamic" value="competition_pressure"></div></div><button style="margin-top:10px" onclick="adapt()">Run Adaptation</button><pre id="adaptOut" class="output" style="margin-top:12px"></pre></section>',
 '<section id="coach-decision-loop" class="card span-6"><h3>Decision Loop</h3><div class="row"><div class="field"><label>Decision</label><input id="decision" value="Increase grip-entry decision quality"></div><div class="field"><label>Intervention</label><input id="intervention" value="Constraint-led gripping drill"></div><div class="field"><label>KPI</label><input id="kpi" value="clean entries / 5 reps"></div><div class="field"><label>Retest</label><input id="retest" value="same scenario, independent retest"></div></div><button style="margin-top:10px" onclick="loop()">Complete Loop</button><pre id="loopOut" class="output" style="margin-top:12px"></pre></section>',
 '<section id="coach-digital-twin" class="card span-6"><h3>Digital Twin</h3><div class="row"><div class="field"><label>Entity ID</label><input id="entity" value="ATH-001"></div><div class="field"><label>State JSON</label><input id="twinState" value=\'{"readiness":"training","grip":"medium"}\'></div></div><button style="margin-top:10px" onclick="syncTwin()">Sync State</button><button class="secondary" style="margin:10px 0 0 6px" onclick="getTwin()">Read State</button><pre id="twinOut" class="output" style="margin-top:12px"></pre></section>',
-'<section id="coach-audit-trail" class="card span-6"><h3>Audit Trail</h3><p class="muted">Read-only view of Core audit events.</p><button onclick="audit()">Refresh Audit</button><pre id="auditOut" class="output" style="margin-top:12px"></pre></section>',
+'<section id="coach-audit-trail" class="card span-6"><h3>Audit Trail · Restricted</h3><p class="muted">Core currently permits tenant audit reads only for verified Academy principals. Coach action history needs a separate tenant-scoped API; this view does not grant access.</p><button onclick="audit()">Refresh Audit</button><pre id="auditOut" class="output" style="margin-top:12px"></pre></section>',
 '</div></main>'
 ].join("");
 caseId.value="COACH-"+Date.now();
@@ -43,7 +43,7 @@ function coachDashboard(){return `
     <button onclick="coachGo('coach-adapt-decision')">2. Adapt decision</button>
     <button onclick="coachGo('coach-decision-loop')">3. Record intervention & retest</button>
     <button class="secondary" onclick="coachGo('coach-digital-twin')">4. Review athlete state</button>
-    <button class="secondary" onclick="coachGo('coach-audit-trail')">5. Review audit trail</button>
+    <button class="secondary" onclick="coachGo('coach-audit-trail')">5. Check audit access</button>
   </div>
   <p class="notice coach-honesty">Live priority items, athlete navigation and action history are not represented as available until their API sources and authorization are verified. No sample athlete or fabricated KPI is presented as live data.</p>
 </div>` }
