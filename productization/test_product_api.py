@@ -192,3 +192,80 @@ def test_coach_actions_api_rejects_missing_bearer(monkeypatch):
     response = client().get("/api/v1/product/coach/actions")
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
+
+
+
+def test_verified_coach_decision_is_written_to_tenant_audit(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+    from productization.runtime_adapter import RuntimeContext
+
+    principal = Principal("auth0|coach-1", "coach", "tenant-a", None, True, "oidc_jwt")
+    observed = {}
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", lambda authorization: principal)
+    monkeypatch.setattr(
+        product_api, "ctx",
+        lambda actor_id, role, tenant_id, owner, authorization=None:
+            RuntimeContext("auth0|coach-1", "coach", "tenant-a"),
+    )
+    monkeypatch.setattr(product_api.persistence, "is_postgres_enabled", lambda: True)
+    monkeypatch.setattr(
+        product_api.persistence, "append_tenant_audit",
+        lambda **kwargs: observed.update(kwargs),
+    )
+
+    class FakeSurface:
+        def request_decision(self, context, resource_tenant_id, payload):
+            return {"status": "HOLD", "execution_authorized": False}
+
+    monkeypatch.setattr(product_api, "get_surface", lambda: FakeSurface())
+    response = client().post(
+        "/api/v1/product/decision",
+        json={
+            "resource_tenant_id": "tenant-a",
+            "case_id": "CASE-1",
+            "decision": {"choice": "review"},
+            "intervention": {"drill": "none"},
+            "response_kpi": {"score": 0},
+            "retest": {"score": 0},
+        },
+        headers={
+            **headers("coach", tenant="tenant-a", actor="auth0|coach-1"),
+            "Authorization": "Bearer verified-test-token",
+        },
+    )
+    assert response.status_code == 200
+    assert observed["tenant_id"] == "tenant-a"
+    assert observed["who"] == "auth0|coach-1"
+    assert observed["action"] == "COACH_DECISION_REQUESTED"
+    assert observed["new_value"]["case_id"] == "CASE-1"
+
+
+def test_verified_coach_decision_rejects_header_identity_mismatch(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+    from productization.runtime_adapter import RuntimeContext
+
+    principal = Principal("auth0|real-coach", "coach", "tenant-a", None, True, "oidc_jwt")
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", lambda authorization: principal)
+    monkeypatch.setattr(
+        product_api, "ctx",
+        lambda actor_id, role, tenant_id, owner, authorization=None:
+            RuntimeContext(actor_id, role, tenant_id),
+    )
+    response = client().post(
+        "/api/v1/product/decision",
+        json={
+            "resource_tenant_id": "tenant-a",
+            "case_id": "CASE-2",
+            "decision": {},
+            "intervention": {},
+            "response_kpi": {},
+            "retest": {},
+        },
+        headers={
+            **headers("coach", tenant="tenant-a", actor="spoofed-coach"),
+            "Authorization": "Bearer verified-test-token",
+        },
+    )
+    assert response.status_code == 403
