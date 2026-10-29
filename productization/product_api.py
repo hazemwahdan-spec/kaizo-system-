@@ -5,7 +5,8 @@ from pydantic import BaseModel
 
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
-from .identity import IdentityNotConfiguredError, resolve_principal, verify_bearer_token
+from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
+import persistence
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -138,3 +139,63 @@ def parent_progress(
         return get_surface().parent_progress(ctx(actor_id, role, tenant_id, owner, authorization), resource_tenant_id, athlete_id, [])
     except RuntimeAuthorizationError as exc:
         deny(exc)
+
+
+
+@router.get("/coach/actions")
+def coach_actions(
+    limit: int = 50,
+    authorization: str | None = Header(None, alias="Authorization"),
+):
+    """Return only the authenticated Coach's own durable, tenant-scoped audit events.
+
+    Caller-supplied actor/role/tenant headers are intentionally not used here.
+    Legacy unscoped events and other actors' events are excluded.
+    """
+    try:
+        principal = resolve_bearer_principal(authorization)
+    except IdentityNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="A valid OIDC identity is required to read Coach action history.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    if not principal.verified or principal.source != "oidc_jwt":
+        raise HTTPException(status_code=401, detail="Verified OIDC identity required.")
+    if principal.role != "coach":
+        raise HTTPException(status_code=403, detail="Coach role required.")
+    if not isinstance(principal.tenant_id, str) or not principal.tenant_id.strip():
+        raise HTTPException(status_code=403, detail="Tenant scope is required.")
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 100.")
+    if not persistence.is_postgres_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Durable tenant-scoped action history is not configured.",
+        )
+    try:
+        records = persistence.list_tenant_audit_logs(tenant_id=principal.tenant_id)
+    except (RuntimeError, persistence.PersistenceConfigurationError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Durable tenant-scoped action history is unavailable.",
+        ) from exc
+
+    own_actions = [
+        {
+            "timestamp": record.get("timestamp"),
+            "action": record.get("action"),
+            "why": record.get("why"),
+        }
+        for record in records
+        if record.get("who") == principal.actor_id
+    ]
+    return {
+        "actor_id": principal.actor_id,
+        "tenant_id": principal.tenant_id,
+        "source": "durable_tenant_scoped_audit",
+        "count": min(len(own_actions), limit),
+        "actions": own_actions[-limit:],
+        "execution_authorized": False,
+    }
