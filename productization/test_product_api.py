@@ -129,15 +129,6 @@ def test_coach_actions_api_uses_verified_tenant_and_actor(monkeypatch):
     monkeypatch.setattr(
         product_api.persistence,
         "list_tenant_audit_logs",
-        lambda *, tenant_id: seen.setdefault("tenant_id", tenant_id) or [
-            {"who": "auth0|coach-1", "action": "COACH_ACTION", "timestamp": "t1", "why": "own"},
-            {"who": "auth0|other", "action": "OTHER_ACTION", "timestamp": "t2", "why": "other"},
-        ],
-    )
-    # Use a deterministic list return; setdefault's return value is not the list.
-    monkeypatch.setattr(
-        product_api.persistence,
-        "list_tenant_audit_logs",
         lambda *, tenant_id: (
             seen.update({"tenant_id": tenant_id}) or [
                 {"who": "auth0|coach-1", "action": "COACH_ACTION", "timestamp": "t1", "why": "own"},
