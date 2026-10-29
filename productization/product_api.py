@@ -105,15 +105,23 @@ def decision(
         )
         if verified_principal is not None:
             from datetime import datetime, timezone
-            persistence.append_tenant_audit(
-                tenant_id=verified_principal.tenant_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                who=verified_principal.actor_id,
-                action="COACH_DECISION_REQUESTED",
-                old_value=None,
-                new_value={"case_id": req.case_id, "status": "decision_requested"},
-                why="Verified Coach requested a Core decision; execution remains unauthorized.",
-            )
+            try:
+                persistence.append_tenant_audit(
+                    tenant_id=verified_principal.tenant_id,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    who=verified_principal.actor_id,
+                    action="COACH_DECISION_REQUESTED",
+                    old_value=None,
+                    new_value={"case_id": req.case_id, "status": "decision_requested"},
+                    why="Verified Coach requested a Core decision; execution remains unauthorized.",
+                )
+            except Exception as exc:
+                # A decision must not be reported as successful when its required audit
+                # record could not be durably written.
+                raise HTTPException(
+                    status_code=503,
+                    detail="Durable tenant-scoped action history could not be recorded.",
+                ) from exc
         return result
     except RuntimeAuthorizationError as exc:
         deny(exc)
