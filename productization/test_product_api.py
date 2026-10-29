@@ -115,3 +115,200 @@ def test_parent_progress_forwards_authorization_header_to_identity_context(monke
 
     assert response.status_code == 200
     assert observed["authorization"] == "Bearer regression-token"
+
+
+
+def test_coach_actions_api_uses_verified_tenant_and_actor(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+
+    principal = Principal("auth0|coach-1", "coach", "tenant-a", None, True, "oidc_jwt")
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", lambda authorization: principal)
+    monkeypatch.setattr(product_api.persistence, "is_postgres_enabled", lambda: True)
+    seen = {}
+    monkeypatch.setattr(
+        product_api.persistence,
+        "list_tenant_audit_logs",
+        lambda *, tenant_id: (
+            seen.update({"tenant_id": tenant_id}) or [
+                {"who": "auth0|coach-1", "action": "COACH_ACTION", "timestamp": "t1", "why": "own"},
+                {"who": "auth0|other", "action": "OTHER_ACTION", "timestamp": "t2", "why": "other"},
+            ]
+        ),
+    )
+    response = client().get(
+        "/api/v1/product/coach/actions",
+        headers={"Authorization": "Bearer verified-test-token", "X-KAIZO-Tenant": "attacker-tenant"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert seen["tenant_id"] == "tenant-a"
+    assert body["actor_id"] == "auth0|coach-1"
+    assert body["tenant_id"] == "tenant-a"
+    assert body["count"] == 1
+    assert body["actions"] == [{"timestamp": "t1", "action": "COACH_ACTION", "why": "own"}]
+    assert body["execution_authorized"] is False
+
+
+def test_coach_actions_api_rejects_non_coach(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+
+    monkeypatch.setattr(
+        product_api, "resolve_bearer_principal",
+        lambda authorization: Principal("auth0|academy", "academy", "tenant-a", None, True, "oidc_jwt"),
+    )
+    response = client().get(
+        "/api/v1/product/coach/actions",
+        headers={"Authorization": "Bearer verified-test-token"},
+    )
+    assert response.status_code == 403
+
+
+def test_coach_actions_api_fails_closed_without_durable_storage(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+
+    monkeypatch.setattr(
+        product_api, "resolve_bearer_principal",
+        lambda authorization: Principal("auth0|coach-1", "coach", "tenant-a", None, True, "oidc_jwt"),
+    )
+    monkeypatch.setattr(product_api.persistence, "is_postgres_enabled", lambda: False)
+    response = client().get(
+        "/api/v1/product/coach/actions",
+        headers={"Authorization": "Bearer verified-test-token"},
+    )
+    assert response.status_code == 503
+
+
+def test_coach_actions_api_rejects_missing_bearer(monkeypatch):
+    from productization import product_api
+    from productization.identity import IdentityNotConfiguredError
+
+    def reject(authorization):
+        raise IdentityNotConfiguredError("Bearer authentication is required")
+
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", reject)
+    response = client().get("/api/v1/product/coach/actions")
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+
+def test_verified_coach_decision_is_written_to_tenant_audit(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+    from productization.runtime_adapter import RuntimeContext
+
+    principal = Principal("auth0|coach-1", "coach", "tenant-a", None, True, "oidc_jwt")
+    observed = {}
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", lambda authorization: principal)
+    monkeypatch.setattr(
+        product_api, "ctx",
+        lambda actor_id, role, tenant_id, owner, authorization=None:
+            RuntimeContext("auth0|coach-1", "coach", "tenant-a"),
+    )
+    monkeypatch.setattr(product_api.persistence, "is_postgres_enabled", lambda: True)
+    monkeypatch.setattr(
+        product_api.persistence, "append_tenant_audit",
+        lambda **kwargs: observed.update(kwargs),
+    )
+
+    class FakeSurface:
+        def request_decision(self, context, resource_tenant_id, payload):
+            return {"status": "HOLD", "execution_authorized": False}
+
+    monkeypatch.setattr(product_api, "get_surface", lambda: FakeSurface())
+    response = client().post(
+        "/api/v1/product/decision",
+        json={
+            "resource_tenant_id": "tenant-a",
+            "case_id": "CASE-1",
+            "decision": {"choice": "review"},
+            "intervention": {"drill": "none"},
+            "response_kpi": {"score": 0},
+            "retest": {"score": 0},
+        },
+        headers={
+            **headers("coach", tenant="tenant-a", actor="auth0|coach-1"),
+            "Authorization": "Bearer verified-test-token",
+        },
+    )
+    assert response.status_code == 200
+    assert observed["tenant_id"] == "tenant-a"
+    assert observed["who"] == "auth0|coach-1"
+    assert observed["action"] == "COACH_DECISION_REQUESTED"
+    assert observed["new_value"]["case_id"] == "CASE-1"
+
+
+
+def test_verified_coach_decision_fails_closed_when_audit_write_fails(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+    from productization.runtime_adapter import RuntimeContext
+
+    principal = Principal("auth0|coach-1", "coach", "tenant-a", None, True, "oidc_jwt")
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", lambda authorization: principal)
+    monkeypatch.setattr(
+        product_api, "ctx",
+        lambda actor_id, role, tenant_id, owner, authorization=None:
+            RuntimeContext("auth0|coach-1", "coach", "tenant-a"),
+    )
+    monkeypatch.setattr(product_api.persistence, "is_postgres_enabled", lambda: True)
+
+    def fail_audit_write(**kwargs):
+        raise OSError("database write failed")
+
+    monkeypatch.setattr(product_api.persistence, "append_tenant_audit", fail_audit_write)
+
+    class FakeSurface:
+        def request_decision(self, context, resource_tenant_id, payload):
+            return {"status": "HOLD", "execution_authorized": False}
+
+    monkeypatch.setattr(product_api, "get_surface", lambda: FakeSurface())
+    response = client().post(
+        "/api/v1/product/decision",
+        json={
+            "resource_tenant_id": "tenant-a",
+            "case_id": "CASE-AUDIT-FAIL",
+            "decision": {"choice": "review"},
+            "intervention": {"drill": "none"},
+            "response_kpi": {"score": 0},
+            "retest": {"score": 0},
+        },
+        headers={
+            **headers("coach", tenant="tenant-a", actor="auth0|coach-1"),
+            "Authorization": "Bearer verified-test-token",
+        },
+    )
+    assert response.status_code == 503
+    assert "could not be recorded" in response.json()["detail"]
+
+def test_verified_coach_decision_rejects_header_identity_mismatch(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+    from productization.runtime_adapter import RuntimeContext
+
+    principal = Principal("auth0|real-coach", "coach", "tenant-a", None, True, "oidc_jwt")
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", lambda authorization: principal)
+    monkeypatch.setattr(
+        product_api, "ctx",
+        lambda actor_id, role, tenant_id, owner, authorization=None:
+            RuntimeContext(actor_id, role, tenant_id),
+    )
+    response = client().post(
+        "/api/v1/product/decision",
+        json={
+            "resource_tenant_id": "tenant-a",
+            "case_id": "CASE-2",
+            "decision": {},
+            "intervention": {},
+            "response_kpi": {},
+            "retest": {},
+        },
+        headers={
+            **headers("coach", tenant="tenant-a", actor="spoofed-coach"),
+            "Authorization": "Bearer verified-test-token",
+        },
+    )
+    assert response.status_code == 403
