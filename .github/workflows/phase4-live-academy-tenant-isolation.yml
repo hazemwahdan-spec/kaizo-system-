@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "PHASE4_RUNTIME_TARGET: ${KAIZO_PRODUCTION_BASE_URL}"
-          for name in AUTH0_DOMAIN A_CLIENT_ID A_CLIENT_SECRET B_CLIENT_SECRET; do
+          for name in AUTH0_DOMAIN A_CLIENT_ID A_CLIENT_SECRET B_CLIENT_ID B_CLIENT_SECRET; do
             if [ -z "${!name}" ]; then echo "MISSING_CONFIGURATION: $name"; exit 1; fi
           done
           echo "Both academy client configurations are present."
