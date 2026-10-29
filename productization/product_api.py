@@ -80,10 +80,48 @@ def decision(
     authorization: str | None = Header(None, alias="Authorization"),
 ):
     try:
-        return get_surface().request_decision(ctx(actor_id, role, tenant_id, owner, authorization), req.resource_tenant_id,
-                                        req.model_dump(exclude={"resource_tenant_id"}))
+        context = ctx(actor_id, role, tenant_id, owner, authorization)
+        verified_principal = None
+        if authorization:
+            # Bind caller headers to verified claims before processing or logging.
+            try:
+                verified_principal = resolve_bearer_principal(authorization)
+            except IdentityNotConfiguredError as exc:
+                raise HTTPException(status_code=401, detail="Verified OIDC identity required.") from exc
+            if (
+                verified_principal.actor_id != context.actor_id
+                or verified_principal.role != context.role
+                or verified_principal.tenant_id != context.tenant_id
+            ):
+                raise HTTPException(status_code=403, detail="Caller headers do not match verified identity.")
+            if not persistence.is_postgres_enabled():
+                raise HTTPException(
+                    status_code=503,
+                    detail="Durable tenant-scoped action history is required for authenticated Coach decisions.",
+                )
+
+        result = get_surface().request_decision(
+            context, req.resource_tenant_id, req.model_dump(exclude={"resource_tenant_id"})
+        )
+        if verified_principal is not None:
+            from datetime import datetime, timezone
+            persistence.append_tenant_audit(
+                tenant_id=verified_principal.tenant_id,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                who=verified_principal.actor_id,
+                action="COACH_DECISION_REQUESTED",
+                old_value=None,
+                new_value={"case_id": req.case_id, "status": "decision_requested"},
+                why="Verified Coach requested a Core decision; execution remains unauthorized.",
+            )
+        return result
     except RuntimeAuthorizationError as exc:
         deny(exc)
+    except (RuntimeError, persistence.PersistenceConfigurationError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Durable tenant-scoped action history could not be recorded.",
+        ) from exc
 
 
 class InterventionRequest(DecisionRequest):
