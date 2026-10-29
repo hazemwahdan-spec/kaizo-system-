@@ -115,3 +115,89 @@ def test_parent_progress_forwards_authorization_header_to_identity_context(monke
 
     assert response.status_code == 200
     assert observed["authorization"] == "Bearer regression-token"
+
+
+
+def test_coach_actions_api_uses_verified_tenant_and_actor(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+
+    principal = Principal("auth0|coach-1", "coach", "tenant-a", None, True, "oidc_jwt")
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", lambda authorization: principal)
+    monkeypatch.setattr(product_api.persistence, "is_postgres_enabled", lambda: True)
+    seen = {}
+    monkeypatch.setattr(
+        product_api.persistence,
+        "list_tenant_audit_logs",
+        lambda *, tenant_id: seen.setdefault("tenant_id", tenant_id) or [
+            {"who": "auth0|coach-1", "action": "COACH_ACTION", "timestamp": "t1", "why": "own"},
+            {"who": "auth0|other", "action": "OTHER_ACTION", "timestamp": "t2", "why": "other"},
+        ],
+    )
+    # Use a deterministic list return; setdefault's return value is not the list.
+    monkeypatch.setattr(
+        product_api.persistence,
+        "list_tenant_audit_logs",
+        lambda *, tenant_id: (
+            seen.update({"tenant_id": tenant_id}) or [
+                {"who": "auth0|coach-1", "action": "COACH_ACTION", "timestamp": "t1", "why": "own"},
+                {"who": "auth0|other", "action": "OTHER_ACTION", "timestamp": "t2", "why": "other"},
+            ]
+        ),
+    )
+    response = client().get(
+        "/api/v1/product/coach/actions",
+        headers={"Authorization": "Bearer verified-test-token", "X-KAIZO-Tenant": "attacker-tenant"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert seen["tenant_id"] == "tenant-a"
+    assert body["actor_id"] == "auth0|coach-1"
+    assert body["tenant_id"] == "tenant-a"
+    assert body["count"] == 1
+    assert body["actions"] == [{"timestamp": "t1", "action": "COACH_ACTION", "why": "own"}]
+    assert body["execution_authorized"] is False
+
+
+def test_coach_actions_api_rejects_non_coach(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+
+    monkeypatch.setattr(
+        product_api, "resolve_bearer_principal",
+        lambda authorization: Principal("auth0|academy", "academy", "tenant-a", None, True, "oidc_jwt"),
+    )
+    response = client().get(
+        "/api/v1/product/coach/actions",
+        headers={"Authorization": "Bearer verified-test-token"},
+    )
+    assert response.status_code == 403
+
+
+def test_coach_actions_api_fails_closed_without_durable_storage(monkeypatch):
+    from productization import product_api
+    from productization.identity import Principal
+
+    monkeypatch.setattr(
+        product_api, "resolve_bearer_principal",
+        lambda authorization: Principal("auth0|coach-1", "coach", "tenant-a", None, True, "oidc_jwt"),
+    )
+    monkeypatch.setattr(product_api.persistence, "is_postgres_enabled", lambda: False)
+    response = client().get(
+        "/api/v1/product/coach/actions",
+        headers={"Authorization": "Bearer verified-test-token"},
+    )
+    assert response.status_code == 503
+
+
+def test_coach_actions_api_rejects_missing_bearer(monkeypatch):
+    from productization import product_api
+    from productization.identity import IdentityNotConfiguredError
+
+    def reject(authorization):
+        raise IdentityNotConfiguredError("Bearer authentication is required")
+
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", reject)
+    response = client().get("/api/v1/product/coach/actions")
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
