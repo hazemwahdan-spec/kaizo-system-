@@ -33,3 +33,11 @@ def test_product_requests_require_verified_auth0_bearer():
     assert '"Authorization":"Bearer "+token' in APP
     assert 'function kaizoLogin()' in APP
     assert 'X-KAIZO headers are not credentials' in APP
+
+
+
+def test_coach_action_history_is_connected_through_verified_product_api():
+    assert 'id="coach-action-history"' in APP
+    assert 'function loadCoachActions()' in APP
+    assert 'productCall("/coach/actions?limit=50")' in APP
+    assert 'verified, tenant-scoped API' in APP
