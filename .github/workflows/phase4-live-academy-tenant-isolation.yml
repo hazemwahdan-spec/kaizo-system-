@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      KAIZO_PRODUCTION_BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-core-engine-production.up.railway.app' }}
+      KAIZO_PRODUCTION_BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-system-ipoj-5obvmnboy-hazemwahdan-spec.vercel.app' }}
       AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
       AUTH0_AUDIENCE: https://api.kaizo.system
       A_CLIENT_ID: ${{ secrets.AUTH0_ACADEMY_A_CLIENT_ID }}
