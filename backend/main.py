@@ -68,11 +68,10 @@ async def bind_verified_audit_identity(request: Request, call_next):
         try:
             principal = resolve_bearer_principal(authorization)
         except IdentityNotConfiguredError:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "A valid OIDC identity is required."},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            # Do not grant tenant attribution to an invalid token. Existing
+            # routes keep their own authorization contracts; this middleware
+            # only supplies verified identity context to audit writes.
+            principal = None
     token = _AUDIT_PRINCIPAL.set(principal)
     try:
         return await call_next(request)
