@@ -35,3 +35,5 @@ jobs:
         run: python -m compileall -q productization backend
       - name: Run product identity and authorization regression suite
         run: python -m pytest -q productization/test_identity.py productization/test_product_surface.py productization/test_runtime_adapter.py productization/test_product_surface_contract.py productization/test_product_api.py productization/test_product_api_security_regression.py
+      - name: Run tenant-scoped audit write regression suite
+        run: cd backend && python -m pytest -q test_tenant_audit_write_identity.py test_audit_authorization.py test_audit_log_access_containment.py
