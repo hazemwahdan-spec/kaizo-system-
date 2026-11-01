@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-BASE_URL="${BASE_URL:-https://kaizo-core-engine-production.up.railway.app}"
+BASE_URL="${BASE_URL:-https://kaizo-system-ipoj-5obvmnboy-hazemwahdan-spec.vercel.app}"
 post(){ curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -X POST "$BASE_URL/api/v1/decision/adapt" -H 'Content-Type: application/json' -d "$1"; }
 expect_hold(){ out="$("$@" 2>/dev/null || true)"; echo "$out"; grep -q '"status":"HOLD"' <<<"$out"; }
 expect_422(){ out="$(curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -X POST "$BASE_URL/api/v1/decision/adapt" -H 'Content-Type: application/json' -d "$1")"; echo "$out"; grep -q 'HTTP_STATUS:422' <<<"$out"; }
