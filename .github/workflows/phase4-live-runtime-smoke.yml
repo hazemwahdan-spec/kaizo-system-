@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      BASE_URL: https://kaizo-system.fastapicloud.dev
+      BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-system-ipoj-5obvmnboy-hazemwahdan-spec.vercel.app' }}
     steps:
       - name: Fetch deployed OpenAPI contract with bounded retries
         shell: bash
