@@ -72,21 +72,28 @@ def test_request_payload_cannot_select_audit_tenant(monkeypatch):
     assert writes[0]["tenant_id"] == "academy-a"
 
 
-def test_invalid_bearer_is_rejected_before_mutation(monkeypatch):
+def test_invalid_bearer_never_receives_tenant_attribution(monkeypatch):
     from productization.identity import IdentityNotConfiguredError
 
     def reject(_authorization):
         raise IdentityNotConfiguredError("invalid token")
 
     monkeypatch.setattr(main, "resolve_bearer_principal", reject)
-    called = []
-    monkeypatch.setattr(main.persistence, "upsert_athlete", lambda _record: called.append(True))
+    monkeypatch.setattr(main.persistence, "is_postgres_enabled", lambda: True)
+    monkeypatch.setattr(main.persistence, "upsert_athlete", lambda _record: None)
+    unscoped_writes = []
+    monkeypatch.setattr(
+        main.persistence,
+        "append_audit",
+        lambda **kwargs: unscoped_writes.append(kwargs),
+    )
 
     response = client.post(
         "/api/v1/athletes",
         headers={"Authorization": "Bearer invalid"},
-        json={"display_name": "Must Not Persist", "metadata": {}},
+        json={"display_name": "Unscoped Test Athlete", "metadata": {}},
     )
 
-    assert response.status_code == 401
-    assert called == []
+    assert response.status_code == 201
+    assert len(unscoped_writes) == 1
+    assert "tenant_id" not in unscoped_writes[0]
