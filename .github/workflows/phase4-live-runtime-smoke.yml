@@ -29,7 +29,7 @@ jobs:
           output="$RUNNER_TEMP/kaizo-openapi.json"
           status="000"
           for attempt in 1 2 3 4 5 6; do
-            status="$(curl -sS --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/openapi.json" || true)"
+            status="$(curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/openapi.json" || true)"
             if [[ "$status" == "200" ]]; then
               break
             fi
@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          status="$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
+          status="$(curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
           case "$status" in
             401|403|503)
               echo "LIVE_AUDIT_DENIAL_PASS: unauthenticated /api/v1/audit/logs returned HTTP $status"
@@ -83,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           output="$RUNNER_TEMP/kaizo-health.json"
-          status="$(curl -sS --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/health" || true)"
+          status="$(curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/health" || true)"
           if [[ "$status" != "200" ]]; then
             echo "LIVE_HEALTH_FAILED: $BASE_URL/api/v1/health returned HTTP $status"
             cat "$output" 2>/dev/null || true
