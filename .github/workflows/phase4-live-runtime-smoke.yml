@@ -56,9 +56,15 @@ jobs:
             exit 1
           fi
           python - "$output" <<'PY'
-          import json, sys
-          with open(sys.argv[1], encoding="utf-8") as f:
-              schema = json.load(f)
+          import json, re, sys
+          from pathlib import Path
+          raw = Path(sys.argv[1]).read_text(errors="replace")
+          try:
+              schema = json.loads(raw)
+          except json.JSONDecodeError:
+              title = re.search(r"<title[^>]*>(.*?)</title>", raw[:1000], re.I | re.S)
+              print("LIVE_OPENAPI_NON_JSON_BODY:", (title.group(1).strip() if title else raw[:160]))
+              sys.exit("LIVE_OPENAPI_FAILED: response was HTTP 200 but not JSON")
           assert schema.get("info", {}).get("title") == "KAIZO Core Engine API", schema.get("info")
           assert schema.get("info", {}).get("version") == "2.0.0", schema.get("info")
           paths = schema.get("paths", {})
@@ -79,10 +85,13 @@ jobs:
           PY
 
       - name: Verify audit logs fail closed without verified identity
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          status="$(curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
+          output="$RUNNER_TEMP/kaizo-audit-denial.body"
+          status="$(curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
+          echo "LIVE_AUDIT_PROBE: HTTP $status; MIME $(file -b --mime-type "$output" 2>/dev/null || true)"
           case "$status" in
             401|403|503)
               echo "LIVE_AUDIT_DENIAL_PASS: unauthenticated /api/v1/audit/logs returned HTTP $status"
@@ -94,6 +103,7 @@ jobs:
           esac
 
       - name: Verify deployed health endpoint
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -106,8 +116,15 @@ jobs:
           fi
           python - "$output" <<'PY'
           import json, sys
-          with open(sys.argv[1], encoding="utf-8") as f:
-              body = json.load(f)
+          from pathlib import Path
+          raw = Path(sys.argv[1]).read_text(errors="replace")
+          try:
+              body = json.loads(raw)
+          except json.JSONDecodeError:
+              print("LIVE_HEALTH_NON_JSON_BODY:", raw[:160])
+              sys.exit("LIVE_HEALTH_FAILED: endpoint returned HTTP 200 but not JSON")
+          if body.get("system") != "KAIZO Core Engine v2.0" or body.get("status") != "Online":
+              sys.exit("LIVE_HEALTH_FAILED: unexpected response payload")
           print("LIVE_HEALTH_PASS:", json.dumps(body, sort_keys=True))
           PY
 
