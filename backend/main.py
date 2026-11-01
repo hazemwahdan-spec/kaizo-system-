@@ -4,7 +4,6 @@ Slogan: Better Every Day
 """
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.responses import JSONResponse
 from contextvars import ContextVar
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
