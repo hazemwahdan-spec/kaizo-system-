@@ -3,7 +3,9 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
+from contextvars import ContextVar
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
@@ -11,6 +13,7 @@ from datetime import datetime
 
 import persistence
 from audit_authorization import require_tenant_audit_reader
+from productization.identity import IdentityNotConfiguredError, Principal, resolve_bearer_principal
 from evidence_store import EVIDENCE_RECORDS
 from evidence_authorization import GLOBAL_EVIDENCE_SUBJECT_TYPES, require_global_evidence_publisher
 from feature_runtime import router as feature_runtime_router
@@ -51,6 +54,31 @@ app.add_middleware(
 )
 
 AUDIT_LOGS: List[Dict[str, Any]] = []
+
+# Request-scoped verified identity used only to attribute audit writes.
+# Caller-supplied actor/tenant fields never establish this context.
+_AUDIT_PRINCIPAL: ContextVar[Optional[Principal]] = ContextVar("kaizo_audit_principal", default=None)
+
+
+@app.middleware("http")
+async def bind_verified_audit_identity(request: Request, call_next):
+    authorization = request.headers.get("authorization")
+    principal = None
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            principal = resolve_bearer_principal(authorization)
+        except IdentityNotConfiguredError:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "A valid OIDC identity is required."},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    token = _AUDIT_PRINCIPAL.set(principal)
+    try:
+        return await call_next(request)
+    finally:
+        _AUDIT_PRINCIPAL.reset(token)
+
 
 ATHLETE_RECORDS: Dict[str, Dict[str, Any]] = {}
 
@@ -1336,19 +1364,42 @@ def get_kpi_capture(capture_id: str) -> Dict[str, Any]:
 
 
 def log_action(user_id: str, action: str, old_val: Any, new_val: Any, reason: str):
+    """Record audit activity; verified request identity is the sole tenant source."""
     timestamp = datetime.utcnow().isoformat()
+    principal = _AUDIT_PRINCIPAL.get()
+    actor_id = principal.actor_id if principal is not None else user_id
     entry = {
         "timestamp": timestamp,
-        "who": user_id,
+        "who": actor_id,
         "action": action,
         "old_value": old_val,
         "new_value": new_val,
-        "why": reason
+        "why": reason,
     }
+    if principal is not None:
+        entry["tenant_id"] = principal.tenant_id
     AUDIT_LOGS.append(entry)
+
+    if principal is not None:
+        # In durable mode, tenant-scoped writes fail closed if PostgreSQL is
+        # unavailable. Tenant scope is derived exclusively from verified JWT claims.
+        if persistence.is_postgres_enabled():
+            persistence.append_tenant_audit(
+                tenant_id=principal.tenant_id,
+                timestamp=timestamp,
+                who=actor_id,
+                action=action,
+                old_value=old_val,
+                new_value=new_val,
+                why=reason,
+            )
+        return
+
+    # Legacy/background activity remains explicitly unscoped. It is never
+    # backfilled or exposed by tenant-scoped audit reads.
     persistence.append_audit(
         timestamp=timestamp,
-        who=user_id,
+        who=actor_id,
         action=action,
         old_value=old_val,
         new_value=new_val,
