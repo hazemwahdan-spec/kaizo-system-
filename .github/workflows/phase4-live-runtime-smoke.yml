@@ -23,6 +23,8 @@ jobs:
       BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-system-ipoj-5obvmnboy-hazemwahdan-spec.vercel.app' }}
     steps:
       - name: Fetch deployed OpenAPI contract with bounded retries
+        id: openapi
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -38,6 +40,19 @@ jobs:
           done
           if [[ "$status" != "200" ]]; then
             echo "LIVE_OPENAPI_FAILED: $BASE_URL/openapi.json returned HTTP $status after bounded retries"
+            curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -D "$RUNNER_TEMP/kaizo-openapi-headers.txt" -o "$output" -w "final_status=%{http_code} content_type=%{content_type} effective_url=%{url_effective}\n" "$BASE_URL/openapi.json" | sed -E 's#(https?://[^/?]+)[^ ]*#\1/[path-redacted]#'
+            python - "$RUNNER_TEMP/kaizo-openapi-headers.txt" "$output" <<'PY'
+          import re, sys
+          from pathlib import Path
+          headers = Path(sys.argv[1]).read_text(errors="replace")
+          body = Path(sys.argv[2]).read_text(errors="replace")[:500]
+          for line in headers.splitlines():
+              if line.lower().startswith(("location:", "content-type:", "server:", "x-vercel-id:")):
+                  print(re.sub(r"(https?://[^/?]+)[^ ]*", r"\1/[path-redacted]", line.strip()))
+          title = re.search(r"<title[^>]*>(.*?)</title>", body, re.I | re.S)
+          if title:
+              print("response_html_title:", re.sub(r"\s+", " ", title.group(1))[:160])
+          PY
             exit 1
           fi
           python - "$output" <<'PY'
@@ -95,3 +110,13 @@ jobs:
               body = json.load(f)
           print("LIVE_HEALTH_PASS:", json.dumps(body, sort_keys=True))
           PY
+
+      - name: Enforce OpenAPI result after independent live probes
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ steps.openapi.outcome }}" != "success" ]]; then
+            echo "LIVE_RUNTIME_INCOMPLETE: OpenAPI contract verification failed; independent audit and health probes were still executed."
+            exit 1
+          fi
+          echo "LIVE_RUNTIME_PASS: OpenAPI, audit denial, and health probes passed."
