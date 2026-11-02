@@ -1784,7 +1784,26 @@ def get_audit_logs(principal=Depends(require_tenant_audit_reader)):
 
 @app.get("/api/v1/health")
 def health_check():
-    return {"system": "KAIZO Core Engine v2.0", "status": "Online", "mode": "Enterprise AI-Ready"}
+    # Report only a coarse readiness state; never expose database URLs,
+    # provider details, exception text, or credentials through public health.
+    durable_storage = "disabled"
+    if persistence.is_postgres_enabled():
+        try:
+            with persistence.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                    if cur.fetchone() != (1,):
+                        raise RuntimeError("persistence readiness probe failed")
+            durable_storage = "available"
+        except Exception:
+            durable_storage = "unavailable"
+
+    return {
+        "system": "KAIZO Core Engine v2.0",
+        "status": "Online",
+        "mode": "Enterprise AI-Ready",
+        "durable_storage": durable_storage,
+    }
 
 
 DIGITAL_TWIN_STATE: Dict[str, Dict[str, Any]] = {}
