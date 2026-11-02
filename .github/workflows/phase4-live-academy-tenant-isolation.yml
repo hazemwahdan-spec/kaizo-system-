@@ -145,18 +145,28 @@ jobs:
                   print(f"LIVE_AUDIT_SCOPE_{label}: FAIL (foreign or unscoped row returned)")
                   sys.exit(1)
               code2,spoof=get("/api/v1/audit/logs?"+urllib.parse.urlencode({"tenant_id": other}),token)
-              if code2 != 200 or spoof.get("tenant_id") != own:
-                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (query parameter altered or blocked the signed tenant scope)")
-                  sys.exit(1)
-              if any(row.get("tenant_id") != own for row in spoof.get("logs",[])):
-                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (foreign tenant row returned)")
-                  sys.exit(1)
-              ids=lambda d: sorted(str(x.get("id",x.get("audit_id",x.get("event_id","")))) for x in d.get("logs",[]))
-              if ids(body) != ids(spoof):
-                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (result set changed when caller supplied tenant_id)")
+              if code2 in (400,403,422):
+                  # Explicitly rejecting caller-supplied tenant scope is safe,
+                  # provided the denial response discloses no audit rows.
+                  if spoof.get("logs") not in (None, []):
+                      print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (denial response disclosed audit rows)")
+                      sys.exit(1)
+              elif code2 == 200:
+                  if spoof.get("tenant_id") != own:
+                      print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (query parameter altered signed tenant scope)")
+                      sys.exit(1)
+                  if any(row.get("tenant_id") != own for row in spoof.get("logs",[])):
+                      print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (foreign tenant row returned)")
+                      sys.exit(1)
+                  ids=lambda d: sorted(str(x.get("id",x.get("audit_id",x.get("event_id","")))) for x in d.get("logs",[]))
+                  if ids(body) != ids(spoof):
+                      print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (result set changed when caller supplied tenant_id)")
+                      sys.exit(1)
+              else:
+                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (unexpected HTTP {code2})")
                   sys.exit(1)
               print(f"LIVE_AUDIT_SCOPE_{label}: PASS (persisted records are tenant-bound)")
-              print(f"TENANT_SPOOF_RESISTANCE_{label}: PASS")
+              print(f"TENANT_SPOOF_RESISTANCE_{label}: PASS (ignored without scope change or safely rejected)")
           print("PHASE4_LIVE_CROSS_TENANT_ISOLATION: PASS")
           PY
 
