@@ -7,6 +7,7 @@ on:
       - main
       - feat/kaizo-persistence-adapter
       - feat-027-session-structure-timing
+      - feat/read-only-persistence-health-probe
   pull_request:
     branches:
       - main
@@ -44,6 +45,8 @@ jobs:
         run: pip install pytest PyJWT[crypto]
       - name: Compile backend
         run: python -m compileall -q .
+      - name: Run read-only persistence health tests
+        run: PYTHONPATH=. pytest -q tests/test_health_persistence.py
       - name: Run persistence integration test
         run: PYTHONPATH=. python tests/test_persistence_integration.py
       - name: Import application with PostgreSQL mode
