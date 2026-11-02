@@ -100,12 +100,24 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os, json, base64, urllib.request, urllib.error, sys
+          import os, json, urllib.request, urllib.error, urllib.parse, sys, jwt
           base = os.environ["KAIZO_PRODUCTION_BASE_URL"].rstrip("/")
           ns = "https://kaizo.system/"
+          domain = os.environ["AUTH0_DOMAIN"].strip().removeprefix("https://").removeprefix("http://").rstrip("/")
+          issuer = f"https://{domain}/"
+          jwks = jwt.PyJWKClient(issuer + ".well-known/jwks.json")
           def tenant(token):
-              claims=json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=" * (-len(token.split(".")[1]) % 4)))
-              return claims.get(ns+"tenant_id") or claims.get(ns+"kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id")
+              signing_key = jwks.get_signing_key_from_jwt(token)
+              claims = jwt.decode(
+                  token, signing_key.key, algorithms=["RS256"],
+                  audience=os.environ["AUTH0_AUDIENCE"], issuer=issuer,
+                  options={"require": ["sub", "iss", "aud", "exp"]},
+              )
+              role = claims.get(ns+"kaizo_role") or claims.get("kaizo_role") or claims.get("role")
+              value = claims.get(ns+"tenant_id") or claims.get(ns+"kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id")
+              if role != "academy" or not isinstance(value, str) or not value.strip():
+                  raise ValueError("verified academy role/tenant claim missing")
+              return value
           def get(path, token):
               headers={"Authorization":"Bearer "+token}
               bypass=os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET","")
@@ -132,7 +144,7 @@ jobs:
               if any(row.get("tenant_id") != own for row in logs):
                   print(f"LIVE_AUDIT_SCOPE_{label}: FAIL (foreign or unscoped row returned)")
                   sys.exit(1)
-              code2,spoof=get("/api/v1/audit/logs?tenant_id="+other,token)
+              code2,spoof=get("/api/v1/audit/logs?"+urllib.parse.urlencode({"tenant_id": other}),token)
               if code2 != 200 or spoof.get("tenant_id") != own:
                   print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (query parameter altered or blocked the signed tenant scope)")
                   sys.exit(1)
