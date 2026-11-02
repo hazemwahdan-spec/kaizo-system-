@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 5
     env:
       BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-system-ipoj-5obvmnboy-hazemwahdan-spec.vercel.app' }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
       - name: Fetch deployed OpenAPI contract with bounded retries
         id: openapi
@@ -28,10 +29,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          VERCEL_CURL_ARGS=()
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then VERCEL_CURL_ARGS=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}"); fi
           output="$RUNNER_TEMP/kaizo-openapi.json"
           status="000"
           for attempt in 1 2 3 4 5 6; do
-            status="$(curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/openapi.json" || true)"
+            status="$(curl -sS "${VERCEL_CURL_ARGS[@]}" -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/openapi.json" || true)"
             if [[ "$status" == "200" ]]; then
               break
             fi
@@ -40,7 +43,7 @@ jobs:
           done
           if [[ "$status" != "200" ]]; then
             echo "LIVE_OPENAPI_FAILED: $BASE_URL/openapi.json returned HTTP $status after bounded retries"
-            curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -D "$RUNNER_TEMP/kaizo-openapi-headers.txt" -o "$output" -w "final_status=%{http_code} content_type=%{content_type} effective_url=%{url_effective}\n" "$BASE_URL/openapi.json" | sed -E 's#(https?://[^/?]+)[^ ]*#\1/[path-redacted]#'
+            curl -sS "${VERCEL_CURL_ARGS[@]}" -L --max-redirs 5 --connect-timeout 10 --max-time 25 -D "$RUNNER_TEMP/kaizo-openapi-headers.txt" -o "$output" -w "final_status=%{http_code} content_type=%{content_type} effective_url=%{url_effective}\n" "$BASE_URL/openapi.json" | sed -E 's#(https?://[^/?]+)[^ ]*#\1/[path-redacted]#'
             python - "$RUNNER_TEMP/kaizo-openapi-headers.txt" "$output" <<'PY'
           import re, sys
           from pathlib import Path
@@ -89,8 +92,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          VERCEL_CURL_ARGS=()
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then VERCEL_CURL_ARGS=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}"); fi
           output="$RUNNER_TEMP/kaizo-audit-denial.body"
-          status="$(curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
+          status="$(curl -sS "${VERCEL_CURL_ARGS[@]}" -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
           echo "LIVE_AUDIT_PROBE: HTTP $status; MIME $(file -b --mime-type "$output" 2>/dev/null || true)"
           case "$status" in
             401|403|503)
@@ -107,8 +112,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          VERCEL_CURL_ARGS=()
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then VERCEL_CURL_ARGS=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}"); fi
           output="$RUNNER_TEMP/kaizo-health.json"
-          status="$(curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/health" || true)"
+          status="$(curl -sS "${VERCEL_CURL_ARGS[@]}" -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/health" || true)"
           if [[ "$status" != "200" ]]; then
             echo "LIVE_HEALTH_FAILED: $BASE_URL/api/v1/health returned HTTP $status"
             cat "$output" 2>/dev/null || true
