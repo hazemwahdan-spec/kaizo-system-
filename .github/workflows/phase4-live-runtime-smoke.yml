@@ -20,16 +20,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      BASE_URL: https://kaizo-system.fastapicloud.dev
+      BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-system-ipoj.vercel.app' }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
       - name: Fetch deployed OpenAPI contract with bounded retries
+        id: openapi
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
+          VERCEL_CURL_ARGS=()
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then VERCEL_CURL_ARGS=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}"); fi
           output="$RUNNER_TEMP/kaizo-openapi.json"
           status="000"
           for attempt in 1 2 3 4 5 6; do
-            status="$(curl -sS --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/openapi.json" || true)"
+            status="$(curl -sS "${VERCEL_CURL_ARGS[@]}" -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/openapi.json" || true)"
             if [[ "$status" == "200" ]]; then
               break
             fi
@@ -38,12 +43,31 @@ jobs:
           done
           if [[ "$status" != "200" ]]; then
             echo "LIVE_OPENAPI_FAILED: $BASE_URL/openapi.json returned HTTP $status after bounded retries"
+            curl -sS "${VERCEL_CURL_ARGS[@]}" -L --max-redirs 5 --connect-timeout 10 --max-time 25 -D "$RUNNER_TEMP/kaizo-openapi-headers.txt" -o "$output" -w "final_status=%{http_code} content_type=%{content_type} effective_url=%{url_effective}\n" "$BASE_URL/openapi.json" | sed -E 's#(https?://[^/?]+)[^ ]*#\1/[path-redacted]#'
+            python - "$RUNNER_TEMP/kaizo-openapi-headers.txt" "$output" <<'PY'
+          import re, sys
+          from pathlib import Path
+          headers = Path(sys.argv[1]).read_text(errors="replace")
+          body = Path(sys.argv[2]).read_text(errors="replace")[:500]
+          for line in headers.splitlines():
+              if line.lower().startswith(("location:", "content-type:", "server:", "x-vercel-id:")):
+                  print(re.sub(r"(https?://[^/?]+)[^ ]*", r"\1/[path-redacted]", line.strip()))
+          title = re.search(r"<title[^>]*>(.*?)</title>", body, re.I | re.S)
+          if title:
+              print("response_html_title:", re.sub(r"\s+", " ", title.group(1))[:160])
+          PY
             exit 1
           fi
           python - "$output" <<'PY'
-          import json, sys
-          with open(sys.argv[1], encoding="utf-8") as f:
-              schema = json.load(f)
+          import json, re, sys
+          from pathlib import Path
+          raw = Path(sys.argv[1]).read_text(errors="replace")
+          try:
+              schema = json.loads(raw)
+          except json.JSONDecodeError:
+              title = re.search(r"<title[^>]*>(.*?)</title>", raw[:1000], re.I | re.S)
+              print("LIVE_OPENAPI_NON_JSON_BODY:", (title.group(1).strip() if title else raw[:160]))
+              sys.exit("LIVE_OPENAPI_FAILED: response was HTTP 200 but not JSON")
           assert schema.get("info", {}).get("title") == "KAIZO Core Engine API", schema.get("info")
           assert schema.get("info", {}).get("version") == "2.0.0", schema.get("info")
           paths = schema.get("paths", {})
@@ -64,10 +88,15 @@ jobs:
           PY
 
       - name: Verify audit logs fail closed without verified identity
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          status="$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
+          VERCEL_CURL_ARGS=()
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then VERCEL_CURL_ARGS=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}"); fi
+          output="$RUNNER_TEMP/kaizo-audit-denial.body"
+          status="$(curl -sS "${VERCEL_CURL_ARGS[@]}" -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
+          echo "LIVE_AUDIT_PROBE: HTTP $status; MIME $(file -b --mime-type "$output" 2>/dev/null || true)"
           case "$status" in
             401|403|503)
               echo "LIVE_AUDIT_DENIAL_PASS: unauthenticated /api/v1/audit/logs returned HTTP $status"
@@ -79,11 +108,14 @@ jobs:
           esac
 
       - name: Verify deployed health endpoint
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
+          VERCEL_CURL_ARGS=()
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then VERCEL_CURL_ARGS=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}"); fi
           output="$RUNNER_TEMP/kaizo-health.json"
-          status="$(curl -sS --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/health" || true)"
+          status="$(curl -sS "${VERCEL_CURL_ARGS[@]}" -L --max-redirs 5 --connect-timeout 10 --max-time 25 -o "$output" -w "%{http_code}" "$BASE_URL/api/v1/health" || true)"
           if [[ "$status" != "200" ]]; then
             echo "LIVE_HEALTH_FAILED: $BASE_URL/api/v1/health returned HTTP $status"
             cat "$output" 2>/dev/null || true
@@ -91,7 +123,24 @@ jobs:
           fi
           python - "$output" <<'PY'
           import json, sys
-          with open(sys.argv[1], encoding="utf-8") as f:
-              body = json.load(f)
+          from pathlib import Path
+          raw = Path(sys.argv[1]).read_text(errors="replace")
+          try:
+              body = json.loads(raw)
+          except json.JSONDecodeError:
+              print("LIVE_HEALTH_NON_JSON_BODY:", raw[:160])
+              sys.exit("LIVE_HEALTH_FAILED: endpoint returned HTTP 200 but not JSON")
+          if body.get("system") != "KAIZO Core Engine v2.0" or body.get("status") != "Online":
+              sys.exit("LIVE_HEALTH_FAILED: unexpected response payload")
           print("LIVE_HEALTH_PASS:", json.dumps(body, sort_keys=True))
           PY
+
+      - name: Enforce OpenAPI result after independent live probes
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ steps.openapi.outcome }}" != "success" ]]; then
+            echo "LIVE_RUNTIME_INCOMPLETE: OpenAPI contract verification failed; independent audit and health probes were still executed."
+            exit 1
+          fi
+          echo "LIVE_RUNTIME_PASS: OpenAPI, audit denial, and health probes passed."
