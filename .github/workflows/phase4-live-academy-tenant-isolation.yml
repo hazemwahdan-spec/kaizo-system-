@@ -52,29 +52,43 @@ jobs:
           done
           echo "SHORT_LIVED_TOKEN_ISSUANCE: PASS"
 
+      - name: Install JWT signature verification dependency
+        shell: bash
+        run: python -m pip install --disable-pip-version-check 'PyJWT[crypto]>=2.8,<3'
+
       - name: Verify distinct signed academy tenant claims
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os, json, base64, sys
+          import os, sys, jwt
+          domain = os.environ["AUTH0_DOMAIN"].strip().removeprefix("https://").removeprefix("http://").rstrip("/")
+          issuer = f"https://{domain}/"
+          audience = os.environ["AUTH0_AUDIENCE"]
+          jwks = jwt.PyJWKClient(issuer + ".well-known/jwks.json")
           ns = "https://kaizo.system/"
           tenants = {}
           for academy in ("A", "B"):
               token = os.environ["KAIZO_ACADEMY_"+academy+"_TOKEN"]
               try:
-                  part = token.split(".")[1]
-                  claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
-              except Exception:
-                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (token is not a readable JWT)")
+                  signing_key = jwks.get_signing_key_from_jwt(token)
+                  claims = jwt.decode(
+                      token,
+                      signing_key.key,
+                      algorithms=["RS256"],
+                      audience=audience,
+                      issuer=issuer,
+                  )
+              except Exception as exc:
+                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (JWT signature/issuer/audience verification failed: {type(exc).__name__})")
                   sys.exit(1)
               role = claims.get(ns+"kaizo_role") or claims.get("kaizo_role") or claims.get("role")
               tenant = claims.get(ns+"tenant_id") or claims.get(ns+"kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id")
               if role != "academy" or not isinstance(tenant, str) or not tenant.strip():
-                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (academy role or tenant claim missing)")
+                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (verified academy role or tenant claim missing)")
                   sys.exit(1)
               tenants[academy] = tenant
-              print(f"ACADEMY_{academy}_CLAIMS: PASS (role=academy; tenant claim present; value withheld)")
+              print(f"ACADEMY_{academy}_CLAIMS: PASS (signature, issuer, audience, role and tenant claim verified; value withheld)")
           if tenants["A"] == tenants["B"]:
               print("DISTINCT_TENANT_IDENTITIES: FAIL (both clients resolve to the same tenant)")
               sys.exit(1)
