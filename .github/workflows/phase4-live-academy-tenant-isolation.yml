@@ -12,6 +12,7 @@ jobs:
     timeout-minutes: 10
     env:
       KAIZO_PRODUCTION_BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-system-ipoj-5obvmnboy-hazemwahdan-spec.vercel.app' }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
       AUTH0_AUDIENCE: https://api.kaizo.system
       A_CLIENT_ID: ${{ secrets.AUTH0_ACADEMY_A_CLIENT_ID }}
@@ -92,7 +93,10 @@ jobs:
               claims=json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=" * (-len(token.split(".")[1]) % 4)))
               return claims.get(ns+"tenant_id") or claims.get(ns+"kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id")
           def get(path, token):
-              req=urllib.request.Request(base+path, headers={"Authorization":"Bearer "+token})
+              headers={"Authorization":"Bearer "+token}
+              bypass=os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET","")
+              if bypass: headers["x-vercel-protection-bypass"]=bypass
+              req=urllib.request.Request(base+path, headers=headers)
               try:
                   with urllib.request.urlopen(req, timeout=25) as r: return r.status, json.loads(r.read())
               except urllib.error.HTTPError as e:
@@ -135,7 +139,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS --connect-timeout 10 --max-time 25 "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
+          VERCEL_CURL_ARGS=()
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then VERCEL_CURL_ARGS=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}"); fi
+          curl -fsS "${VERCEL_CURL_ARGS[@]}" --connect-timeout 10 --max-time 25 "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
           python - <<'PY'
           import json
           d=json.load(open('/tmp/health.json'))
