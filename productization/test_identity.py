@@ -55,3 +55,36 @@ def test_namespaced_auth0_claims_resolve_global_publisher():
     assert principal.tenant_id == "global"
     assert principal.verified is True
     assert principal.source == "oidc_jwt"
+
+
+def test_namespaced_auth0_academy_claims_resolve_distinct_tenants():
+    from productization.identity import _claims_to_principal
+
+    academy_a = _claims_to_principal({
+        "sub": "auth0|academy-a-client",
+        "https://kaizo.system/kaizo_role": "academy",
+        "https://kaizo.system/tenant_id": "academy-a",
+    })
+    academy_b = _claims_to_principal({
+        "sub": "auth0|academy-b-client",
+        "https://kaizo.system/kaizo_role": "academy",
+        "https://kaizo.system/tenant_id": "academy-b",
+    })
+
+    assert academy_a.role == academy_b.role == "academy"
+    assert academy_a.tenant_id == "academy-a"
+    assert academy_b.tenant_id == "academy-b"
+    assert academy_a.tenant_id != academy_b.tenant_id
+    assert academy_a.verified is True
+    assert academy_b.verified is True
+    assert academy_a.source == academy_b.source == "oidc_jwt"
+
+
+def test_namespaced_auth0_academy_claims_reject_missing_tenant():
+    from productization.identity import IdentityNotConfiguredError, _claims_to_principal
+
+    with pytest.raises(IdentityNotConfiguredError, match="missing required KAIZO claims"):
+        _claims_to_principal({
+            "sub": "auth0|academy-without-tenant",
+            "https://kaizo.system/kaizo_role": "academy",
+        })
