@@ -39,7 +39,7 @@ def test_feat_008_escapes_untrusted_athlete_data_and_fails_closed():
 
 
 def test_feat_008_acceptance_contract_preserves_scope_and_governance():
-    assert "authenticated Coach roster" in CONTRACT
+    assert "GET /coach/athletes" in CONTRACT
     assert "No client-supplied Coach/tenant identity headers" in CONTRACT
     assert "read-only" in CONTRACT
     assert "execution_authorized=false" in CONTRACT
