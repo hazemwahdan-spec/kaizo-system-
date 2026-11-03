@@ -25,7 +25,7 @@ def test_queue_uses_only_explicit_trigger_and_unmatched_response_evidence():
     assert items[0]["evidence_refs"] == ["EV-1"]
     assert items[1]["item_type"] == "RESPONSE_WITHOUT_RETEST"
     assert all(x["priority_rank"] is None and x["due_at"] is None for x in items)
-    assert all(x["review_state"] == "REVIEW_REQUIRED" for x in items)
+    assert all(x["review_state"] == "STATUS_NOT_TRACKED" for x in items)
 
 
 def test_queue_does_not_create_items_without_required_evidence():
