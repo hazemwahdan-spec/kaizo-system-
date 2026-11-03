@@ -141,7 +141,7 @@ async function viewCoachAthlete(athleteId){
  try{
   const result=await productCall("/coach/athletes/"+encodeURIComponent(athleteId));
   if(selectedCoachAthleteId!==String(athleteId))return;
-  if(detail)detail.textContent=pretty(result);
+  if(detail)detail.textContent="";
   const next={ACTIVE:["INACTIVE","SUSPENDED","ARCHIVED"],INACTIVE:["ACTIVE","ARCHIVED"],SUSPENDED:["ACTIVE","INACTIVE","ARCHIVED"],ARCHIVED:[]}[String(result.status||"").toUpperCase()]||[];
   const athlete=coachRosterRecords.find(a=>String(a.athlete_id)===String(athleteId));
   panel.innerHTML='<div class="coach-athlete-navigation"><div><p class="muted">My roster / Athlete profile</p><h3>'+escapeHtml(athlete?.display_name||result.display_name||athleteId)+'</h3></div><button class="secondary" type="button" onclick="returnCoachRoster()">Back to my roster</button></div>'+
