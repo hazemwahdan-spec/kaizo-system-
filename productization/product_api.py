@@ -303,3 +303,48 @@ def unassign_coach_group_athlete(
         raise HTTPException(status_code=404, detail="group not found in Coach scope")
     return {"unassigned": True, "group_id": group_id, "athlete_id": athlete_id,
             "coach_final_authority": True, "execution_authorized": False}
+
+
+# FEAT-004: lifecycle mutation and history are limited to verified Coach ownership.
+class CoachAthleteStatusRequest(BaseModel):
+    status: str
+    reason: str
+
+@router.patch("/coach/athletes/{athlete_id}/status")
+def update_coach_athlete_status(
+    athlete_id: str, req: CoachAthleteStatusRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    try:
+        result = coach_roster.update_owned_athlete_status(
+            tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+            athlete_id=athlete_id, new_status=req.status, reason=req.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return {**result, "coach_final_authority": True, "execution_authorized": False}
+
+@router.get("/coach/athletes/{athlete_id}/status-history")
+def coach_athlete_status_history(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    history = coach_roster.list_owned_athlete_status_history(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id)
+    if history is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return {"athlete_id": athlete_id, "history": history,
+            "total": len(history), "coach_final_authority": True,
+            "execution_authorized": False}
