@@ -4,7 +4,7 @@ on:
   push:
     branches: [phase-7-commercial-product-runtime]
   pull_request:
-    branches: [main, feat/coach-roster-ui-integration, feat/coach-training-groups, feat/coach-athlete-lifecycle]
+    branches: [main, feat/coach-roster-ui-integration, feat/coach-training-groups, feat/coach-athlete-lifecycle, feat/coach-athlete-decision-history]
 
 jobs:
   product-runtime:
@@ -19,4 +19,4 @@ jobs:
       - name: Install runtime dependencies
         run: pip install fastapi pydantic pytest httpx2 PyJWT[crypto]
       - name: Validate commercial product runtime
-        run: python -m pytest productization/test_product_surface.py productization/test_runtime_adapter.py productization/test_product_surface_contract.py productization/test_product_api.py productization/test_identity.py productization/test_product_api_security_regression.py productization/test_coach_roster_security.py productization/test_coach_groups_security.py productization/test_coach_athlete_lifecycle.py productization/test_coach_athlete_decision_history.py frontend/test_product_ui_contract.py -q
+        run: python -m pytest productization/test_product_surface.py productization/test_runtime_adapter.py productization/test_product_surface_contract.py productization/test_product_api.py productization/test_identity.py productization/test_product_api_security_regression.py productization/test_coach_roster_security.py productization/test_coach_groups_security.py productization/test_coach_athlete_lifecycle.py productization/test_coach_athlete_decision_history.py productization/test_coach_home_dashboard.py frontend/test_product_ui_contract.py -q
