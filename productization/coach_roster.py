@@ -298,6 +298,8 @@ def list_owned_athlete_decision_cycles(*, tenant_id: str, coach_actor_id: str,
 
     cycles: dict[str, dict[str, Any]] = {}
     if persistence.is_postgres_enabled():
+        import training_workflow
+        training_workflow._ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""SELECT decision_id,candidate_id,diagnosis_id,problem_id,
