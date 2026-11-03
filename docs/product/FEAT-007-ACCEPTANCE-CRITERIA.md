@@ -12,14 +12,14 @@ The Coach workspace may surface only review signals derived from persisted, tena
 - Derive tenant and Coach actor only from the verified Coach principal.
 - Restrict every record to athletes owned by that Coach in that tenant.
 - Expose athlete, source feature, source record ID, recorded time, reason, and evidence references.
-- Label every item as requiring Coach review; provide a suggested next step, not an instruction.
+- Label every item as an evidence-backed review signal and provide a suggested next step, not an instruction. Source records do not track acknowledgement/closure, so the UI must not claim an item is an unresolved open task.
 - Keep the queue read-only. No task, decision, retest, audit event, or workflow record is created by reading it.
 - Keep Coach Final Authority true and execution_authorized false.
 - Return insufficient_evidence when the adapter cannot verify the required persisted source records.
 - Return no_current_items only when the source is available and no qualifying signals exist.
 
 ## Explicit non-goals
-- No urgency score, numeric ranking, inferred deadline, due date, attendance, calendar, or synthetic task.
+- No urgency score, numeric ranking, inferred deadline, due date, calendar-day filter, attendance, or synthetic task. The feed is not an acknowledged/closed task tracker.
 - No automatic closure, retest, decision, intervention, or state transition.
 - No historical backfill and no changes to Frozen KAIZO Core or JCS.
 
