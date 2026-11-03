@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster, coach_groups
+from . import coach_roster, coach_groups, coach_priority_queue
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -383,4 +383,18 @@ def coach_home_dashboard(
 ):
     principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
     return coach_roster.get_coach_home_dashboard(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id)
+
+
+# FEAT-007: evidence-backed, read-only Coach current-priority queue.
+@router.get("/coach/priority-queue")
+def coach_priority_queue_read(
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    return coach_priority_queue.get_coach_priority_queue(
         tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id)
