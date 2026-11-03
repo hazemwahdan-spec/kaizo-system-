@@ -72,7 +72,7 @@ def test_coach_home_dashboard_uses_verified_owned_summary_api():
     assert 'coachDashboardMetrics' in APP
     assert 'Recent recorded decisions' in APP
     assert 'id="coachPriorityQueue"' in APP
-    assert 'no due dates or urgency scores are inferred' in APP
+    assert 'no inferred deadlines' in APP
 
 
 def test_coach_priority_queue_uses_verified_evidence_and_fails_closed():
@@ -80,5 +80,5 @@ def test_coach_priority_queue_uses_verified_evidence_and_fails_closed():
     assert 'function loadCoachPriorityQueue()' in APP
     assert 'not tracked open tasks' in APP
     assert 'review status not tracked' in APP
-    assert 'Coach decision required' in APP
+    assert 'Coach judgment required' in APP
     assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
