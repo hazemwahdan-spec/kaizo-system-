@@ -147,6 +147,8 @@ def reset_memory_state() -> None:
     _MEMORY_OWNERSHIP.clear()
     _MEMORY_ATHLETES.clear()
     _MEMORY_AUDIT.clear()
+    if "update_owned_athlete_status" in globals():
+        update_owned_athlete_status._history = []
 
 
 # FEAT-004: controlled lifecycle transitions for a Coach-owned athlete.
