@@ -21,6 +21,7 @@ def test_feat_008_navigates_existing_scoped_athlete_workflow_sections():
         assert section in APP
     assert 'function coachAthleteSection(sectionId)' in APP
     assert 'function returnCoachRoster()' in APP
+    assert 'if(selectedCoachAthleteId!==String(athleteId))return;' in APP
     assert 'onclick="returnCoachRoster()"' in APP
     assert 'productCall("/coach/athletes/"+encodeURIComponent(athleteId))' in APP
     assert '"/status-history"' in APP
