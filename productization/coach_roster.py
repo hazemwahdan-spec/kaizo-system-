@@ -82,6 +82,14 @@ def create_owned_athlete(*, tenant_id: str, coach_actor_id: str, display_name: s
                       tenant_id))
     else:
         _MEMORY_ATHLETES[athlete["athlete_id"]] = athlete
+        # Keep the Core's existing in-memory athlete registry consistent so
+        # subsequent assessment/decision routes can resolve this new athlete.
+        import sys
+        for loaded_module in tuple(sys.modules.values()):
+            records = getattr(loaded_module, "ATHLETE_RECORDS", None)
+            if isinstance(records, dict):
+                records[athlete["athlete_id"]] = athlete
+                break
         _MEMORY_OWNERSHIP[athlete["athlete_id"]] = ownership
         _MEMORY_AUDIT.append({"timestamp": now, "who": coach_actor_id,
                               "action": "COACH_ATHLETE_CREATED", "tenant_id": tenant_id,
