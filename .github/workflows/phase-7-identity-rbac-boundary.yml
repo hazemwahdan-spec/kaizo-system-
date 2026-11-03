@@ -4,7 +4,7 @@ on:
   push:
     branches: [phase-7-identity-rbac-runtime-boundary]
   pull_request:
-    branches: [main, feat/coach-roster-ui-integration, feat/coach-training-groups, feat/coach-athlete-lifecycle, feat/coach-athlete-decision-history, feat/coach-home-dashboard, feat/coach-today-priority-queue]
+    branches: [main, feat/coach-roster-ui-integration, feat/coach-training-groups, feat/coach-athlete-lifecycle, feat/coach-athlete-decision-history, feat/coach-home-dashboard, feat/coach-today-priority-queue, feat/coach-athlete-workflow-navigation]
 
 jobs:
   identity-boundary:
