@@ -33,7 +33,8 @@ def test_feat_008_escapes_untrusted_athlete_data_and_fails_closed():
     assert "escapeHtml(a.display_name||a.athlete_id)" in APP
     assert "No roster data is displayed when authentication or authorization fails." in APP
     assert 'Coach Final Authority' in APP
-    assert "execution_authorized" in APP\n    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "execution_authorized" in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
 
 
 def test_feat_008_acceptance_contract_preserves_scope_and_governance():
