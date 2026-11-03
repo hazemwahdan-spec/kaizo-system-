@@ -60,31 +60,29 @@ def test_coach_sees_only_owned_athletes_in_same_tenant(monkeypatch):
                  headers=auth_headers()).status_code == 404
 
 
-def test_legacy_unassigned_athlete_is_not_visible_until_explicit_assignment(monkeypatch):
+def test_legacy_unassigned_athlete_stays_invisible_without_trusted_ownership(monkeypatch):
     monkeypatch.setenv("KAIZO_IDENTITY_MODE", "development")
     c = client()
     legacy = c.post("/api/v1/athletes", json={"display_name": "Legacy unassigned"})
     athlete_id = legacy.json()["athlete_id"]
     assert c.get("/api/v1/product/coach/athletes",
                  headers=auth_headers()).json()["total"] == 0
-    assigned = c.post(f"/api/v1/product/coach/athletes/{athlete_id}/assign",
-                      headers=auth_headers())
-    assert assigned.status_code == 201
     assert c.get(f"/api/v1/product/coach/athletes/{athlete_id}",
-                 headers=auth_headers()).status_code == 200
+                 headers=auth_headers()).status_code == 404
 
 
-def test_athlete_cannot_be_assigned_to_a_second_coach(monkeypatch):
+def test_each_coach_receives_only_their_server_created_athletes(monkeypatch):
     monkeypatch.setenv("KAIZO_IDENTITY_MODE", "development")
     c = client()
-    legacy = c.post("/api/v1/athletes", json={"display_name": "One owner only"})
-    athlete_id = legacy.json()["athlete_id"]
-    first = c.post(f"/api/v1/product/coach/athletes/{athlete_id}/assign",
-                   headers=auth_headers())
-    second = c.post(f"/api/v1/product/coach/athletes/{athlete_id}/assign",
-                    headers=auth_headers(actor="coach-B"))
-    assert first.status_code == 201
-    assert second.status_code == 409
+    a = c.post("/api/v1/product/coach/athletes",
+               json={"display_name": "Coach A"}, headers=auth_headers())
+    b = c.post("/api/v1/product/coach/athletes",
+               json={"display_name": "Coach B"},
+               headers=auth_headers(actor="coach-B"))
+    assert a.status_code == 201 and b.status_code == 201
+    assert a.json()["athlete_id"] != b.json()["athlete_id"]
+    assert c.get(f"/api/v1/product/coach/athletes/{b.json()['athlete_id']}",
+                 headers=auth_headers()).status_code == 404
 
 
 def test_caller_cannot_override_verified_scope_with_body_or_query(monkeypatch):
