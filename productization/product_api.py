@@ -370,3 +370,17 @@ def coach_athlete_decision_cycles(
             "history_source": "existing_persisted_decision_and_training_records",
             "historical_backfill_performed": False,
             "coach_final_authority": True, "execution_authorized": False}
+
+
+# FEAT-006: Coach home dashboard is a read-only aggregate of owned records.
+@router.get("/coach/dashboard")
+def coach_home_dashboard(
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    return coach_roster.get_coach_home_dashboard(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id)
