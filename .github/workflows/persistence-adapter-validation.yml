@@ -14,7 +14,7 @@ on:
       - feat/coach-training-groups
       - feat/coach-athlete-lifecycle
       - feat/coach-athlete-decision-history
-      - feat/coach-home-dashboard
+      - feat/coach-home-dashboard\n      - feat/coach-today-priority-queue
 
 jobs:
   validate-persistence-adapter:
@@ -58,6 +58,9 @@ jobs:
       - name: Verify FEAT-006 PostgreSQL Coach dashboard aggregation
         if: ${{ hashFiles('productization/test_coach_home_dashboard_postgres.py') != '' }}
         run: PYTHONPATH=..:. pytest -q ../productization/test_coach_home_dashboard_postgres.py
+      - name: Verify FEAT-007 PostgreSQL Coach priority queue evidence and isolation
+        if: ${{ hashFiles('productization/test_coach_priority_queue_postgres.py') != '' }}
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_priority_queue_postgres.py
       - name: Verify OpenAPI and documentation endpoint contract
         run: PYTHONPATH=. python tests/test_openapi_contract.py
       - name: Run FEAT-001 athlete acceptance tests
