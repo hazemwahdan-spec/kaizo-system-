@@ -69,15 +69,57 @@ async function loadCoachDashboard(){
  }catch(e){notice.textContent="Dashboard summary unavailable: "+String(e&&e.message?e.message:e);metrics.innerHTML="";recent.textContent="No summary data is displayed when authentication or authorization fails."}
 }
 
+let coachRosterRecords=[];
+let selectedCoachAthleteId=null;
+
+function renderCoachRosterRows(){
+ const list=document.getElementById("coachRosterList");
+ const search=document.getElementById("athleteRosterSearch");
+ if(!list)return;
+ const term=(search?.value||"").trim().toLocaleLowerCase();
+ const filtered=coachRosterRecords.filter(a=>
+  String(a.display_name||"").toLocaleLowerCase().includes(term)||
+  String(a.athlete_id||"").toLocaleLowerCase().includes(term));
+ if(!coachRosterRecords.length){list.innerHTML='<p class="muted">Your roster is empty. Add an athlete above to establish an audited ownership relation.</p>';return}
+ if(!filtered.length){list.innerHTML='<p class="muted">No athletes in your roster match this search.</p>';return}
+ list.innerHTML=filtered.map(a=>'<button class="coach-athlete-row" type="button" data-athlete-id="'+escapeHtml(a.athlete_id)+'" onclick="viewCoachAthlete(this.dataset.athleteId)"><span>'+escapeHtml(a.display_name||a.athlete_id)+'</span><small>'+escapeHtml(a.athlete_id)+'</small></button>').join("");
+}
+function filterCoachRoster(){renderCoachRosterRows()}
+function returnCoachRoster(){
+ selectedCoachAthleteId=null;
+ const panel=document.getElementById("coachAthleteLifecycle"),detail=document.getElementById("coachAthleteDetail"),list=document.getElementById("coachRosterList");
+ if(panel)panel.innerHTML="";
+ if(detail)detail.textContent="";
+ if(list)list.style.display="";
+ renderCoachRosterRows();
+ const search=document.getElementById("athleteRosterSearch");
+ if(search)search.focus();
+}
+function coachAthleteSection(sectionId){
+ const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection"];
+ if(!ids.includes(sectionId))return;
+ ids.forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=id!==sectionId});
+ document.querySelectorAll("[data-athlete-section]").forEach(button=>{
+  button.setAttribute("aria-pressed",String(button.dataset.athleteSection===sectionId));
+ });
+}
 async function loadCoachRoster(){
   const notice=document.getElementById("coachRosterNotice"),list=document.getElementById("coachRosterList"),detail=document.getElementById("coachAthleteDetail");
   if(!notice||!list)return;
-  notice.textContent="Loading your verified Coach roster…";list.innerHTML="";detail.textContent="";
-  try{const result=await productCall("/coach/athletes");const athletes=Array.isArray(result.athletes)?result.athletes:[];
-    notice.textContent=athletes.length+" athlete(s) assigned to this Coach. Scope is enforced by Core.";
-    if(!athletes.length){list.innerHTML='<p class="muted">Your roster is empty. Add an athlete above to establish an audited ownership relation.</p>';return}
-    list.innerHTML=athletes.map(a=>'<button class="coach-athlete-row" type="button" data-athlete-id="'+escapeHtml(a.athlete_id)+'" onclick="viewCoachAthlete(this.dataset.athleteId)"><span>'+escapeHtml(a.display_name||a.athlete_id)+'</span><small>'+escapeHtml(a.athlete_id)+'</small></button>').join("");
-  }catch(e){notice.textContent="Roster unavailable: "+String(e&&e.message?e.message:e);list.innerHTML='<p class="muted">No roster data is displayed when authentication or authorization fails.</p>'}
+  notice.textContent="Loading your verified Coach roster…";list.innerHTML="";if(detail)detail.textContent="";
+  try{
+    const result=await productCall("/coach/athletes");
+    coachRosterRecords=Array.isArray(result.athletes)?result.athletes:[];
+    notice.textContent=coachRosterRecords.length+" athlete(s) assigned to this Coach. Search is limited to this verified roster.";
+    if(selectedCoachAthleteId&&!coachRosterRecords.some(a=>a.athlete_id===selectedCoachAthleteId))returnCoachRoster();
+    renderCoachRosterRows();
+  }catch(e){
+    coachRosterRecords=[];selectedCoachAthleteId=null;
+    const panel=document.getElementById("coachAthleteLifecycle");if(panel)panel.innerHTML="";
+    if(detail)detail.textContent="";
+    notice.textContent="Roster unavailable: "+String(e&&e.message?e.message:e);
+    list.innerHTML='<p class="muted">No roster data is displayed when authentication or authorization fails.</p>';
+  }
 }
 async function createCoachAthlete(event){
   event.preventDefault();const form=document.getElementById("coachAthleteForm"),notice=document.getElementById("coachRosterNotice"),name=document.getElementById("newAthleteName").value.trim();
@@ -87,17 +129,39 @@ async function createCoachAthlete(event){
   }catch(e){notice.textContent="Athlete was not created: "+String(e&&e.message?e.message:e)}
 }
 async function viewCoachAthlete(athleteId){
-  const detail=document.getElementById("coachAthleteDetail"),panel=document.getElementById("coachAthleteLifecycle");
-  detail.textContent="Loading athlete from your Coach scope…";panel.innerHTML="";
-  try{
-    const result=await productCall("/coach/athletes/"+encodeURIComponent(athleteId));detail.textContent=pretty(result);
-    const next={ACTIVE:["INACTIVE","SUSPENDED","ARCHIVED"],INACTIVE:["ACTIVE","ARCHIVED"],SUSPENDED:["ACTIVE","INACTIVE","ARCHIVED"],ARCHIVED:[]}[String(result.status||"").toUpperCase()]||[];
-    panel.innerHTML='<h3>Athlete lifecycle</h3><p>Current status: <strong>'+escapeHtml(result.status)+'</strong></p>'+
-      (next.length?'<label for="athleteNextStatus">Change status</label><select id="athleteNextStatus">'+next.map(s=>'<option value="'+s+'">'+s+'</option>').join("")+'</select><label for="athleteStatusReason">Reason (required)</label><input id="athleteStatusReason" maxlength="500" required placeholder="Record why this status changes"><button type="button" onclick="changeCoachAthleteStatus(\''+escapeHtml(athleteId)+'\')">Save lifecycle change</button>':'<p class="muted">Archived is terminal. No further status transition is permitted.</p>')+
-      '<h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div>';
-    loadCoachAthleteStatusHistory(athleteId);
-    loadCoachAthleteDecisionCycles(athleteId);
-  }catch(e){detail.textContent="Athlete details unavailable: "+String(e&&e.message?e.message:e);panel.textContent="Lifecycle controls are unavailable outside the verified Coach scope."}
+ const detail=document.getElementById("coachAthleteDetail"),panel=document.getElementById("coachAthleteLifecycle"),list=document.getElementById("coachRosterList");
+ if(!coachRosterRecords.some(a=>String(a.athlete_id)===String(athleteId))){
+  if(detail)detail.textContent="This athlete is not present in the currently loaded Coach roster.";
+  if(panel)panel.innerHTML="";return;
+ }
+ selectedCoachAthleteId=String(athleteId);
+ if(list)list.style.display="none";
+ if(detail)detail.textContent="Loading athlete from your verified Coach scope…";
+ if(panel)panel.innerHTML="";
+ try{
+  const result=await productCall("/coach/athletes/"+encodeURIComponent(athleteId));
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  if(detail)detail.textContent=pretty(result);
+  const next={ACTIVE:["INACTIVE","SUSPENDED","ARCHIVED"],INACTIVE:["ACTIVE","ARCHIVED"],SUSPENDED:["ACTIVE","INACTIVE","ARCHIVED"],ARCHIVED:[]}[String(result.status||"").toUpperCase()]||[];
+  const athlete=coachRosterRecords.find(a=>String(a.athlete_id)===String(athleteId));
+  panel.innerHTML='<div class="coach-athlete-navigation"><div><p class="muted">My roster / Athlete profile</p><h3>'+escapeHtml(athlete?.display_name||result.display_name||athleteId)+'</h3></div><button class="secondary" type="button" onclick="returnCoachRoster()">Back to my roster</button></div>'+
+   '<nav class="coach-athlete-tabs" aria-label="Athlete workflow sections">'+
+   '<button type="button" data-athlete-section="athleteProfileSection" aria-pressed="true" onclick="coachAthleteSection(\'athleteProfileSection\')">Profile</button>'+
+   '<button type="button" data-athlete-section="athleteLifecycleSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteLifecycleSection\')">Lifecycle</button>'+
+   '<button type="button" data-athlete-section="athleteStatusHistorySection" aria-pressed="false" onclick="coachAthleteSection(\'athleteStatusHistorySection\')">Status history</button>'+
+   '<button type="button" data-athlete-section="athleteDecisionCyclesSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionCyclesSection\')">Decision history</button></nav>'+
+   '<section id="athleteProfileSection"><h4>Verified athlete profile</h4><pre class="output">'+escapeHtml(pretty(result))+'</pre></section>'+
+   '<section id="athleteLifecycleSection" hidden><h4>Athlete lifecycle</h4><p>Current status: <strong>'+escapeHtml(result.status||"Unknown")+'</strong></p>'+
+   (next.length?'<label for="athleteNextStatus">Change status</label><select id="athleteNextStatus">'+next.map(s=>'<option value="'+s+'">'+s+'</option>').join("")+'</select><label for="athleteStatusReason">Reason (required)</label><input id="athleteStatusReason" maxlength="500" required placeholder="Record why this status changes"><button type="button" onclick="changeCoachAthleteStatus(\''+escapeHtml(athleteId)+'\')">Save lifecycle change</button>':'<p class="muted">Archived is terminal. No further status transition is permitted.</p>')+'</section>'+
+   '<section id="athleteStatusHistorySection" hidden><h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div></section>'+
+   '<section id="athleteDecisionCyclesSection" hidden><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div></section>';
+  loadCoachAthleteStatusHistory(athleteId);
+  loadCoachAthleteDecisionCycles(athleteId);
+ }catch(e){
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  if(detail)detail.textContent="Athlete details unavailable: "+String(e&&e.message?e.message:e);
+  if(panel)panel.innerHTML='<p class="notice">Athlete details are unavailable outside the verified Coach scope.</p><button class="secondary" type="button" onclick="returnCoachRoster()">Back to my roster</button>';
+ }
 }
 async function changeCoachAthleteStatus(athleteId){
  const panel=document.getElementById("coachAthleteLifecycle"),status=document.getElementById("athleteNextStatus")?.value,reason=document.getElementById("athleteStatusReason")?.value.trim();
@@ -145,7 +209,7 @@ function coachDashboard(){return `
     <article class="coach-metric"><span class="muted">Decision cycle</span><strong>Ready to enter</strong><small>Evaluate → adapt → intervene → retest.</small></article>
     <article class="coach-metric"><span class="muted">Audit review</span><strong>Authorization required</strong><small>Audit requests must be verified by Core; failures are shown, not hidden.</small></article>
   </div>
-  <section id="coach-roster" class="coach-roster"><div class="coach-roster-head"><div><h3>My Athlete Roster</h3><p class="muted">Only athletes assigned to the authenticated coach in the authenticated tenant are shown.</p></div><button class="secondary" onclick="loadCoachRoster()">Refresh roster</button></div><form id="coachAthleteForm" class="coach-roster-form" onsubmit="createCoachAthlete(event)"><label for="newAthleteName">Athlete name</label><input id="newAthleteName" name="display_name" maxlength="120" required placeholder="Enter athlete name"><button type="submit">Add athlete to my roster</button></form><div id="coachRosterNotice" class="notice" role="status">Sign in with a verified Coach account to load your roster.</div><div id="coachRosterList" class="coach-roster-list"></div><pre id="coachAthleteDetail" class="output" aria-live="polite"></pre><div id="coachAthleteLifecycle" class="coach-roster" aria-live="polite"></div></section><section id="coach-groups" class="coach-roster"><div class="coach-roster-head"><div><h3>My Training Groups</h3><p class="muted">Groups and membership are restricted to your verified Coach and tenant scope.</p></div><button class="secondary" onclick="loadCoachGroups()">Refresh groups</button></div><form class="coach-roster-form" onsubmit="createCoachGroup(event)"><label for="newCoachGroupName">Group name</label><input id="newCoachGroupName" maxlength="100" required placeholder="e.g. U15 competition group"><button type="submit">Create group</button></form><div class="row"><label for="groupAthleteSelect">My athlete</label><select id="groupAthleteSelect"><option value="">Load your roster first</option></select></div><div id="coachGroupsNotice" class="notice" role="status">Sign in as Coach to load your groups.</div><div id="coachGroupsList"></div></section><h3>Open Coach workflow</h3>
+  <section id="coach-roster" class="coach-roster"><div class="coach-roster-head"><div><h3>My Athlete Roster</h3><p class="muted">Only athletes assigned to the authenticated coach in the authenticated tenant are shown.</p></div><button class="secondary" onclick="loadCoachRoster()">Refresh roster</button></div><form id="coachAthleteForm" class="coach-roster-form" onsubmit="createCoachAthlete(event)"><label for="newAthleteName">Athlete name</label><input id="newAthleteName" name="display_name" maxlength="120" required placeholder="Enter athlete name"><button type="submit">Add athlete to my roster</button></form><div class="coach-roster-form"><label for="athleteRosterSearch">Search my athletes</label><input id="athleteRosterSearch" type="search" maxlength="120" placeholder="Search by name or athlete ID" oninput="filterCoachRoster()"><button class="secondary" type="button" onclick="returnCoachRoster()">Back to roster</button></div><div id="coachRosterNotice" class="notice" role="status">Sign in with a verified Coach account to load your roster.</div><div id="coachRosterList" class="coach-roster-list"></div><pre id="coachAthleteDetail" class="output" aria-live="polite"></pre><div id="coachAthleteLifecycle" class="coach-roster" aria-live="polite"></div></section><section id="coach-groups" class="coach-roster"><div class="coach-roster-head"><div><h3>My Training Groups</h3><p class="muted">Groups and membership are restricted to your verified Coach and tenant scope.</p></div><button class="secondary" onclick="loadCoachGroups()">Refresh groups</button></div><form class="coach-roster-form" onsubmit="createCoachGroup(event)"><label for="newCoachGroupName">Group name</label><input id="newCoachGroupName" maxlength="100" required placeholder="e.g. U15 competition group"><button type="submit">Create group</button></form><div class="row"><label for="groupAthleteSelect">My athlete</label><select id="groupAthleteSelect"><option value="">Load your roster first</option></select></div><div id="coachGroupsNotice" class="notice" role="status">Sign in as Coach to load your groups.</div><div id="coachGroupsList"></div></section><h3>Open Coach workflow</h3>
   <div class="coach-actions">
     <button onclick="coachGo('coach-decision-case')">1. Evaluate athlete</button>
     <button onclick="coachGo('coach-adapt-decision')">2. Adapt decision</button>
@@ -154,7 +218,7 @@ function coachDashboard(){return `
     <button class="secondary" onclick="coachGo('coach-audit-trail')">5. Check audit access</button>
     <button class="secondary" onclick="coachGo('coach-action-history')">6. Review my actions</button>
   </div>
-  <p class="notice coach-honesty">Live priority items and athlete navigation remain disconnected. My Coach Actions uses the verified, tenant-scoped API and displays only recorded events; no sample athlete or fabricated KPI is presented as live data.</p>
+  <p class="notice coach-honesty">Athlete navigation uses the verified Coach roster and existing scoped profile, lifecycle, status-history, and decision-history records. Coach remains the final authority.</p>
 </div>` }
 
 async function call(path,opts){const r=await fetch(API+path,opts||{});const j=await r.json();if(!r.ok)throw new Error(JSON.stringify(j));return j}
