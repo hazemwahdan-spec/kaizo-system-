@@ -256,8 +256,17 @@ def list_owned_athlete_status_history(*, tenant_id: str, coach_actor_id: str,
     if athlete is None:
         return None
     if persistence.is_postgres_enabled():
+        _ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
+                cur.execute("""CREATE TABLE IF NOT EXISTS kaizo_coach_athlete_status_history (
+                    history_id TEXT PRIMARY KEY,
+                    athlete_id TEXT NOT NULL REFERENCES kaizo_athletes(athlete_id) ON DELETE CASCADE,
+                    tenant_id TEXT NOT NULL, coach_actor_id TEXT NOT NULL,
+                    previous_status TEXT NOT NULL, new_status TEXT NOT NULL,
+                    reason TEXT NOT NULL, changed_at TEXT NOT NULL)""")
+                cur.execute("""CREATE INDEX IF NOT EXISTS idx_coach_athlete_status_history_scope
+                    ON kaizo_coach_athlete_status_history (tenant_id, coach_actor_id, athlete_id, changed_at)""")
                 cur.execute("""
                     SELECT previous_status,new_status,reason,changed_at,coach_actor_id
                     FROM kaizo_coach_athlete_status_history
