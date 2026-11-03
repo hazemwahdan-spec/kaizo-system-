@@ -97,59 +97,6 @@ def create_owned_athlete(*, tenant_id: str, coach_actor_id: str, display_name: s
     return athlete
 
 
-def assign_existing_athlete(*, tenant_id: str, coach_actor_id: str,
-                             athlete_id: str) -> dict[str, Any] | None:
-    now = _now()
-    if persistence.is_postgres_enabled():
-        _ensure_schema()
-        with persistence.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT athlete_id FROM kaizo_athletes WHERE athlete_id=%s", (athlete_id,))
-                if cur.fetchone() is None:
-                    return None
-                cur.execute("""
-                    INSERT INTO kaizo_coach_athlete_ownership
-                        (athlete_id, tenant_id, coach_actor_id, assigned_at)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (athlete_id) DO NOTHING
-                    RETURNING athlete_id
-                """, (athlete_id, tenant_id, coach_actor_id, now))
-                if cur.fetchone() is None:
-                    return {"conflict": True}
-                cur.execute("""
-                    INSERT INTO kaizo_audit_logs
-                        (timestamp, who, action, old_value, new_value, why, tenant_id)
-                    VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
-                """, (now, coach_actor_id, "COACH_ATHLETE_ASSIGNED", "null",
-                      json.dumps({"athlete_id": athlete_id}),
-                      "Existing unassigned athlete explicitly assigned to authenticated Coach.",
-                      tenant_id))
-        return {"athlete_id": athlete_id, "tenant_id": tenant_id,
-                "coach_actor_id": coach_actor_id, "assigned_at": now}
-    if athlete_id not in _MEMORY_ATHLETES:
-        # Resolve the active Core module without importing a duplicate module
-        # (which would create a separate in-memory athlete registry).
-        import sys
-        legacy = None
-        for loaded_module in tuple(sys.modules.values()):
-            records = getattr(loaded_module, "ATHLETE_RECORDS", None)
-            if isinstance(records, dict) and athlete_id in records:
-                legacy = records[athlete_id]
-                break
-        if legacy is None:
-            return None
-        _MEMORY_ATHLETES[athlete_id] = legacy
-    if athlete_id in _MEMORY_OWNERSHIP:
-        return {"conflict": True}
-    ownership = {"athlete_id": athlete_id, "tenant_id": tenant_id,
-                 "coach_actor_id": coach_actor_id, "assigned_at": now}
-    _MEMORY_OWNERSHIP[athlete_id] = ownership
-    _MEMORY_AUDIT.append({"timestamp": now, "who": coach_actor_id,
-                          "action": "COACH_ATHLETE_ASSIGNED", "tenant_id": tenant_id,
-                          "athlete_id": athlete_id})
-    return ownership
-
-
 def get_owned_athlete(*, tenant_id: str, coach_actor_id: str,
                       athlete_id: str) -> dict[str, Any] | None:
     if persistence.is_postgres_enabled():
