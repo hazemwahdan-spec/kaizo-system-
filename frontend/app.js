@@ -40,8 +40,8 @@ async function loadCoachPriorityQueue(){
    notice.textContent=data.message||"Insufficient persisted evidence. No priority items are inferred.";return;
   }
   if(!rows.length){notice.textContent="No current review signals were found in the available workflow records.";return;}
-  notice.textContent=rows.length+" evidence-backed item(s). Unranked — no deadline or urgency evidence.";
-  items.innerHTML=rows.map(item=>'<article class="coach-metric" style="margin:8px 0"><strong>'+escapeHtml(item.title||"Coach review")+'</strong><p>'+escapeHtml(item.athlete_name||item.athlete_id||"")+' · '+escapeHtml(item.item_type||"")+'</p><p>'+escapeHtml(item.reason||"")+'</p><p class="muted">Source: '+escapeHtml(item.source_feature||"")+' / '+escapeHtml(item.source_record_id||"")+' · '+escapeHtml(item.recorded_at||"")+'</p><p class="muted">Evidence: '+escapeHtml((item.evidence_refs||[]).join(", ")||"Source record only")+'</p><p>'+escapeHtml(item.suggested_next_action||"Coach review required.")+'</p><small>Unranked · no due date · Coach decision required</small></article>').join("");
+  notice.textContent=rows.length+" evidence-backed review signal(s), not tracked open tasks. Unranked; no calendar-day filter, deadline, or urgency evidence.";
+  items.innerHTML=rows.map(item=>'<article class="coach-metric" style="margin:8px 0"><strong>'+escapeHtml(item.title||"Coach review")+'</strong><p>'+escapeHtml(item.athlete_name||item.athlete_id||"")+' · '+escapeHtml(item.item_type||"")+'</p><p>'+escapeHtml(item.reason||"")+'</p><p class="muted">Source: '+escapeHtml(item.source_feature||"")+' / '+escapeHtml(item.source_record_id||"")+' · '+escapeHtml(item.recorded_at||"")+'</p><p class="muted">Evidence: '+escapeHtml((item.evidence_refs||[]).join(", ")||"Source record only")+'</p><p>'+escapeHtml(item.suggested_next_action||"Coach review required.")+'</p><small>Unranked · review status not tracked · Coach judgment required</small></article>').join("");
  }catch(e){notice.textContent="Priority queue unavailable: "+String(e&&e.message?e.message:e);items.textContent="No queue data is displayed when authentication or authorization fails."}
 }
 
@@ -137,7 +137,7 @@ function coachDashboard(){return `
     <h4>Recent recorded decisions</h4><div id="coachDashboardRecent"></div>
   </section>
   <section id="coachPriorityQueue" class="coach-dashboard-summary" aria-live="polite">
-    <div class="coach-roster-head"><div><h3>Today / current review queue</h3><p class="muted">Only explicit workflow evidence is shown. Items are unranked; no due dates or urgency scores are inferred.</p></div><button class="secondary" type="button" onclick="loadCoachPriorityQueue()">Refresh queue</button></div>
+    <div class="coach-roster-head"><div><h3>Current review signals</h3><p class="muted">Only explicit workflow evidence is shown. This is not a tracked open-task list or calendar-day filter; items are unranked and have no inferred deadlines.</p></div><button class="secondary" type="button" onclick="loadCoachPriorityQueue()">Refresh queue</button></div>
     <div id="coachPriorityQueueNotice" class="notice" role="status">Loading current review signals…</div>
     <div id="coachPriorityQueueItems"></div>
   </section>
