@@ -69,11 +69,15 @@ jobs:
           set -euo pipefail
           status="$(curl -sS --connect-timeout 10 --max-time 25 -o /dev/null -w "%{http_code}" "$BASE_URL/api/v1/audit/logs" || true)"
           case "$status" in
-            401|403|503)
+            401|403)
               echo "LIVE_AUDIT_DENIAL_PASS: unauthenticated /api/v1/audit/logs returned HTTP $status"
               ;;
+            503)
+              echo "LIVE_AUDIT_DENIAL_HOLD: HTTP 503 is fail-closed but does not prove the intended authorization policy"
+              exit 1
+              ;;
             *)
-              echo "LIVE_AUDIT_DENIAL_FAILED: unauthenticated /api/v1/audit/logs returned HTTP $status"
+              echo "LIVE_AUDIT_DENIAL_FAILED: unauthenticated /api/v1/audit/logs returned HTTP $status (expected 401 or 403; 503 is not proof)"
               exit 1
               ;;
           esac
