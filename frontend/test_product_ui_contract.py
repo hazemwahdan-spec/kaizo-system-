@@ -33,3 +33,20 @@ def test_product_requests_require_verified_auth0_bearer():
     assert '"Authorization":"Bearer "+token' in APP
     assert 'function kaizoLogin()' in APP
     assert 'X-KAIZO headers are not credentials' in APP
+
+
+def test_coach_roster_uses_verified_owned_athlete_endpoints():
+    assert 'productCall("/coach/athletes")' in APP
+    assert 'productCall("/coach/athletes/"+encodeURIComponent(athleteId))' in APP
+    assert 'productCall("/coach/athletes",{method:"POST"' in APP
+    assert 'display_name:name' in APP
+
+def test_coach_roster_does_not_send_client_supplied_identity_scope():
+    assert '"X-KAIZO-Actor"' not in APP
+    assert '"X-KAIZO-Role"' not in APP
+    assert '"X-KAIZO-Tenant"' not in APP
+    assert 'opts.headers={...(opts.headers||{}),"Authorization":"Bearer "+token};' in APP
+
+def test_coach_roster_does_not_use_legacy_global_athlete_list():
+    assert 'productCall("/athletes")' not in APP
+    assert 'productCall("/coach/athletes")' in APP
