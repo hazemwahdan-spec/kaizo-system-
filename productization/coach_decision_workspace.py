@@ -22,8 +22,8 @@ _REQUIRED_TABLES = (
     "kaizo_decision_records",
     "kaizo_training_plans",
     "kaizo_training_sessions",
-    "kaizo_training_workflow_records",
 )
+_OPTIONAL_TABLES = ("kaizo_training_workflow_records",)
 
 
 def _rows(cur: Any, sql: str, params: tuple[Any, ...], columns: tuple[str, ...]) -> list[dict[str, Any]]:
@@ -49,7 +49,8 @@ def _empty(status: str, message: str, *, available: bool = False) -> dict[str, A
         "training_plans": [],
         "training_sessions": [],
         "training_records": [],
-        "source_tables": list(_REQUIRED_TABLES),
+        "source_tables": list(_REQUIRED_TABLES) + list(_OPTIONAL_TABLES),
+        "missing_optional_tables": [],
         "read_only": True,
         "historical_backfill_performed": False,
         "coach_final_authority": True,
@@ -78,15 +79,7 @@ def get_coach_decision_workspace(
             "Decision workspace requires durable PostgreSQL assessment, evidence, and workflow records.",
         )
 
-    import training_workflow  # noqa: F401 - validates module availability; no writes or schema creation.
-
     params = (tenant_id, coach_actor_id, athlete_id)
-    owned_join = """
-        JOIN kaizo_coach_athlete_ownership owned
-          ON owned.athlete_id = {alias}.athlete_id
-         AND owned.tenant_id = %s
-         AND owned.coach_actor_id = %s
-    """
     result = _empty("INSUFFICIENT_EVIDENCE", "Required durable decision-cycle tables are unavailable.")
     with persistence.connection() as conn:
         with conn.cursor() as cur:
@@ -108,8 +101,9 @@ def get_coach_decision_workspace(
                        to_regclass('public.kaizo_training_workflow_records')
             """)
             tables = cur.fetchone()
-            if not tables or any(table is None for table in tables):
+            if not tables or any(table is None for table in tables[:-1]):
                 return result
+            workflow_table_available = tables[-1] is not None
 
             assessments: dict[str, dict[str, Any]] = {}
             cur.execute("""
@@ -270,16 +264,18 @@ def get_coach_decision_workspace(
             """, params, ("session_id","plan_id","title","duration_minutes","blocks","status",
                           "created_by","created_at"))
 
-            workflow = _rows(cur, """
-                SELECT w.record_id,w.feature_id,w.decision_id,w.session_id,w.payload,
-                       w.created_by,w.created_at,w.coach_final_authority,w.execution_authorized
-                FROM kaizo_training_workflow_records w
-                JOIN kaizo_coach_athlete_ownership owned
-                  ON owned.athlete_id=w.athlete_id
-                 AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE w.athlete_id=%s ORDER BY w.created_at,w.record_id
-            """, params, ("record_id","feature_id","decision_id","session_id","payload",
-                          "created_by","created_at","coach_final_authority","execution_authorized"))
+            workflow = []
+            if workflow_table_available:
+                workflow = _rows(cur, """
+                    SELECT w.record_id,w.feature_id,w.decision_id,w.session_id,w.payload,
+                           w.created_by,w.created_at,w.coach_final_authority,w.execution_authorized
+                    FROM kaizo_training_workflow_records w
+                    JOIN kaizo_coach_athlete_ownership owned
+                      ON owned.athlete_id=w.athlete_id
+                     AND owned.tenant_id=%s AND owned.coach_actor_id=%s
+                    WHERE w.athlete_id=%s ORDER BY w.created_at,w.record_id
+                """, params, ("record_id","feature_id","decision_id","session_id","payload",
+                              "created_by","created_at","coach_final_authority","execution_authorized"))
 
     data = {
         "assessments": list(assessments.values()),
@@ -302,7 +298,8 @@ def get_coach_decision_workspace(
         "available": True,
         "status": "WORKSPACE_AVAILABLE" if has_records else "NO_RECORDED_CYCLE",
         "message": None if has_records else "No persisted decision-cycle records exist for this athlete.",
-        "source_tables": list(_REQUIRED_TABLES),
+        "source_tables": list(_REQUIRED_TABLES) + list(_OPTIONAL_TABLES),
+        "missing_optional_tables": [] if workflow_table_available else list(_OPTIONAL_TABLES),
         "read_only": True,
         "historical_backfill_performed": False,
         "coach_final_authority": True,
