@@ -229,21 +229,3 @@ def get_coach_athlete(
     return {**athlete, "coach_final_authority": True, "execution_authorized": False}
 
 
-@router.post("/coach/athletes/{athlete_id}/assign", status_code=201)
-def assign_coach_athlete(
-    athlete_id: str,
-    authorization: str | None = Header(None, alias="Authorization"),
-    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
-    role: str | None = Header(None, alias="X-KAIZO-Role"),
-    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
-    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
-):
-    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
-    result = coach_roster.assign_existing_athlete(
-        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
-        athlete_id=athlete_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="unassigned athlete not found")
-    if result.get("conflict"):
-        raise HTTPException(status_code=409, detail="athlete already has an owner")
-    return {**result, "coach_final_authority": True, "execution_authorized": False}
