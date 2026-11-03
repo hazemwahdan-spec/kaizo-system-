@@ -348,3 +348,25 @@ def coach_athlete_status_history(
     return {"athlete_id": athlete_id, "history": history,
             "total": len(history), "coach_final_authority": True,
             "execution_authorized": False}
+
+
+# FEAT-005: read-only history over persisted decision/workflow records.
+@router.get("/coach/athletes/{athlete_id}/decision-cycles")
+def coach_athlete_decision_cycles(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    cycles = coach_roster.list_owned_athlete_decision_cycles(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id)
+    if cycles is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return {"athlete_id": athlete_id, "total": len(cycles), "cycles": cycles,
+            "history_source": "existing_persisted_decision_and_training_records",
+            "historical_backfill_performed": False,
+            "coach_final_authority": True, "execution_authorized": False}
