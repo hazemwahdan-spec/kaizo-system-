@@ -57,3 +57,10 @@ def test_coach_training_groups_use_verified_scoped_api():
     assert 'productCall("/coach/groups/"+encodeURIComponent(groupId)+"/athletes"' in APP
     assert 'method:"DELETE"' in APP
     assert 'X-KAIZO-Actor' not in APP
+
+
+def test_coach_athlete_decision_history_uses_scoped_read_only_api():
+    assert 'productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-cycles")' in APP
+    assert 'loadCoachAthleteDecisionCycles(athleteId)' in APP
+    assert 'No historical records have been generated.' in APP
+    assert 'athleteDecisionCycles' in APP
