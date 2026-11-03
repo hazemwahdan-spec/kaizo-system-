@@ -71,7 +71,7 @@ def test_coach_home_dashboard_uses_verified_owned_summary_api():
     assert 'loadCoachDashboard()' in APP
     assert 'coachDashboardMetrics' in APP
     assert 'Recent recorded decisions' in APP
-    assert 'Reserved for FEAT-007' in APP
+    assert 'id="coachPriorityQueue"' in APP
     assert 'No synthetic tasks or urgency scores are shown.' in APP
 
 
