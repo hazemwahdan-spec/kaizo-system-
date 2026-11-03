@@ -4,7 +4,7 @@ on:
   push:
     branches: [phase-7-identity-rbac-runtime-boundary]
   pull_request:
-    branches: [main]
+    branches: [main, feat/coach-roster-ui-integration]
 
 jobs:
   identity-boundary:
