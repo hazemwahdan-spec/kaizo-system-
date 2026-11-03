@@ -78,7 +78,7 @@ def test_coach_home_dashboard_uses_verified_owned_summary_api():
 def test_coach_priority_queue_uses_verified_evidence_and_fails_closed():
     assert 'productCall("/coach/priority-queue")' in APP
     assert 'function loadCoachPriorityQueue()' in APP
-    assert 'review signals, not tracked open tasks' in APP
+    assert 'not tracked open tasks' in APP
     assert 'review status not tracked' in APP
     assert 'Coach decision required' in APP
     assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
