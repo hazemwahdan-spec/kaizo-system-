@@ -30,6 +30,6 @@ def test_feat_010_history_is_read_only_and_fails_closed():
     assert "No action data is displayed when authentication or authorization fails." in helper
     assert "tenant-scoped events attributable to this verified Coach" in APP
     assert "read-only" in CONTRACT
-    assert "Unscoped legacy audit rows" in CONTRACT
+    assert "unscoped legacy audit rows" in CONTRACT.lower()
     assert "FEAT-044" in CONTRACT
     assert "execution_authorized=false" in CONTRACT
