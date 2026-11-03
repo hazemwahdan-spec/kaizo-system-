@@ -96,7 +96,7 @@ function returnCoachRoster(){
  if(search)search.focus();
 }
 function coachAthleteSection(sectionId){
- const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection"];
+ const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionWorkspaceSection"];
  if(!ids.includes(sectionId))return;
  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=id!==sectionId});
  document.querySelectorAll("[data-athlete-section]").forEach(button=>{
@@ -151,14 +151,17 @@ async function viewCoachAthlete(athleteId){
    '<button type="button" data-athlete-section="athleteProfileSection" aria-pressed="true" onclick="coachAthleteSection(\'athleteProfileSection\')">Profile</button>'+
    '<button type="button" data-athlete-section="athleteLifecycleSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteLifecycleSection\')">Lifecycle</button>'+
    '<button type="button" data-athlete-section="athleteStatusHistorySection" aria-pressed="false" onclick="coachAthleteSection(\'athleteStatusHistorySection\')">Status history</button>'+
-   '<button type="button" data-athlete-section="athleteDecisionCyclesSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionCyclesSection\')">Decision history</button></nav>'+
+   '<button type="button" data-athlete-section="athleteDecisionCyclesSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionCyclesSection\')">Decision history</button>'+
+   '<button type="button" data-athlete-section="athleteDecisionWorkspaceSection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteDecisionWorkspaceSection\\')">Decision workspace</button></nav>'+
    '<section id="athleteProfileSection"><h4>Verified athlete profile</h4><pre class="output">'+escapeHtml(pretty(result))+'</pre></section>'+
    '<section id="athleteLifecycleSection" hidden><h4>Athlete lifecycle</h4><p>Current status: <strong>'+escapeHtml(result.status||"Unknown")+'</strong></p>'+
    (next.length?'<label for="athleteNextStatus">Change status</label><select id="athleteNextStatus">'+next.map(s=>'<option value="'+s+'">'+s+'</option>').join("")+'</select><label for="athleteStatusReason">Reason (required)</label><input id="athleteStatusReason" maxlength="500" required placeholder="Record why this status changes"><button type="button" onclick="changeCoachAthleteStatus(\''+escapeHtml(athleteId)+'\')">Save lifecycle change</button>':'<p class="muted">Archived is terminal. No further status transition is permitted.</p>')+'</section>'+
    '<section id="athleteStatusHistorySection" hidden><h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div></section>'+
-   '<section id="athleteDecisionCyclesSection" hidden><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div></section>';
+   '<section id="athleteDecisionCyclesSection" hidden><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div></section>'+
+   '<section id="athleteDecisionWorkspaceSection" hidden><h4>Decision-cycle workspace</h4><p class="muted">Read-only view of persisted assessments, attached evidence, diagnosis, Coach decisions, training and retest records.</p><div id="athleteDecisionWorkspaceNotice" class="notice">Loading persisted decision-cycle evidence…</div><div id="athleteDecisionWorkspaceContent"></div></section>';
   loadCoachAthleteStatusHistory(athleteId);
   loadCoachAthleteDecisionCycles(athleteId);
+  loadCoachDecisionWorkspace(athleteId);
  }catch(e){
   if(selectedCoachAthleteId!==String(athleteId))return;
   if(detail)detail.textContent="Athlete details unavailable: "+String(e&&e.message?e.message:e);
@@ -171,6 +174,56 @@ async function changeCoachAthleteStatus(athleteId){
  try{await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status,reason})});await loadCoachRoster();await viewCoachAthlete(athleteId)}
  catch(e){panel.insertAdjacentText("afterbegin","Status change rejected: "+String(e&&e.message?e.message:e)+" ")}
 }
+function coachWorkspaceSection(title, rows, labelFields){
+ const records=Array.isArray(rows)?rows:[];
+ const cards=records.map(record=>{
+  const label=labelFields.map(field=>record[field]).filter(value=>value!==null&&value!==undefined&&String(value)!=="").join(" · ")||"Recorded item";
+  return '<article class="coach-workspace-record"><h5>'+escapeHtml(label)+'</h5><pre class="output">'+escapeHtml(pretty(record))+'</pre></article>';
+ }).join("");
+ return '<section class="coach-workspace-section"><h4>'+escapeHtml(title)+' ('+records.length+')</h4>'+
+  (cards||'<p class="muted">No persisted '+escapeHtml(title.toLowerCase())+' records.</p>')+'</section>';
+}
+function renderCoachDecisionWorkspace(data){
+ return [
+  coachWorkspaceSection("Assessments and attached evidence",data.assessments,["template_id","assessed_at"]),
+  coachWorkspaceSection("Baseline / current-state snapshots",data.state_snapshots,["snapshot_type","captured_at"]),
+  coachWorkspaceSection("Problem statements",data.problem_statements,["statement","status"]),
+  coachWorkspaceSection("Cause and context",data.cause_context_framings,["cause","framed_at"]),
+  coachWorkspaceSection("Evidence-linked diagnoses",data.diagnoses,["diagnosis","resolution_state"]),
+  coachWorkspaceSection("Decision candidates",data.decision_candidates,["title","status"]),
+  coachWorkspaceSection("Decision rationales",data.decision_rationales,["rationale","recorded_at"]),
+  coachWorkspaceSection("Alternative comparisons",data.decision_comparisons,["comparison_status","compared_at"]),
+  coachWorkspaceSection("Coach reviews",data.coach_reviews,["action","status","reviewed_at"]),
+  coachWorkspaceSection("Recorded decisions",data.decisions,["decision_summary","status","recorded_at"]),
+  coachWorkspaceSection("Training plans",data.training_plans,["title","status"]),
+  coachWorkspaceSection("Training sessions",data.training_sessions,["title","status"]),
+  coachWorkspaceSection("Training / response / retest records",data.training_records,["feature_id","session_id","created_at"])
+ ].join("");
+}
+async function loadCoachDecisionWorkspace(athleteId){
+ const notice=document.getElementById("athleteDecisionWorkspaceNotice");
+ const content=document.getElementById("athleteDecisionWorkspaceContent");
+ if(!notice||!content)return;
+ notice.textContent="Loading persisted assessment, evidence, decision, and training records…";
+ content.innerHTML="";
+ try{
+  const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-workspace");
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  if(data.status==="INSUFFICIENT_EVIDENCE"||data.available===false){
+   notice.textContent=data.message||"Insufficient durable evidence. Workspace data is unavailable.";return;
+  }
+  if(data.status==="NO_RECORDED_CYCLE"){
+   notice.textContent=data.message||"No persisted decision-cycle records exist for this athlete.";return;
+  }
+  notice.textContent="Read-only workspace · persisted source records only · "+(data.missing_optional_tables||[]).length+" optional source table(s) unavailable.";
+  content.innerHTML=renderCoachDecisionWorkspace(data);
+ }catch(e){
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  notice.textContent="Decision workspace unavailable: "+String(e&&e.message?e.message:e);
+  content.textContent="No workspace data is displayed when authentication or authorization fails.";
+ }
+}
+
 async function loadCoachAthleteStatusHistory(athleteId){
  const target=document.getElementById("athleteStatusHistory");if(!target)return;
  try{const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/status-history");
