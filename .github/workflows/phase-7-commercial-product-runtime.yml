@@ -4,7 +4,7 @@ on:
   push:
     branches: [phase-7-commercial-product-runtime]
   pull_request:
-    branches: [main, feat/coach-roster-ui-integration, feat/coach-training-groups, feat/coach-athlete-lifecycle, feat/coach-athlete-decision-history, feat/coach-home-dashboard, feat/coach-today-priority-queue, feat/coach-athlete-workflow-navigation]
+    branches: [main, feat/coach-roster-ui-integration, feat/coach-training-groups, feat/coach-athlete-lifecycle, feat/coach-athlete-decision-history, feat/coach-home-dashboard, feat/coach-today-priority-queue, feat/coach-athlete-workflow-navigation, feat/coach-decision-cycle-workspace]
 
 jobs:
   product-runtime:
@@ -27,5 +27,8 @@ jobs:
       - name: Validate FEAT-008 Coach athlete workflow navigation
         if: ${{ hashFiles('frontend/test_feat_008_navigation_contract.py') != '' }}
         run: python -m pytest frontend/test_feat_008_navigation_contract.py -q
+      - name: Validate FEAT-009 Coach decision workspace
+        if: ${{ hashFiles('productization/test_coach_decision_workspace.py') != '' }}
+        run: python -m pytest productization/test_coach_decision_workspace.py frontend/test_feat_009_decision_workspace_contract.py -q
       - name: Validate commercial product runtime
         run: python -m pytest productization/test_product_surface.py productization/test_runtime_adapter.py productization/test_product_surface_contract.py productization/test_product_api.py productization/test_identity.py productization/test_product_api_security_regression.py productization/test_coach_roster_security.py productization/test_coach_groups_security.py productization/test_coach_athlete_lifecycle.py productization/test_coach_athlete_decision_history.py frontend/test_product_ui_contract.py -q
