@@ -119,7 +119,18 @@ def assign_existing_athlete(*, tenant_id: str, coach_actor_id: str,
         return {"athlete_id": athlete_id, "tenant_id": tenant_id,
                 "coach_actor_id": coach_actor_id, "assigned_at": now}
     if athlete_id not in _MEMORY_ATHLETES:
-        return None
+        # Resolve the active Core module without importing a duplicate module
+        # (which would create a separate in-memory athlete registry).
+        import sys
+        legacy = None
+        for loaded_module in tuple(sys.modules.values()):
+            records = getattr(loaded_module, "ATHLETE_RECORDS", None)
+            if isinstance(records, dict) and athlete_id in records:
+                legacy = records[athlete_id]
+                break
+        if legacy is None:
+            return None
+        _MEMORY_ATHLETES[athlete_id] = legacy
     if athlete_id in _MEMORY_OWNERSHIP:
         return {"conflict": True}
     ownership = {"athlete_id": athlete_id, "tenant_id": tenant_id,
