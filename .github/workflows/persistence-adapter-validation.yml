@@ -11,6 +11,7 @@ on:
     branches:
       - main
       - feat/coach-roster-ui-integration
+      - feat/coach-training-groups
 
 jobs:
   validate-persistence-adapter:
