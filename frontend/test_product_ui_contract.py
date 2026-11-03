@@ -72,7 +72,7 @@ def test_coach_home_dashboard_uses_verified_owned_summary_api():
     assert 'coachDashboardMetrics' in APP
     assert 'Recent recorded decisions' in APP
     assert 'id="coachPriorityQueue"' in APP
-    assert 'No synthetic tasks or urgency scores are shown.' in APP
+    assert 'no due dates or urgency scores are inferred' in APP
 
 
 def test_coach_priority_queue_uses_verified_evidence_and_fails_closed():
