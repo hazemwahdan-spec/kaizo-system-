@@ -90,7 +90,7 @@ def test_action_history_is_tenant_actor_and_owned_athlete_scoped_and_read_only()
     assert result["status"] == "ACTION_HISTORY_AVAILABLE"
     audit_items = [x for x in result["items"] if x["source"] == "TENANT_SCOPED_AUDIT"]
     state_items = [x for x in result["items"] if x["source"] == "FEAT-044_DECISION_STATE_LINK"]
-    assert {x["action"] for x in audit_items} == {"COACH_ATHLETE_STATUS_CHANGED", "COACH_DECISION_RECORDED"}
+    assert {x["action"] for x in audit_items} == {"COACH_ATHLETE_CREATED", "COACH_ATHLETE_STATUS_CHANGED", "COACH_DECISION_RECORDED"}
     assert all(x["actor_id"] == coach and x["actor_attribution_verified"] is True for x in audit_items)
     assert len(state_items) == 1
     assert state_items[0]["decision_id"] == decision
