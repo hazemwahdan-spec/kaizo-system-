@@ -50,3 +50,10 @@ def test_coach_roster_does_not_send_client_supplied_identity_scope():
 def test_coach_roster_does_not_use_legacy_global_athlete_list():
     assert 'productCall("/athletes")' not in APP
     assert 'productCall("/coach/athletes")' in APP
+
+def test_coach_training_groups_use_verified_scoped_api():
+    assert 'productCall("/coach/groups")' in APP
+    assert 'productCall("/coach/groups",{method:"POST"' in APP
+    assert 'productCall("/coach/groups/"+encodeURIComponent(groupId)+"/athletes"' in APP
+    assert 'method:"DELETE"' in APP
+    assert 'X-KAIZO-Actor' not in APP
