@@ -10,6 +10,7 @@ on:
   pull_request:
     branches:
       - main
+      - feat/coach-roster-ui-integration
 
 jobs:
   validate-persistence-adapter:
@@ -49,7 +50,7 @@ jobs:
       - name: Import application with PostgreSQL mode
         run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
       - name: Verify durable Coach athlete ownership and tenant audit
-        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_roster_postgres.py
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_roster_postgres.py ../productization/test_coach_groups_postgres.py
       - name: Verify OpenAPI and documentation endpoint contract
         run: PYTHONPATH=. python tests/test_openapi_contract.py
       - name: Run FEAT-001 athlete acceptance tests
