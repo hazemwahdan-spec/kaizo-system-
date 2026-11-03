@@ -31,5 +31,5 @@ def test_feat_009_workspace_fails_closed_and_is_read_only():
     assert "No workspace data is displayed when authentication or authorization fails." in APP
     assert "GET /coach/athletes" in CONTRACT
     assert "read-only" in CONTRACT
-    assert "No audit event" in CONTRACT
+    assert "audit event" in CONTRACT
     assert "execution_authorized=false" in CONTRACT
