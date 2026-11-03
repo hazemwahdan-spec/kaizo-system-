@@ -282,3 +282,77 @@ def list_owned_athlete_status_history(*, tenant_id: str, coach_actor_id: str,
              "changed_by":e["who"]} for e in history
              if e["athlete_id"]==athlete_id and e["tenant_id"]==tenant_id
              and e["who"]==coach_actor_id]
+
+
+# FEAT-005: derive Coach-visible decision history from existing persisted records.
+def list_owned_athlete_decision_cycles(*, tenant_id: str, coach_actor_id: str,
+                                       athlete_id: str) -> list[dict[str, Any]] | None:
+    """Return only decision records already persisted for an owned athlete.
+
+    No relationship is created or backfilled here. The athlete association is
+    taken from the original decision record and downstream workflow records.
+    """
+    if get_owned_athlete(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+                         athlete_id=athlete_id) is None:
+        return None
+
+    cycles: dict[str, dict[str, Any]] = {}
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""SELECT decision_id,candidate_id,diagnosis_id,problem_id,
+                                      athlete_id,assessment_id,candidate_type,coach_action,
+                                      coach_id,decision_summary,outcome_intent,status,recorded_at
+                               FROM kaizo_decision_records
+                               WHERE athlete_id=%s
+                               ORDER BY recorded_at,decision_id""", (athlete_id,))
+                decisions = cur.fetchall()
+                cur.execute("""SELECT record_id,feature_id,athlete_id,decision_id,session_id,
+                                      created_by,created_at
+                               FROM kaizo_training_workflow_records
+                               WHERE athlete_id=%s AND decision_id IS NOT NULL
+                               ORDER BY created_at,record_id""", (athlete_id,))
+                workflow = cur.fetchall()
+                cur.execute("""SELECT plan_id,athlete_id,decision_id,title,objective,status,created_at
+                               FROM kaizo_training_plans WHERE athlete_id=%s
+                               ORDER BY created_at,plan_id""", (athlete_id,))
+                plans = cur.fetchall()
+        for r in decisions:
+            cycles[r[0]] = {"decision_id":r[0],"candidate_id":r[1],"diagnosis_id":r[2],
+                "problem_id":r[3],"athlete_id":r[4],"assessment_id":r[5],
+                "candidate_type":r[6],"coach_action":r[7],"recorded_by":r[8],
+                "decision_summary":r[9],"outcome_intent":r[10],"status":r[11],
+                "recorded_at":r[12],"training_records":[],"training_plans":[]}
+        for r in workflow:
+            cycle=cycles.get(r[3])
+            if cycle is not None and r[2] == athlete_id:
+                cycle["training_records"].append({"record_id":r[0],"feature_id":r[1],
+                    "session_id":r[4],"created_by":r[5],"created_at":r[6]})
+        for r in plans:
+            cycle=cycles.get(r[2])
+            if cycle is not None and r[1] == athlete_id:
+                cycle["training_plans"].append({"plan_id":r[0],"title":r[3],
+                    "objective":r[4],"status":r[5],"created_at":r[6]})
+    else:
+        import importlib, sys
+        core = sys.modules.get("main") or importlib.import_module("main")
+        training = sys.modules.get("training_workflow")
+        decisions = getattr(core, "DECISION_RECORDS", {}).values()
+        workflow = getattr(training, "_MEMORY", {}).values() if training else ()
+        plans = getattr(core, "TRAINING_PLANS", {}).values()
+        for item in decisions:
+            if item.get("athlete_id") == athlete_id:
+                cycles[item["decision_id"]] = {**item,"training_records":[],"training_plans":[]}
+        for item in workflow:
+            cycle=cycles.get(item.get("decision_id"))
+            if cycle is not None and item.get("athlete_id") == athlete_id:
+                cycle["training_records"].append({"record_id":item.get("record_id"),
+                    "feature_id":item.get("feature_id"),"session_id":item.get("session_id"),
+                    "created_by":item.get("created_by"),"created_at":item.get("created_at")})
+        for item in plans:
+            cycle=cycles.get(item.get("decision_id"))
+            if cycle is not None and item.get("athlete_id") == athlete_id:
+                cycle["training_plans"].append({"plan_id":item.get("plan_id"),
+                    "title":item.get("title"),"objective":item.get("objective"),
+                    "status":item.get("status"),"created_at":item.get("created_at")})
+    return list(cycles.values())
