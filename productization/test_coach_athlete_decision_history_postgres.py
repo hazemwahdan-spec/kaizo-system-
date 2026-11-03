@@ -4,11 +4,11 @@ from pathlib import Path
 from uuid import uuid4
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/"backend"))
-import persistence
+import persistence, training_workflow
 from productization import coach_roster
 
 def test_postgres_decision_history_uses_existing_records_and_respects_owner_scope():
-    assert persistence.is_postgres_enabled();persistence.initialize()
+    assert persistence.is_postgres_enabled();persistence.initialize();training_workflow._ensure_schema()
     tenant="TENANT-"+uuid4().hex;coach="COACH-"+uuid4().hex
     athlete=coach_roster.create_owned_athlete(tenant_id=tenant,coach_actor_id=coach,display_name="FEAT-005 PG")
     aid=athlete["athlete_id"];decision="DEC-"+uuid4().hex;record="WF-"+uuid4().hex
