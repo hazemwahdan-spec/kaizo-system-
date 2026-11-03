@@ -5,7 +5,8 @@ from pydantic import BaseModel
 
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
-from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token\nfrom . import coach_roster
+from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
+from . import coach_roster
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
