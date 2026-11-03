@@ -111,8 +111,10 @@ async function loadCoachRoster(){
     const result=await productCall("/coach/athletes");
     coachRosterRecords=Array.isArray(result.athletes)?result.athletes:[];
     notice.textContent=coachRosterRecords.length+" athlete(s) assigned to this Coach. Search is limited to this verified roster.";
-    if(selectedCoachAthleteId&&!coachRosterRecords.some(a=>a.athlete_id===selectedCoachAthleteId))returnCoachRoster();
+    const selected=selectedCoachAthleteId;
+    if(selected&&!coachRosterRecords.some(a=>String(a.athlete_id)===selected)){returnCoachRoster();renderCoachRosterRows();return;}
     renderCoachRosterRows();
+    if(selected)await viewCoachAthlete(selected);
   }catch(e){
     coachRosterRecords=[];selectedCoachAthleteId=null;
     const panel=document.getElementById("coachAthleteLifecycle");if(panel)panel.innerHTML="";
@@ -172,8 +174,9 @@ async function changeCoachAthleteStatus(athleteId){
 async function loadCoachAthleteStatusHistory(athleteId){
  const target=document.getElementById("athleteStatusHistory");if(!target)return;
  try{const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/status-history");
+  if(selectedCoachAthleteId!==String(athleteId))return;
   target.innerHTML=(data.history||[]).length?data.history.map(h=>'<p><strong>'+escapeHtml(h.previous_status)+' → '+escapeHtml(h.new_status)+'</strong><br><small>'+escapeHtml(h.reason)+' · '+escapeHtml(h.changed_by)+'</small></p>').join(""):'<p class="muted">No status changes recorded.</p>';
- }catch(e){target.textContent="History unavailable: "+String(e&&e.message?e.message:e)}
+ }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;target.textContent="History unavailable: "+String(e&&e.message?e.message:e)}
 }
 
 async function loadCoachAthleteDecisionCycles(athleteId){
@@ -181,6 +184,7 @@ async function loadCoachAthleteDecisionCycles(athleteId){
   target.textContent="Loading persisted decision-cycle history…";
   try{
     const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-cycles");
+    if(selectedCoachAthleteId!==String(athleteId))return;
     const cycles=Array.isArray(data.cycles)?data.cycles:[];
     if(!cycles.length){target.innerHTML='<p class="muted">No persisted decision cycles are linked to this athlete yet. No historical records have been generated.</p>';return}
     target.innerHTML=cycles.map(c=>'<article class="history-item"><h4>'+escapeHtml(c.decision_summary||c.decision_id)+'</h4><p><strong>'+escapeHtml(c.status||"RECORDED")+'</strong> · '+escapeHtml(c.recorded_at||"")+'</p><p>'+escapeHtml(c.outcome_intent||"")+'</p><p class="muted">Decision: '+escapeHtml(c.decision_id)+' · Coach action: '+escapeHtml(c.coach_action||"")+'</p>'+
@@ -188,7 +192,7 @@ async function loadCoachAthleteDecisionCycles(athleteId){
       ((c.training_records||[]).length?(c.training_records||[]).map(r=>'<p class="muted">'+escapeHtml(r.feature_id||"")+' · '+escapeHtml(r.session_id||r.record_id||"")+' · '+escapeHtml(r.created_at||"")+'</p>').join(""):'<p class="muted">No linked training workflow records.</p>')+
       '<p><strong>Training plans ('+(c.training_plans||[]).length+')</strong></p>'+
       ((c.training_plans||[]).length?(c.training_plans||[]).map(p=>'<p class="muted">'+escapeHtml(p.title||p.plan_id)+' · '+escapeHtml(p.status||"")+'</p>').join(""):'<p class="muted">No linked training plans.</p>')+'</article>').join("");
-  }catch(e){target.textContent="Decision history unavailable: "+String(e&&e.message?e.message:e)}
+  }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;target.textContent="Decision history unavailable: "+String(e&&e.message?e.message:e)}
 }
 \nfunction coachGo(id){const target=document.getElementById(id);if(target){target.scrollIntoView({behavior:"smooth",block:"start"});target.setAttribute("tabindex","-1");target.focus({preventScroll:true})}}
 function coachDashboard(){return `
