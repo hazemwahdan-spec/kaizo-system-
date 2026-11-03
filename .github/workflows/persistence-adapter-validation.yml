@@ -12,6 +12,7 @@ on:
       - main
       - feat/coach-roster-ui-integration
       - feat/coach-training-groups
+      - feat/coach-athlete-lifecycle
 
 jobs:
   validate-persistence-adapter:
