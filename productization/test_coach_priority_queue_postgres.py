@@ -47,6 +47,8 @@ def test_postgres_queue_uses_only_owned_workflow_evidence_and_does_not_write():
                     ON CONFLICT (record_id) DO NOTHING""",row)
             cur.execute("SELECT COUNT(*) FROM kaizo_training_workflow_records WHERE record_id IN ('OWN-RESP','OWN-TRIGGER')")
             before=cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM kaizo_audit_logs")
+            audit_before=cur.fetchone()[0]
     result=coach_priority_queue.get_coach_priority_queue(tenant_id=tenant,coach_actor_id=coach)
     assert result["available"] is True
     assert result["item_count"]==2
@@ -58,4 +60,7 @@ def test_postgres_queue_uses_only_owned_workflow_evidence_and_does_not_write():
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM kaizo_training_workflow_records WHERE record_id IN ('OWN-RESP','OWN-TRIGGER')")
             after=cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM kaizo_audit_logs")
+            audit_after=cur.fetchone()[0]
     assert before==after
+    assert audit_before==audit_after
