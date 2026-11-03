@@ -98,10 +98,6 @@ def build_priority_items(athletes: list[dict[str, Any]],
 
 def get_coach_priority_queue(*, tenant_id: str, coach_actor_id: str) -> dict[str, Any]:
     """Read only workflow records attached to this verified Coach's owned athletes."""
-    athletes = []
-    # Import locally to avoid coupling the ownership module to queue construction.
-    from productization.coach_roster import list_owned_athletes
-    athletes = list_owned_athletes(tenant_id=tenant_id, coach_actor_id=coach_actor_id)
     base = {
         "source_scope": "verified_coach_tenant_owned_records",
         "coach_final_authority": True,
@@ -118,17 +114,32 @@ def get_coach_priority_queue(*, tenant_id: str, coach_actor_id: str) -> dict[str
                     "The current memory adapter does not expose durable FEAT-036/037/040 "
                     "workflow records; no queue items are inferred."
                 )}
-    if not athletes:
-        return {**base, "available": True, "status": "NO_CURRENT_ITEMS", "items": []}
-    athlete_ids = [a["athlete_id"] for a in athletes]
     with persistence.connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT to_regclass('public.kaizo_training_workflow_records')")
-            if cur.fetchone()[0] is None:
+            cur.execute("""
+                SELECT to_regclass('public.kaizo_coach_athlete_ownership'),
+                       to_regclass('public.kaizo_athletes'),
+                       to_regclass('public.kaizo_training_workflow_records')
+            """)
+            ownership_table, athlete_table, workflow_table = cur.fetchone()
+            if not ownership_table or not athlete_table or not workflow_table:
                 return {**base, "available": False, "status": "INSUFFICIENT_EVIDENCE",
                         "items": [], "message": (
-                            "No persisted training-workflow evidence table is available."
+                            "Required persisted Coach ownership or workflow evidence "
+                            "tables are unavailable."
                         )}
+            cur.execute("""
+                SELECT a.athlete_id, a.display_name
+                FROM kaizo_athletes a
+                JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=a.athlete_id
+                WHERE o.tenant_id=%s AND o.coach_actor_id=%s
+            """, (tenant_id, coach_actor_id))
+            athletes = [{"athlete_id": row[0], "display_name": row[1]}
+                        for row in cur.fetchall()]
+            if not athletes:
+                return {**base, "available": True, "status": "NO_REVIEW_SIGNALS",
+                        "items": [], "item_count": 0}
+            athlete_ids = [a["athlete_id"] for a in athletes]
             cur.execute("""
                 SELECT record_id, feature_id, athlete_id, decision_id, session_id,
                        payload, created_by, created_at
@@ -146,5 +157,4 @@ def get_coach_priority_queue(*, tenant_id: str, coach_actor_id: str) -> dict[str
     items = build_priority_items(athletes, records)
     return {**base, "available": True,
             "status": "REVIEW_SIGNALS_AVAILABLE" if items else "NO_REVIEW_SIGNALS",
-            "items": items,
-            "item_count": len(items)}
+            "items": items, "item_count": len(items)}
