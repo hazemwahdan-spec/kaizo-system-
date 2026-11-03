@@ -86,7 +86,7 @@ def build_priority_items(athletes: list[dict[str, Any]],
             "decision_id": record.get("decision_id"),
             "session_id": record.get("session_id"),
             "recorded_at": record.get("created_at"),
-            "review_state": "REVIEW_REQUIRED",
+            "review_state": "STATUS_NOT_TRACKED",
             "priority_rank": None,
             "due_at": None,
         })
@@ -107,6 +107,9 @@ def get_coach_priority_queue(*, tenant_id: str, coach_actor_id: str) -> dict[str
         "coach_final_authority": True,
         "execution_authorized": False,
         "ranking_policy": "UNRANKED_NO_DEADLINE_OR_URGENCY_EVIDENCE",
+        "queue_semantics": "REVIEW_SIGNALS_NOT_OPEN_TASKS",
+        "review_status_policy": "Source records do not track acknowledgement or closure.",
+        "time_window": "ALL_AVAILABLE_PERSISTED_RECORDS_NO_CALENDAR_DATE_FILTER",
         "due_date_policy": "No due dates are inferred.",
     }
     if not persistence.is_postgres_enabled():
@@ -142,6 +145,6 @@ def get_coach_priority_queue(*, tenant_id: str, coach_actor_id: str) -> dict[str
     } for r in rows]
     items = build_priority_items(athletes, records)
     return {**base, "available": True,
-            "status": "CURRENT_REVIEW_SIGNALS" if items else "NO_CURRENT_ITEMS",
+            "status": "REVIEW_SIGNALS_AVAILABLE" if items else "NO_REVIEW_SIGNALS",
             "items": items,
             "item_count": len(items)}
