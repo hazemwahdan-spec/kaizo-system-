@@ -30,6 +30,7 @@ def seed_existing_cycle(athlete_id):
         "recorded_at":"2026-10-20T10:00:00"}
 
 def test_owner_reads_only_existing_decision_and_training_records(monkeypatch):
+    monkeypatch.setenv("KAIZO_PERSISTENCE_MODE","memory")
     monkeypatch.setenv("KAIZO_IDENTITY_MODE","development");c=TestClient(app);aid=create(c)
     seed_existing_cycle(aid)
     result=c.get(f"/api/v1/product/coach/athletes/{aid}/decision-cycles",headers=headers())
