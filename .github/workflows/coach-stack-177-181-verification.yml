@@ -53,9 +53,12 @@ jobs:
       - name: Verify decision history ownership and PostgreSQL durability
         run: |
           pytest -q productization/test_coach_athlete_decision_history.py productization/test_coach_athlete_decision_history_postgres.py
-      - name: Verify Coach dashboard and PostgreSQL tenant isolation
+      - name: Verify Coach dashboard memory isolation
         run: |
-          pytest -q productization/test_coach_home_dashboard.py productization/test_coach_home_dashboard_postgres.py
+          KAIZO_PERSISTENCE_MODE=memory pytest -q productization/test_coach_home_dashboard.py
+      - name: Verify Coach dashboard PostgreSQL tenant isolation
+        run: |
+          pytest -q productization/test_coach_home_dashboard_postgres.py
       - name: Verify priority queue API, evidence scope, and PostgreSQL durability
         run: |
           pytest -q productization/test_coach_priority_queue.py productization/test_coach_priority_queue_api.py productization/test_coach_priority_queue_postgres.py
