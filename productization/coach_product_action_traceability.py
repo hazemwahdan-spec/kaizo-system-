@@ -16,31 +16,6 @@ import persistence
 from productization import coach_action_history, coach_roster
 
 
-def _ensure_schema() -> None:
-    if not persistence.is_postgres_enabled():
-        return
-    with persistence.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS kaizo_coach_product_action_traces (
-                    trace_id TEXT PRIMARY KEY,
-                    tenant_id TEXT NOT NULL,
-                    coach_actor_id TEXT NOT NULL,
-                    athlete_id TEXT NOT NULL,
-                    product_action TEXT NOT NULL,
-                    source_record_ids JSONB NOT NULL,
-                    trace_reason TEXT NOT NULL,
-                    traced_at TEXT NOT NULL
-                )
-            """)
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_coach_product_trace_scope
-                ON kaizo_coach_product_action_traces
-                    (tenant_id, coach_actor_id, athlete_id, traced_at DESC)
-            """)
-        conn.commit()
-
-
 def create_coach_product_action_trace(
     *, tenant_id: str, coach_actor_id: str, athlete_id: str,
     product_action: str, source_record_ids: list[str], trace_reason: str,
@@ -99,7 +74,6 @@ def create_coach_product_action_trace(
         "created": True, "source_scope_verified": True,
         "coach_final_authority": True, "execution_authorized": False,
     }
-    _ensure_schema()
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
