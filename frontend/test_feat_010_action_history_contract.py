@@ -36,7 +36,7 @@ def test_feat_010_history_is_read_only_and_fails_closed():
 
 
 def test_feat_010_navigation_handlers_keep_valid_single_quote_escaping():
-    assert 'onclick="coachAthleteSection(\\'athleteDecisionWorkspaceSection\\')"' in APP
-    assert 'onclick="coachAthleteSection(\\'athleteActionHistorySection\\')"' in APP
-    assert 'onclick="coachAthleteSection(\\\\'athleteDecisionWorkspaceSection\\\\')"' not in APP
-    assert 'onclick="coachAthleteSection(\\\\'athleteActionHistorySection\\\\')"' not in APP
+    assert r"""onclick="coachAthleteSection(\'athleteDecisionWorkspaceSection\')""" in APP
+    assert r"""onclick="coachAthleteSection(\'athleteActionHistorySection\')""" in APP
+    assert r"""onclick="coachAthleteSection(\\'athleteDecisionWorkspaceSection\\')""" not in APP
+    assert r"""onclick="coachAthleteSection(\\'athleteActionHistorySection\\')""" not in APP
