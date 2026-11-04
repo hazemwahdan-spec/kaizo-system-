@@ -55,8 +55,9 @@ async function viewCoachAthlete(athleteId){
     const next={ACTIVE:["INACTIVE","SUSPENDED","ARCHIVED"],INACTIVE:["ACTIVE","ARCHIVED"],SUSPENDED:["ACTIVE","INACTIVE","ARCHIVED"],ARCHIVED:[]}[String(result.status||"").toUpperCase()]||[];
     panel.innerHTML='<h3>Athlete lifecycle</h3><p>Current status: <strong>'+escapeHtml(result.status)+'</strong></p>'+
       (next.length?'<label for="athleteNextStatus">Change status</label><select id="athleteNextStatus">'+next.map(s=>'<option value="'+s+'">'+s+'</option>').join("")+'</select><label for="athleteStatusReason">Reason (required)</label><input id="athleteStatusReason" maxlength="500" required placeholder="Record why this status changes"><button type="button" onclick="changeCoachAthleteStatus(\''+escapeHtml(athleteId)+'\')">Save lifecycle change</button>':'<p class="muted">Archived is terminal. No further status transition is permitted.</p>')+
-      '<h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div>';
+      '<h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div>';
     loadCoachAthleteStatusHistory(athleteId);
+    loadCoachAthleteDecisionCycles(athleteId);
   }catch(e){detail.textContent="Athlete details unavailable: "+String(e&&e.message?e.message:e);panel.textContent="Lifecycle controls are unavailable outside the verified Coach scope."}
 }
 async function changeCoachAthleteStatus(athleteId){
@@ -70,6 +71,21 @@ async function loadCoachAthleteStatusHistory(athleteId){
  try{const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/status-history");
   target.innerHTML=(data.history||[]).length?data.history.map(h=>'<p><strong>'+escapeHtml(h.previous_status)+' → '+escapeHtml(h.new_status)+'</strong><br><small>'+escapeHtml(h.reason)+' · '+escapeHtml(h.changed_by)+'</small></p>').join(""):'<p class="muted">No status changes recorded.</p>';
  }catch(e){target.textContent="History unavailable: "+String(e&&e.message?e.message:e)}
+}
+
+async function loadCoachAthleteDecisionCycles(athleteId){
+  const target=document.getElementById("athleteDecisionCycles");if(!target)return;
+  target.textContent="Loading persisted decision-cycle history…";
+  try{
+    const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-cycles");
+    const cycles=Array.isArray(data.cycles)?data.cycles:[];
+    if(!cycles.length){target.innerHTML='<p class="muted">No persisted decision cycles are linked to this athlete yet. No historical records have been generated.</p>';return}
+    target.innerHTML=cycles.map(c=>'<article class="history-item"><h4>'+escapeHtml(c.decision_summary||c.decision_id)+'</h4><p><strong>'+escapeHtml(c.status||"RECORDED")+'</strong> · '+escapeHtml(c.recorded_at||"")+'</p><p>'+escapeHtml(c.outcome_intent||"")+'</p><p class="muted">Decision: '+escapeHtml(c.decision_id)+' · Coach action: '+escapeHtml(c.coach_action||"")+'</p>'+
+      '<p><strong>Training records ('+(c.training_records||[]).length+')</strong></p>'+
+      ((c.training_records||[]).length?(c.training_records||[]).map(r=>'<p class="muted">'+escapeHtml(r.feature_id||"")+' · '+escapeHtml(r.session_id||r.record_id||"")+' · '+escapeHtml(r.created_at||"")+'</p>').join(""):'<p class="muted">No linked training workflow records.</p>')+
+      '<p><strong>Training plans ('+(c.training_plans||[]).length+')</strong></p>'+
+      ((c.training_plans||[]).length?(c.training_plans||[]).map(p=>'<p class="muted">'+escapeHtml(p.title||p.plan_id)+' · '+escapeHtml(p.status||"")+'</p>').join(""):'<p class="muted">No linked training plans.</p>')+'</article>').join("");
+  }catch(e){target.textContent="Decision history unavailable: "+String(e&&e.message?e.message:e)}
 }
 \nfunction coachGo(id){const target=document.getElementById(id);if(target){target.scrollIntoView({behavior:"smooth",block:"start"});target.setAttribute("tabindex","-1");target.focus({preventScroll:true})}}
 function coachDashboard(){return `
