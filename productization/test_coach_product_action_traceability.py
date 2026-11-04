@@ -36,7 +36,6 @@ def test_trace_rejects_source_record_not_in_owned_coach_history(monkeypatch):
         "available": True, "items": [{"source_record_id": "owned-1"}]
     })
     monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: True)
-    monkeypatch.setattr(coach_product_action_traceability, "_ensure_schema", lambda: None)
     class Cursor:
         def execute(self, *args): pass
     class Connection:
@@ -114,7 +113,6 @@ def test_list_traces_never_initializes_schema_or_writes(monkeypatch):
     monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: True)
     def forbidden_schema_write():
         raise AssertionError("GET must not initialize or modify schema")
-    monkeypatch.setattr(coach_product_action_traceability, "_ensure_schema", forbidden_schema_write)
     class Cursor:
         def __init__(self): self.calls = 0
         def __enter__(self): return self
