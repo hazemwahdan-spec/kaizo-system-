@@ -36,7 +36,8 @@ def review_coach_audit(
         needle = term.casefold()
         results = [
             item for item in history.get("items", [])
-            if needle in " ".join(str(item.get(key) or "") for key in (
+            if item.get("actor_attribution_verified") is True
+            and needle in " ".join(str(item.get(key) or "") for key in (
                 "source", "source_record_id", "occurred_at", "actor_id",
                 "action", "reason", "decision_id", "state_version", "state_ref"
             )).casefold()
