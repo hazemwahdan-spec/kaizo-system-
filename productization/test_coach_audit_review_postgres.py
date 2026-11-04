@@ -8,12 +8,14 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
 
 import persistence
+import state_cycle
 from productization import coach_roster, coach_audit_review
 
 
 def test_review_search_is_limited_to_verified_coach_owned_athlete():
     assert persistence.is_postgres_enabled()
     persistence.initialize()
+    state_cycle._ensure_schema()
     tenant = "TENANT-" + uuid4().hex
     coach = "COACH-" + uuid4().hex
     athlete = coach_roster.create_owned_athlete(
