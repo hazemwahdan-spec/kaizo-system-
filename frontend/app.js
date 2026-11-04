@@ -26,9 +26,32 @@ async function kaizoLogin(){try{if(window.KAIZO_AUTH_READY)await window.KAIZO_AU
 async function productAccessToken(){if(window.KAIZO_AUTH_READY)await window.KAIZO_AUTH_READY;const auth=window.KAIZO_AUTH;if(!auth||typeof auth.getAccessTokenSilently!=="function")throw new Error(window.KAIZO_AUTH_INIT_ERROR||"AUTHENTICATION_REQUIRED: verified Auth0 SPA session is not initialized. Role selection and X-KAIZO headers are not credentials.");const token=await auth.getAccessTokenSilently();if(!token)throw new Error("AUTHENTICATION_REQUIRED: no verified access token was issued.");return token}
 function actorForRole(role){return ({coach:"coach-demo",academy:"academy-demo",athlete:"ATH-001",parent:"parent-demo"})[role]}
 function ownerForRole(role){return role==="athlete"?"ATH-001":role==="parent"?"ATH-001":role==="coach"?"ATH-001":""}
-async function renderProductRole(){ const role=roleSelect.value; document.getElementById("roleCaption").textContent="Commercial Product Surface · "+role+" · execution authorization disabled"; const workspace=document.getElementById("coachWorkspace"); workspace.style.display=role==="coach"?"grid":"none"; try{const nav=await productCall("/navigation"); document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"chips\">"+nav.surfaces.map(x=>"<span class=\"chip\">"+x+"</span>").join("")+"</div><div class=\"governance\">Coach Final Authority: <b>"+nav.coach_final_authority+"</b> · Execution Authorized: <b>"+nav.execution_authorized+"</b></div>"; if(role==="coach"){document.getElementById("roleView").innerHTML=coachDashboard();await loadCoachRoster();await loadCoachGroups()} else if(role==="athlete"){const p=await productCall("/athletes/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>My Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else if(role==="parent"){const p=await productCall("/parents/linked/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>Linked Athlete Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else {document.getElementById("roleView").innerHTML="<h3>Academy Dashboard</h3><p class=\"muted\">Academy surfaces are tenant-scoped. Group/coach management remains server-authorized.</p>"}}catch(e){const message=String(e&&e.message?e.message:e);document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"notice\">API request failed. Diagnostic details are shown below.</div>";document.getElementById("roleView").innerHTML="<h3>KAIZO request diagnostic</h3><p class=\"notice\">"+escapeHtml(message)+"</p><p class=\"muted\">A frontend/API error is not an authorization decision. Verify the Core response and server-side authorization before closing this issue.</p>"}}
+async function renderProductRole(){ const role=roleSelect.value; document.getElementById("roleCaption").textContent="Commercial Product Surface · "+role+" · execution authorization disabled"; const workspace=document.getElementById("coachWorkspace"); workspace.style.display=role==="coach"?"grid":"none"; try{const nav=await productCall("/navigation"); document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"chips\">"+nav.surfaces.map(x=>"<span class=\"chip\">"+x+"</span>").join("")+"</div><div class=\"governance\">Coach Final Authority: <b>"+nav.coach_final_authority+"</b> · Execution Authorized: <b>"+nav.execution_authorized+"</b></div>"; if(role==="coach"){document.getElementById("roleView").innerHTML=coachDashboard();await loadCoachDashboard();await loadCoachRoster();await loadCoachGroups()} else if(role==="athlete"){const p=await productCall("/athletes/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>My Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else if(role==="parent"){const p=await productCall("/parents/linked/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>Linked Athlete Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else {document.getElementById("roleView").innerHTML="<h3>Academy Dashboard</h3><p class=\"muted\">Academy surfaces are tenant-scoped. Group/coach management remains server-authorized.</p>"}}catch(e){const message=String(e&&e.message?e.message:e);document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"notice\">API request failed. Diagnostic details are shown below.</div>";document.getElementById("roleView").innerHTML="<h3>KAIZO request diagnostic</h3><p class=\"notice\">"+escapeHtml(message)+"</p><p class=\"muted\">A frontend/API error is not an authorization decision. Verify the Core response and server-side authorization before closing this issue.</p>"}}
 renderProductRole();
 
+
+async function loadCoachDashboard(){
+ const notice=document.getElementById("coachDashboardNotice"),metrics=document.getElementById("coachDashboardMetrics"),recent=document.getElementById("coachDashboardRecent");
+ if(!notice||!metrics||!recent)return;
+ notice.textContent="Loading verified Coach summary…";metrics.innerHTML="";recent.textContent="";
+ try{
+  const data=await productCall("/coach/dashboard"),counts=data.athlete_status_counts||{};
+  const cards=[
+   ["My athletes",data.athlete_total],
+   ["Active",counts.ACTIVE||0],
+   ["Inactive",counts.INACTIVE||0],
+   ["Suspended",counts.SUSPENDED||0],
+   ["Archived",counts.ARCHIVED||0],
+   ["Training groups",data.training_group_total],
+   ["Group memberships",data.group_membership_total],
+   ["Recorded decision cycles",data.decision_cycle_total]
+  ];
+  metrics.innerHTML=cards.map(([label,value])=>'<article class="coach-metric"><span class="muted">'+escapeHtml(label)+'</span><strong>'+escapeHtml(value)+'</strong></article>').join("");
+  const items=Array.isArray(data.recent_decisions)?data.recent_decisions:[];
+  recent.innerHTML=items.length?items.map(d=>'<article class="coach-metric" style="margin:8px 0"><strong>'+escapeHtml(d.summary||d.decision_id||"Recorded decision")+'</strong><p>'+escapeHtml(d.athlete_name||d.athlete_id||"")+' · '+escapeHtml(d.status||"")+'</p><small>'+escapeHtml(d.recorded_at||"")+' · '+escapeHtml(d.coach_action||"")+'</small></article>').join(""):'<p class="muted">No decision records are currently linked to athletes in your Coach scope.</p>';
+  notice.textContent="Verified summary loaded from owned roster, groups and recorded decisions. No live priority queue is included.";
+ }catch(e){notice.textContent="Dashboard summary unavailable: "+String(e&&e.message?e.message:e);metrics.innerHTML="";recent.textContent="No summary data is displayed when authentication or authorization fails."}
+}
 
 async function loadCoachRoster(){
   const notice=document.getElementById("coachRosterNotice"),list=document.getElementById("coachRosterList"),detail=document.getElementById("coachAthleteDetail");
@@ -91,8 +114,14 @@ async function loadCoachAthleteDecisionCycles(athleteId){
 function coachDashboard(){return `
 <div class="coach-dashboard">
   <div class="coach-dashboard-head"><div><h2>Coach Home</h2><p class="muted">Decision support and workflow navigation. Coach retains final authority; execution remains disabled unless Core authorizes it.</p></div><span class="coach-state">CORE-GOVERNED</span></div>
+  <section class="coach-dashboard-summary" aria-live="polite">
+    <div class="coach-roster-head"><div><h3>Verified coaching overview</h3><p class="muted">Counts are calculated from records owned by your authenticated Coach account and tenant.</p></div><button class="secondary" type="button" onclick="loadCoachDashboard()">Refresh overview</button></div>
+    <div id="coachDashboardNotice" class="notice" role="status">Loading verified Coach summary…</div>
+    <div id="coachDashboardMetrics" class="coach-metrics"></div>
+    <h4>Recent recorded decisions</h4><div id="coachDashboardRecent"></div>
+  </section>
   <div class="coach-metrics">
-    <article class="coach-metric"><span class="muted">Priority queue</span><strong>Not connected</strong><small>No verified live queue endpoint is currently wired into this interface.</small></article>
+    <article class="coach-metric"><span class="muted">Today / priority queue</span><strong>Not connected</strong><small>Reserved for FEAT-007. No synthetic tasks or urgency scores are shown.</small></article>
     <article class="coach-metric"><span class="muted">Decision cycle</span><strong>Ready to enter</strong><small>Evaluate → adapt → intervene → retest.</small></article>
     <article class="coach-metric"><span class="muted">Audit review</span><strong>Authorization required</strong><small>Audit requests must be verified by Core; failures are shown, not hidden.</small></article>
   </div>

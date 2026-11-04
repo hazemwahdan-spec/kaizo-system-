@@ -64,3 +64,12 @@ def test_coach_athlete_decision_history_uses_scoped_read_only_api():
     assert 'loadCoachAthleteDecisionCycles(athleteId)' in APP
     assert 'No historical records have been generated.' in APP
     assert 'athleteDecisionCycles' in APP
+
+
+def test_coach_home_dashboard_uses_verified_owned_summary_api():
+    assert 'productCall("/coach/dashboard")' in APP
+    assert 'loadCoachDashboard()' in APP
+    assert 'coachDashboardMetrics' in APP
+    assert 'Recent recorded decisions' in APP
+    assert 'Reserved for FEAT-007' in APP
+    assert 'No synthetic tasks or urgency scores are shown.' in APP
