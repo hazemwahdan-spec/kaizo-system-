@@ -117,6 +117,8 @@ def test_list_traces_never_initializes_schema_or_writes(monkeypatch):
     monkeypatch.setattr(coach_product_action_traceability, "_ensure_schema", forbidden_schema_write)
     class Cursor:
         def __init__(self): self.calls = 0
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
         def execute(self, query, *args):
             self.calls += 1
             assert query.lstrip().upper().startswith("SELECT")
