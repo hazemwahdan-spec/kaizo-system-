@@ -106,3 +106,31 @@ def test_trace_api_does_not_trust_caller_supplied_traced_by(monkeypatch):
     )
     assert response.status_code == 503
     assert response.json()["detail"]["status"] == "INSUFFICIENT_EVIDENCE"
+
+
+def test_list_traces_never_initializes_schema_or_writes(monkeypatch):
+    athlete = owned_athlete()
+    monkeypatch.setattr(coach_roster, "get_owned_athlete", lambda **kwargs: athlete)
+    monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: True)
+    def forbidden_schema_write():
+        raise AssertionError("GET must not initialize or modify schema")
+    monkeypatch.setattr(coach_product_action_traceability, "_ensure_schema", forbidden_schema_write)
+    class Cursor:
+        def __init__(self): self.calls = 0
+        def execute(self, query, *args):
+            self.calls += 1
+            assert query.lstrip().upper().startswith("SELECT")
+        def fetchone(self): return ("kaizo_coach_product_action_traces",)
+        def fetchall(self): return []
+    class Connection:
+        def __init__(self): self.cur = Cursor()
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def cursor(self): return self.cur
+    conn = Connection()
+    monkeypatch.setattr(persistence, "connection", lambda: conn)
+    result = coach_product_action_traceability.list_coach_product_action_traces(
+        tenant_id="TENANT-A", coach_actor_id="coach-A", athlete_id=athlete["athlete_id"]
+    )
+    assert result["status"] == "NO_TRACES"
+    assert conn.cur.calls == 2
