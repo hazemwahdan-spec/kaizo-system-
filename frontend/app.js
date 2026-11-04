@@ -30,6 +30,21 @@ async function renderProductRole(){ const role=roleSelect.value; document.getEle
 renderProductRole();
 
 
+async function loadCoachPriorityQueue(){
+ const notice=document.getElementById("coachPriorityQueueNotice"),items=document.getElementById("coachPriorityQueueItems");
+ if(!notice||!items)return;
+ notice.textContent="Loading current evidence-backed review signals…";items.innerHTML="";
+ try{
+  const data=await productCall("/coach/priority-queue"),rows=Array.isArray(data.items)?data.items:[];
+  if(data.status==="INSUFFICIENT_EVIDENCE"||data.available===false){
+   notice.textContent=data.message||"Insufficient persisted evidence. No priority items are inferred.";return;
+  }
+  if(!rows.length){notice.textContent="No current review signals were found in the available workflow records.";return;}
+  notice.textContent=rows.length+" evidence-backed review signal(s), not tracked open tasks. Unranked; no calendar-day filter, deadline, or urgency evidence.";
+  items.innerHTML=rows.map(item=>'<article class="coach-metric" style="margin:8px 0"><strong>'+escapeHtml(item.title||"Coach review")+'</strong><p>'+escapeHtml(item.athlete_name||item.athlete_id||"")+' · '+escapeHtml(item.item_type||"")+'</p><p>'+escapeHtml(item.reason||"")+'</p><p class="muted">Source: '+escapeHtml(item.source_feature||"")+' / '+escapeHtml(item.source_record_id||"")+' · '+escapeHtml(item.recorded_at||"")+'</p><p class="muted">Evidence: '+escapeHtml((item.evidence_refs||[]).join(", ")||"Source record only")+'</p><p>'+escapeHtml(item.suggested_next_action||"Coach review required.")+'</p><small>Unranked · review status not tracked · Coach judgment required</small></article>').join("");
+ }catch(e){notice.textContent="Priority queue unavailable: "+String(e&&e.message?e.message:e);items.textContent="No queue data is displayed when authentication or authorization fails."}
+}
+
 async function loadCoachDashboard(){
  const notice=document.getElementById("coachDashboardNotice"),metrics=document.getElementById("coachDashboardMetrics"),recent=document.getElementById("coachDashboardRecent");
  if(!notice||!metrics||!recent)return;
@@ -49,7 +64,8 @@ async function loadCoachDashboard(){
   metrics.innerHTML=cards.map(([label,value])=>'<article class="coach-metric"><span class="muted">'+escapeHtml(label)+'</span><strong>'+escapeHtml(value)+'</strong></article>').join("");
   const items=Array.isArray(data.recent_decisions)?data.recent_decisions:[];
   recent.innerHTML=items.length?items.map(d=>'<article class="coach-metric" style="margin:8px 0"><strong>'+escapeHtml(d.summary||d.decision_id||"Recorded decision")+'</strong><p>'+escapeHtml(d.athlete_name||d.athlete_id||"")+' · '+escapeHtml(d.status||"")+'</p><small>'+escapeHtml(d.recorded_at||"")+' · '+escapeHtml(d.coach_action||"")+'</small></article>').join(""):'<p class="muted">No decision records are currently linked to athletes in your Coach scope.</p>';
-  notice.textContent="Verified summary loaded from owned roster, groups and recorded decisions. No live priority queue is included.";
+  notice.textContent="Verified summary loaded from owned roster, groups and recorded decisions.";
+  await loadCoachPriorityQueue();
  }catch(e){notice.textContent="Dashboard summary unavailable: "+String(e&&e.message?e.message:e);metrics.innerHTML="";recent.textContent="No summary data is displayed when authentication or authorization fails."}
 }
 
@@ -120,8 +136,12 @@ function coachDashboard(){return `
     <div id="coachDashboardMetrics" class="coach-metrics"></div>
     <h4>Recent recorded decisions</h4><div id="coachDashboardRecent"></div>
   </section>
+  <section id="coachPriorityQueue" class="coach-dashboard-summary" aria-live="polite">
+    <div class="coach-roster-head"><div><h3>Current review signals</h3><p class="muted">Only explicit workflow evidence is shown. This is not a tracked open-task list or calendar-day filter; items are unranked and have no inferred deadlines.</p></div><button class="secondary" type="button" onclick="loadCoachPriorityQueue()">Refresh queue</button></div>
+    <div id="coachPriorityQueueNotice" class="notice" role="status">Loading current review signals…</div>
+    <div id="coachPriorityQueueItems"></div>
+  </section>
   <div class="coach-metrics">
-    <article class="coach-metric"><span class="muted">Today / priority queue</span><strong>Not connected</strong><small>Reserved for FEAT-007. No synthetic tasks or urgency scores are shown.</small></article>
     <article class="coach-metric"><span class="muted">Decision cycle</span><strong>Ready to enter</strong><small>Evaluate → adapt → intervene → retest.</small></article>
     <article class="coach-metric"><span class="muted">Audit review</span><strong>Authorization required</strong><small>Audit requests must be verified by Core; failures are shown, not hidden.</small></article>
   </div>

@@ -16,6 +16,7 @@ on:
       - feat/coach-athlete-decision-history
       - feat/coach-home-dashboard
       - feat/coach-today-priority-queue
+      - feat/coach-athlete-workflow-navigation
 
 jobs:
   validate-persistence-adapter:
