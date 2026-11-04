@@ -4,7 +4,7 @@ on:
   push:
     branches: [phase-7-commercial-product-runtime]
   pull_request:
-    branches: [main, feat/coach-roster-ui-integration]
+    branches: [main, feat/coach-roster-ui-integration, feat/coach-training-groups]
 
 jobs:
   product-runtime:

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster
+from . import coach_roster, coach_groups
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -229,3 +229,77 @@ def get_coach_athlete(
     return {**athlete, "coach_final_authority": True, "execution_authorized": False}
 
 
+
+
+# FEAT-003: training groups remain inside the verified Coach + tenant boundary.
+class CoachGroupCreateRequest(BaseModel):
+    name: str
+
+class CoachGroupAthleteRequest(BaseModel):
+    athlete_id: str
+
+@router.post("/coach/groups", status_code=201)
+def create_coach_group(
+    req: CoachGroupCreateRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    try:
+        group = coach_groups.create_group(tenant_id=principal.tenant_id,
+                                          coach_actor_id=principal.actor_id,
+                                          name=req.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {**group, "coach_final_authority": True, "execution_authorized": False}
+
+@router.get("/coach/groups")
+def list_coach_groups(
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    groups = coach_groups.list_groups(tenant_id=principal.tenant_id,
+                                      coach_actor_id=principal.actor_id)
+    return {"total": len(groups), "groups": groups,
+            "coach_final_authority": True, "execution_authorized": False}
+
+@router.post("/coach/groups/{group_id}/athletes")
+def assign_coach_group_athlete(
+    group_id: str, req: CoachGroupAthleteRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    allowed = coach_groups.assign_athlete(tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id, group_id=group_id, athlete_id=req.athlete_id)
+    if not allowed:
+        raise HTTPException(status_code=404, detail="group or athlete not found in Coach scope")
+    return {"assigned": True, "group_id": group_id, "athlete_id": req.athlete_id,
+            "coach_final_authority": True, "execution_authorized": False}
+
+@router.delete("/coach/groups/{group_id}/athletes/{athlete_id}")
+def unassign_coach_group_athlete(
+    group_id: str, athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    allowed = coach_groups.unassign_athlete(tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id, group_id=group_id, athlete_id=athlete_id)
+    if not allowed:
+        raise HTTPException(status_code=404, detail="group not found in Coach scope")
+    return {"unassigned": True, "group_id": group_id, "athlete_id": athlete_id,
+            "coach_final_authority": True, "execution_authorized": False}
