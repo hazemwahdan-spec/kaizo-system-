@@ -41,9 +41,12 @@ jobs:
           pip install -r backend/requirements.txt pytest httpx2
       - name: Compile backend and productization modules
         run: python -m compileall -q backend productization
-      - name: Verify Coach groups and UI contracts
+      - name: Verify Coach groups security in memory adapter and UI contracts
         run: |
-          pytest -q productization/test_coach_groups_security.py productization/test_coach_groups_postgres.py frontend/test_product_ui_contract.py
+          KAIZO_PERSISTENCE_MODE=memory pytest -q productization/test_coach_groups_security.py frontend/test_product_ui_contract.py
+      - name: Verify Coach groups PostgreSQL durability and tenant audit
+        run: |
+          pytest -q productization/test_coach_groups_postgres.py
       - name: Verify athlete lifecycle ownership and PostgreSQL durability
         run: |
           pytest -q productization/test_coach_athlete_lifecycle.py productization/test_coach_athlete_lifecycle_postgres.py
