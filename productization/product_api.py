@@ -501,7 +501,10 @@ def create_coach_product_action_trace(
     if result is None:
         raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
     if not result.get("created"):
-        raise HTTPException(status_code=503, detail=result.get("message", "trace evidence unavailable"))
+        raise HTTPException(status_code=503, detail={
+            "status": result.get("status", "INSUFFICIENT_EVIDENCE"),
+            "message": result.get("message", "trace evidence unavailable"),
+        })
     return result
 
 
