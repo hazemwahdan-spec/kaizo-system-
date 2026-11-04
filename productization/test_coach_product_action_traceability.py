@@ -31,6 +31,7 @@ def owned_athlete():
 
 def test_trace_rejects_source_record_not_in_owned_coach_history(monkeypatch):
     athlete = owned_athlete()
+    monkeypatch.setattr(coach_roster, "get_owned_athlete", lambda **kwargs: athlete)
     monkeypatch.setattr(coach_action_history, "get_coach_action_history", lambda **kwargs: {
         "available": True, "items": [{"source_record_id": "owned-1"}]
     })
@@ -55,6 +56,7 @@ def test_trace_rejects_source_record_not_in_owned_coach_history(monkeypatch):
 
 def test_trace_refuses_memory_only_storage_without_claiming_creation(monkeypatch):
     athlete = owned_athlete()
+    monkeypatch.setattr(coach_roster, "get_owned_athlete", lambda **kwargs: athlete)
     monkeypatch.setattr(coach_action_history, "get_coach_action_history", lambda **kwargs: {
         "available": True, "items": [{"source_record_id": "owned-1"}]
     })
@@ -103,4 +105,4 @@ def test_trace_api_does_not_trust_caller_supplied_traced_by(monkeypatch):
               "trace_reason": "test", "traced_by": "attacker"}, headers=headers()
     )
     assert response.status_code == 503
-    assert "INSUFFICIENT_EVIDENCE" in response.text
+    assert response.json()["detail"]["status"] == "INSUFFICIENT_EVIDENCE"
