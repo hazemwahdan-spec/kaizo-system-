@@ -2,7 +2,7 @@ name: Phase 7 Commercial Product Runtime
 
 on:
   push:
-    branches: [phase-7-commercial-product-runtime]
+    branches: [phase-7-commercial-product-runtime, feat/coach-action-history]
   pull_request:
     branches: [main, feat/coach-roster-ui-integration, feat/coach-training-groups, feat/coach-athlete-lifecycle, feat/coach-athlete-decision-history, feat/coach-home-dashboard, feat/coach-today-priority-queue, feat/coach-athlete-workflow-navigation, feat/coach-decision-cycle-workspace, feat/coach-action-history]
 
@@ -18,6 +18,8 @@ jobs:
           python-version: "3.12"
       - name: Install runtime dependencies
         run: pip install fastapi pydantic pytest httpx2 PyJWT[crypto]
+      - name: Validate frontend JavaScript syntax
+        run: node --check frontend/app.js
       - name: Validate FEAT-006 Coach home dashboard
         if: ${{ hashFiles('productization/test_coach_home_dashboard.py') != '' }}
         run: python -m pytest productization/test_coach_home_dashboard.py frontend/test_product_ui_contract.py -q

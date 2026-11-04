@@ -44,7 +44,8 @@
         "athlete_decision_cycle_history",
         "coach_home_dashboard",
         "coach_current_priority_queue",
-        "coach_decision_cycle_workspace"
+        "coach_decision_cycle_workspace",
+        "coach_action_history"
       ],
       "allowed_actions": [
         "request_core_decision",
@@ -58,7 +59,8 @@
         "view_owned_athlete_decision_history",
         "view_owned_coach_dashboard_summary",
         "view_evidence_backed_current_priority_queue",
-        "view_owned_athlete_decision_workspace"
+        "view_owned_athlete_decision_workspace",
+        "view_owned_coach_action_history"
       ],
       "mutation_requires": [
         "authenticated_identity",
@@ -71,7 +73,8 @@
         "verified_coach_ownership_for_decision_history_reads",
         "verified_coach_tenant_scope_for_dashboard_reads",
         "verified_coach_tenant_scope_for_priority_queue_reads",
-        "verified_coach_tenant_scope_for_decision_workspace_reads"
+        "verified_coach_tenant_scope_for_decision_workspace_reads",
+        "verified_coach_tenant_and_actor_scope_for_action_history_reads"
       ],
       "forbidden": [
         "autonomous_execution",
@@ -196,5 +199,20 @@
     "historical_backfill": false,
     "writes": false,
     "audit_events_on_read": false
+  },
+  "coach_action_history": {
+    "access": "read_only",
+    "scope": "verified_coach_actor_and_tenant_owned_athlete",
+    "sources": [
+      "tenant_scoped_audit_logs",
+      "owned_decision_records",
+      "FEAT-044_decision_state_links"
+    ],
+    "legacy_unscoped_audit": "excluded",
+    "feat_044_actor_attribution": "unverified_and_not_attributed",
+    "writes": false,
+    "audit_events_on_read": false,
+    "coach_final_authority": true,
+    "execution_authorized": false
   }
 }
