@@ -129,9 +129,18 @@ def list_coach_product_action_traces(
             "read_only": True, "coach_final_authority": True,
             "execution_authorized": False,
         }
-    _ensure_schema()
     with persistence.connection() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.kaizo_coach_product_action_traces')")
+            table = cur.fetchone()
+            if not table or table[0] is None:
+                return {
+                    "feature_id": "FEAT-055", "athlete_id": athlete_id,
+                    "status": "INSUFFICIENT_EVIDENCE", "items": [], "total": 0,
+                    "message": "Durable trace storage has not been initialized.",
+                    "read_only": True, "coach_final_authority": True,
+                    "execution_authorized": False,
+                }
             cur.execute("""
                 SELECT trace_id, product_action, source_record_ids,
                        trace_reason, traced_at
