@@ -99,3 +99,28 @@ def test_review_requires_nonempty_query(monkeypatch):
 def test_postgres_review_reads_only_verified_owned_records():
     # PostgreSQL integration is exercised in the dedicated workflow job.
     pass
+
+
+def test_review_excludes_records_without_verified_actor_attribution(monkeypatch):
+    monkeypatch.setenv("KAIZO_IDENTITY_MODE", "development")
+    client = TestClient(main.app)
+    athlete_id = create_athlete(client)
+    monkeypatch.setattr(coach_action_history, "get_coach_action_history", lambda **kwargs: {
+        "available": True,
+        "items": [
+            {"source": "TENANT_SCOPED_AUDIT", "source_record_id": "verified",
+             "action": "COACH_DECISION_RECORDED", "reason": "verified event",
+             "actor_attribution_verified": True},
+            {"source": "FEAT-044_DECISION_STATE_LINK", "source_record_id": "unverified",
+             "action": "DECISION_STATE_LINK_RECORDED", "reason": "unverified link",
+             "actor_attribution_verified": False},
+        ],
+    })
+    response = client.get(
+        f"/api/v1/product/coach/athletes/{athlete_id}/audit-review",
+        params={"query": "recorded"}, headers=headers(),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_count"] == 1
+    assert body["results"][0]["source_record_id"] == "verified"
