@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history
+from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -440,3 +440,29 @@ def coach_action_history_read(
     if result is None:
         raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
     return {"athlete_id": athlete_id, **result}
+
+
+# FEAT-054: read-only audit query over the already verified Coach action-history boundary.
+@router.get("/coach/athletes/{athlete_id}/audit-review")
+def coach_audit_review_read(
+    athlete_id: str,
+    query: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    try:
+        result = coach_audit_review.review_coach_audit(
+            tenant_id=principal.tenant_id,
+            coach_actor_id=principal.actor_id,
+            athlete_id=athlete_id,
+            query=query,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return result
