@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster, coach_groups, coach_priority_queue
+from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -398,3 +398,24 @@ def coach_priority_queue_read(
     principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
     return coach_priority_queue.get_coach_priority_queue(
         tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id)
+
+
+# FEAT-009: read-only, ownership-scoped Coach decision-cycle workspace.
+@router.get("/coach/athletes/{athlete_id}/decision-workspace")
+def coach_decision_workspace_read(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = coach_decision_workspace.get_coach_decision_workspace(
+        tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return {"athlete_id": athlete_id, **result}
