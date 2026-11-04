@@ -13,8 +13,7 @@ app.innerHTML=[
 '<section id="coach-adapt-decision" class="card span-6"><h3>Adapt Decision</h3><div class="row"><div class="field"><label>Operation</label><select id="operation"><option>individual_adaptation</option><option>team_adaptation</option><option>subgroup_recalculation</option><option>individual_change</option></select></div><div class="field"><label>Dynamic Inputs</label><input id="dynamic" value="competition_pressure"></div></div><button style="margin-top:10px" onclick="adapt()">Run Adaptation</button><pre id="adaptOut" class="output" style="margin-top:12px"></pre></section>',
 '<section id="coach-decision-loop" class="card span-6"><h3>Decision Loop</h3><div class="row"><div class="field"><label>Decision</label><input id="decision" value="Increase grip-entry decision quality"></div><div class="field"><label>Intervention</label><input id="intervention" value="Constraint-led gripping drill"></div><div class="field"><label>KPI</label><input id="kpi" value="clean entries / 5 reps"></div><div class="field"><label>Retest</label><input id="retest" value="same scenario, independent retest"></div></div><button style="margin-top:10px" onclick="loop()">Complete Loop</button><pre id="loopOut" class="output" style="margin-top:12px"></pre></section>',
 '<section id="coach-digital-twin" class="card span-6"><h3>Digital Twin</h3><div class="row"><div class="field"><label>Entity ID</label><input id="entity" value="ATH-001"></div><div class="field"><label>State JSON</label><input id="twinState" value=\'{"readiness":"training","grip":"medium"}\'></div></div><button style="margin-top:10px" onclick="syncTwin()">Sync State</button><button class="secondary" style="margin:10px 0 0 6px" onclick="getTwin()">Read State</button><pre id="twinOut" class="output" style="margin-top:12px"></pre></section>',
-'<section id="coach-audit-trail" class="card span-6"><h3>Audit Trail · Restricted</h3><p class="muted">Core currently permits tenant audit reads only for verified Academy principals. Coach action history needs a separate tenant-scoped API; this view does not grant access.</p><button onclick="audit()">Refresh Audit</button><pre id="auditOut" class="output" style="margin-top:12px"></pre></section>
-',
+'<section id="coach-audit-trail" class="card span-6"><h3>Audit Trail · Restricted</h3><p class="muted">Core currently permits tenant audit reads only for verified Academy principals. Coach action history needs a separate tenant-scoped API; this view does not grant access.</p><button onclick="audit()">Refresh Audit</button><pre id="auditOut" class="output" style="margin-top:12px"></pre></section>',
 '</div></main>'
 ].join("");
 caseId.value="COACH-"+Date.now();
@@ -96,7 +95,7 @@ function returnCoachRoster(){
  if(search)search.focus();
 }
 function coachAthleteSection(sectionId){
- const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionWorkspaceSection"];
+ const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionWorkspaceSection","athleteActionHistorySection"];
  if(!ids.includes(sectionId))return;
  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=id!==sectionId});
  document.querySelectorAll("[data-athlete-section]").forEach(button=>{
@@ -152,16 +151,19 @@ async function viewCoachAthlete(athleteId){
    '<button type="button" data-athlete-section="athleteLifecycleSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteLifecycleSection\')">Lifecycle</button>'+
    '<button type="button" data-athlete-section="athleteStatusHistorySection" aria-pressed="false" onclick="coachAthleteSection(\'athleteStatusHistorySection\')">Status history</button>'+
    '<button type="button" data-athlete-section="athleteDecisionCyclesSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionCyclesSection\')">Decision history</button>'+
-   '<button type="button" data-athlete-section="athleteDecisionWorkspaceSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionWorkspaceSection\')">Decision workspace</button></nav>'+
+   '<button type="button" data-athlete-section="athleteDecisionWorkspaceSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionWorkspaceSection\')">Decision workspace</button>'+
+   '<button type="button" data-athlete-section="athleteActionHistorySection" aria-pressed="false" onclick="coachAthleteSection(\'athleteActionHistorySection\')">Action history</button></nav>'+
    '<section id="athleteProfileSection"><h4>Verified athlete profile</h4><pre class="output">'+escapeHtml(pretty(result))+'</pre></section>'+
    '<section id="athleteLifecycleSection" hidden><h4>Athlete lifecycle</h4><p>Current status: <strong>'+escapeHtml(result.status||"Unknown")+'</strong></p>'+
    (next.length?'<label for="athleteNextStatus">Change status</label><select id="athleteNextStatus">'+next.map(s=>'<option value="'+s+'">'+s+'</option>').join("")+'</select><label for="athleteStatusReason">Reason (required)</label><input id="athleteStatusReason" maxlength="500" required placeholder="Record why this status changes"><button type="button" onclick="changeCoachAthleteStatus(\''+escapeHtml(athleteId)+'\')">Save lifecycle change</button>':'<p class="muted">Archived is terminal. No further status transition is permitted.</p>')+'</section>'+
    '<section id="athleteStatusHistorySection" hidden><h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div></section>'+
    '<section id="athleteDecisionCyclesSection" hidden><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div></section>'+
-   '<section id="athleteDecisionWorkspaceSection" hidden><h4>Decision-cycle workspace</h4><p class="muted">Read-only view of persisted assessments, attached evidence, diagnosis, Coach decisions, training and retest records.</p><div id="athleteDecisionWorkspaceNotice" class="notice">Loading persisted decision-cycle evidence…</div><div id="athleteDecisionWorkspaceContent"></div></section>';
+   '<section id="athleteDecisionWorkspaceSection" hidden><h4>Decision-cycle workspace</h4><p class="muted">Read-only view of persisted assessments, attached evidence, diagnosis, Coach decisions, training and retest records.</p><div id="athleteDecisionWorkspaceNotice" class="notice">Loading persisted decision-cycle evidence…</div><div id="athleteDecisionWorkspaceContent"></div></section>'+
+   '<section id="athleteActionHistorySection" hidden><h4>Coach action history</h4><p class="muted">Only tenant-scoped events attributable to this verified Coach are shown. FEAT-044 state links are related lineage; their actor is not verified.</p><div id="athleteActionHistoryNotice" class="notice">Loading recorded actions…</div><div id="athleteActionHistoryContent"></div></section>';
   loadCoachAthleteStatusHistory(athleteId);
   loadCoachAthleteDecisionCycles(athleteId);
   loadCoachDecisionWorkspace(athleteId);
+  loadCoachActionHistory(athleteId);
  }catch(e){
   if(selectedCoachAthleteId!==String(athleteId))return;
   if(detail)detail.textContent="Athlete details unavailable: "+String(e&&e.message?e.message:e);
@@ -224,6 +226,37 @@ async function loadCoachDecisionWorkspace(athleteId){
  }
 }
 
+async function loadCoachActionHistory(athleteId){
+ const notice=document.getElementById("athleteActionHistoryNotice");
+ const content=document.getElementById("athleteActionHistoryContent");
+ if(!notice||!content)return;
+ notice.textContent="Loading tenant-scoped Coach actions…";
+ content.innerHTML="";
+ try{
+  const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/action-history");
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  if(data.status==="INSUFFICIENT_EVIDENCE"||data.available===false){
+   notice.textContent=data.message||"Durable action history is unavailable.";return;
+  }
+  const items=Array.isArray(data.items)?data.items:[];
+  if(data.status==="NO_RECORDED_ACTIONS"||!items.length){
+   notice.textContent=data.message||"No attributable Coach actions are recorded for this athlete.";return;
+  }
+  notice.textContent=items.length+" recorded item(s). Reads do not create audit events.";
+  content.innerHTML=items.map(item=>{
+   const actor=item.actor_attribution_verified
+    ? "Verified Coach actor: "+escapeHtml(item.actor_id||"")
+    : "Related state link — actor attribution not verified";
+   const detail=[item.decision_id?"Decision: "+item.decision_id:"",item.state_ref?"State: "+item.state_ref:"",item.state_version?"Version: "+item.state_version:""].filter(Boolean).join(" · ");
+   return '<article class="coach-action-history-item"><h5>'+escapeHtml(item.action||"Recorded action")+'</h5><p>'+actor+'</p><small>'+escapeHtml(item.occurred_at||"Timestamp unavailable")+'</small><p>'+escapeHtml(item.reason||"")+'</p><p>'+escapeHtml(detail)+'</p><small>Source: '+escapeHtml(item.source||"")+'</small></article>';
+  }).join("");
+ }catch(e){
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  notice.textContent="Action history unavailable: "+String(e&&e.message?e.message:e);
+  content.textContent="No action data is displayed when authentication or authorization fails.";
+ }
+}
+
 async function loadCoachAthleteStatusHistory(athleteId){
  const target=document.getElementById("athleteStatusHistory");if(!target)return;
  try{const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/status-history");
@@ -247,7 +280,7 @@ async function loadCoachAthleteDecisionCycles(athleteId){
       ((c.training_plans||[]).length?(c.training_plans||[]).map(p=>'<p class="muted">'+escapeHtml(p.title||p.plan_id)+' · '+escapeHtml(p.status||"")+'</p>').join(""):'<p class="muted">No linked training plans.</p>')+'</article>').join("");
   }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;target.textContent="Decision history unavailable: "+String(e&&e.message?e.message:e)}
 }
-\nfunction coachGo(id){const target=document.getElementById(id);if(target){target.scrollIntoView({behavior:"smooth",block:"start"});target.setAttribute("tabindex","-1");target.focus({preventScroll:true})}}
+function coachGo(id){const target=document.getElementById(id);if(target){target.scrollIntoView({behavior:"smooth",block:"start"});target.setAttribute("tabindex","-1");target.focus({preventScroll:true})}}
 function coachDashboard(){return `
 <div class="coach-dashboard">
   <div class="coach-dashboard-head"><div><h2>Coach Home</h2><p class="muted">Decision support and workflow navigation. Coach retains final authority; execution remains disabled unless Core authorizes it.</p></div><span class="coach-state">CORE-GOVERNED</span></div>
