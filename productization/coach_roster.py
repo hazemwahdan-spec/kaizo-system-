@@ -22,25 +22,10 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+
 def _ensure_schema() -> None:
-    if not persistence.is_postgres_enabled():
-        return
-    with persistence.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS kaizo_coach_athlete_ownership (
-                    athlete_id TEXT PRIMARY KEY REFERENCES kaizo_athletes(athlete_id) ON DELETE CASCADE,
-                    tenant_id TEXT NOT NULL,
-                    coach_actor_id TEXT NOT NULL,
-                    assigned_at TEXT NOT NULL,
-                    CONSTRAINT uq_coach_athlete_scope UNIQUE (tenant_id, coach_actor_id, athlete_id)
-                )
-            """)
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_coach_roster_scope
-                ON kaizo_coach_athlete_ownership (tenant_id, coach_actor_id, assigned_at)
-            """)
-        conn.commit()
+    """Compatibility shim; schema is provisioned by persistence.initialize()."""
+    return
 
 
 def create_owned_athlete(*, tenant_id: str, coach_actor_id: str, display_name: str,
@@ -58,7 +43,6 @@ def create_owned_athlete(*, tenant_id: str, coach_actor_id: str, display_name: s
         "coach_actor_id": coach_actor_id, "assigned_at": now,
     }
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -100,7 +84,6 @@ def create_owned_athlete(*, tenant_id: str, coach_actor_id: str, display_name: s
 def get_owned_athlete(*, tenant_id: str, coach_actor_id: str,
                       athlete_id: str) -> dict[str, Any] | None:
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -123,7 +106,6 @@ def get_owned_athlete(*, tenant_id: str, coach_actor_id: str,
 
 def list_owned_athletes(*, tenant_id: str, coach_actor_id: str) -> list[dict[str, Any]]:
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -171,27 +153,8 @@ def update_owned_athlete_status(*, tenant_id: str, coach_actor_id: str,
         raise ValueError("a reason is required for every lifecycle transition")
     now = _now()
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS kaizo_coach_athlete_status_history (
-                        history_id TEXT PRIMARY KEY,
-                        athlete_id TEXT NOT NULL REFERENCES kaizo_athletes(athlete_id) ON DELETE CASCADE,
-                        tenant_id TEXT NOT NULL,
-                        coach_actor_id TEXT NOT NULL,
-                        previous_status TEXT NOT NULL,
-                        new_status TEXT NOT NULL,
-                        reason TEXT NOT NULL,
-                        changed_at TEXT NOT NULL
-                    )
-                """)
-                cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_coach_athlete_status_history_scope
-                    ON kaizo_coach_athlete_status_history
-                    (tenant_id, coach_actor_id, athlete_id, changed_at)
-                """)
-                cur.execute("""
+            with conn.cursor() as cur:                cur.execute("""
                     SELECT a.status FROM kaizo_athletes a
                     JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=a.athlete_id
                     WHERE o.tenant_id=%s AND o.coach_actor_id=%s AND o.athlete_id=%s
@@ -256,18 +219,8 @@ def list_owned_athlete_status_history(*, tenant_id: str, coach_actor_id: str,
     if athlete is None:
         return None
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""CREATE TABLE IF NOT EXISTS kaizo_coach_athlete_status_history (
-                    history_id TEXT PRIMARY KEY,
-                    athlete_id TEXT NOT NULL REFERENCES kaizo_athletes(athlete_id) ON DELETE CASCADE,
-                    tenant_id TEXT NOT NULL, coach_actor_id TEXT NOT NULL,
-                    previous_status TEXT NOT NULL, new_status TEXT NOT NULL,
-                    reason TEXT NOT NULL, changed_at TEXT NOT NULL)""")
-                cur.execute("""CREATE INDEX IF NOT EXISTS idx_coach_athlete_status_history_scope
-                    ON kaizo_coach_athlete_status_history (tenant_id, coach_actor_id, athlete_id, changed_at)""")
-                cur.execute("""
+            with conn.cursor() as cur:                cur.execute("""
                     SELECT previous_status,new_status,reason,changed_at,coach_actor_id
                     FROM kaizo_coach_athlete_status_history
                     WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s
@@ -299,7 +252,6 @@ def list_owned_athlete_decision_cycles(*, tenant_id: str, coach_actor_id: str,
     cycles: dict[str, dict[str, Any]] = {}
     if persistence.is_postgres_enabled():
         import training_workflow
-        training_workflow._ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""SELECT decision_id,candidate_id,diagnosis_id,problem_id,
