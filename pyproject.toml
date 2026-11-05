@@ -24,6 +24,6 @@ packages = ["longitudinal"]
 
 [dependency-groups]
 dev = [
-  "workers-py",
-  "workers-runtime-sdk",
+  "workers-py; python_version >= '3.11'",
+  "workers-runtime-sdk; python_version >= '3.11'",
 ]
