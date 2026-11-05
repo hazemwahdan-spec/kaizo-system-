@@ -16,6 +16,11 @@ on:
       - feat/coach-athlete-decision-history
       - feat/coach-home-dashboard
       - feat/coach-today-priority-queue
+      - feat/coach-athlete-workflow-navigation
+      - feat/coach-decision-cycle-workspace
+      - feat/coach-action-history
+      - feat/coach-audit-review
+      - feat/coach-product-action-traceability
 
 jobs:
   validate-persistence-adapter:
@@ -62,6 +67,16 @@ jobs:
       - name: Verify FEAT-007 PostgreSQL Coach priority queue evidence and isolation
         if: ${{ hashFiles('productization/test_coach_priority_queue_postgres.py') != '' }}
         run: PYTHONPATH=..:. pytest -q ../productization/test_coach_priority_queue_postgres.py
+      - name: Verify FEAT-009 PostgreSQL decision workspace lineage and isolation
+        if: ${{ hashFiles('productization/test_coach_decision_workspace_postgres.py') != '' }}
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_decision_workspace_postgres.py
+      - name: Verify FEAT-010 PostgreSQL Coach action history actor and tenant isolation
+        if: ${{ hashFiles('productization/test_coach_action_history_postgres.py') != '' }}
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_action_history_postgres.py
+      - name: Verify FEAT-054 Coach audit review and PostgreSQL scope
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_audit_review.py ../productization/test_coach_audit_review_postgres.py
+      - name: Verify FEAT-055 Coach product-action traceability and PostgreSQL scope
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_product_action_traceability.py ../productization/test_coach_product_action_traceability_postgres.py
       - name: Verify OpenAPI and documentation endpoint contract
         run: PYTHONPATH=. python tests/test_openapi_contract.py
       - name: Run FEAT-001 athlete acceptance tests

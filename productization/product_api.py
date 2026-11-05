@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster, coach_groups
+from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -384,3 +384,145 @@ def coach_home_dashboard(
     principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
     return coach_roster.get_coach_home_dashboard(
         tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id)
+
+
+# FEAT-007: evidence-backed, read-only Coach current-priority queue.
+@router.get("/coach/priority-queue")
+def coach_priority_queue_read(
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    return coach_priority_queue.get_coach_priority_queue(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id)
+
+
+# FEAT-009: read-only, ownership-scoped Coach decision-cycle workspace.
+@router.get("/coach/athletes/{athlete_id}/decision-workspace")
+def coach_decision_workspace_read(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = coach_decision_workspace.get_coach_decision_workspace(
+        tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return {"athlete_id": athlete_id, **result}
+
+
+# FEAT-010: verified Coach action history; read-only and tenant/actor scoped.
+@router.get("/coach/athletes/{athlete_id}/action-history")
+def coach_action_history_read(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = coach_action_history.get_coach_action_history(
+        tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return {"athlete_id": athlete_id, **result}
+
+
+# FEAT-054: read-only audit query over the already verified Coach action-history boundary.
+@router.get("/coach/athletes/{athlete_id}/audit-review")
+def coach_audit_review_read(
+    athlete_id: str,
+    query: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    try:
+        result = coach_audit_review.review_coach_audit(
+            tenant_id=principal.tenant_id,
+            coach_actor_id=principal.actor_id,
+            athlete_id=athlete_id,
+            query=query,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return result
+
+
+# FEAT-055: product-action traceability links only verified source IDs from
+# the authenticated Coach's own tenant-scoped athlete history.
+class CoachProductActionTraceRequest(BaseModel):
+    product_action: str
+    source_record_ids: List[str]
+    trace_reason: str
+
+
+@router.post("/coach/athletes/{athlete_id}/product-action-traces", status_code=201)
+def create_coach_product_action_trace(
+    athlete_id: str,
+    req: CoachProductActionTraceRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    try:
+        result = coach_product_action_traceability.create_coach_product_action_trace(
+            tenant_id=principal.tenant_id,
+            coach_actor_id=principal.actor_id,
+            athlete_id=athlete_id,
+            product_action=req.product_action,
+            source_record_ids=req.source_record_ids,
+            trace_reason=req.trace_reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    if not result.get("created"):
+        raise HTTPException(status_code=503, detail={
+            "status": result.get("status", "INSUFFICIENT_EVIDENCE"),
+            "message": result.get("message", "trace evidence unavailable"),
+        })
+    return result
+
+
+@router.get("/coach/athletes/{athlete_id}/product-action-traces")
+def list_coach_product_action_traces(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = coach_product_action_traceability.list_coach_product_action_traces(
+        tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return result
