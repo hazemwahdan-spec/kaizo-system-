@@ -42,5 +42,6 @@ def test_pyodide_uses_non_binary_psycopg_driver():
     dependencies = project["project"]["dependencies"]
     assert any("psycopg[binary]" in item and "sys_platform != 'emscripten'" in item for item in dependencies)
     assert any(item == "psycopg==3.2.3; sys_platform == 'emscripten'" for item in dependencies)
-    assert "workers-py" in project["dependency-groups"]["dev"]
-    assert "workers-runtime-sdk" in project["dependency-groups"]["dev"]
+    dev_dependencies = project["dependency-groups"]["dev"]
+    assert any(item.startswith("workers-py;") and "python_version >= '3.11'" in item for item in dev_dependencies)
+    assert any(item.startswith("workers-runtime-sdk;") and "python_version >= '3.11'" in item for item in dev_dependencies)
