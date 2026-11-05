@@ -51,7 +51,12 @@ def create_coach_product_action_trace(
             "execution_authorized": False,
         }
 
-    visible_ids = {str(item.get("source_record_id")) for item in history.get("items", [])}
+    visible_ids = {
+        str(item.get("source_record_id"))
+        for item in history.get("items", [])
+        if item.get("actor_attribution_verified") is True
+        and item.get("source_record_id") is not None
+    }
     unknown_ids = sorted(set(source_ids) - visible_ids)
     if unknown_ids:
         raise ValueError("Every source_record_id must exist in this Coach-owned athlete history")
