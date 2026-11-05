@@ -9,9 +9,9 @@ description = "KAIZO FastAPI deployment adapter"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi==0.115.6",
-  "uvicorn[standard]==0.34.0; sys_platform != 'emscripten'",
-  "psycopg[binary]==3.2.3; sys_platform != 'emscripten'",
-  "psycopg==3.2.3; sys_platform == 'emscripten'",
+  "uvicorn[standard]==0.34.0; python_version < '3.14'",
+  "psycopg[binary]==3.2.3; python_version < '3.14'",
+  "psycopg==3.2.3; python_version >= '3.14'",
   "PyJWT[crypto]>=2.10,<3",
 ]
 
