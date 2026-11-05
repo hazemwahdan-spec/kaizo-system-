@@ -26,28 +26,10 @@ def _require_authority(value: bool) -> None:
         raise HTTPException(status_code=400, detail="coach_final_authority is required")
 
 
+
 def _ensure_schema() -> None:
-    if not persistence.is_postgres_enabled():
-        return
-    with persistence.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS kaizo_training_workflow_records (
-                record_id TEXT PRIMARY KEY,
-                feature_id TEXT NOT NULL,
-                athlete_id TEXT NOT NULL,
-                decision_id TEXT,
-                session_id TEXT,
-                payload JSONB NOT NULL,
-                created_by TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                coach_final_authority BOOLEAN NOT NULL,
-                execution_authorized BOOLEAN NOT NULL DEFAULT FALSE
-            );
-            CREATE INDEX IF NOT EXISTS idx_kaizo_training_workflow_feature
-                ON kaizo_training_workflow_records(feature_id, athlete_id, created_at);
-            """)
-        conn.commit()
+    """Compatibility shim; schema is provisioned by persistence.initialize()."""
+    return
 
 
 def _save(feature_id: str, athlete_id: str, payload: Dict[str, Any],
@@ -66,7 +48,6 @@ def _save(feature_id: str, athlete_id: str, payload: Dict[str, Any],
         "execution_authorized": False,
     }
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -90,7 +71,6 @@ def _save(feature_id: str, athlete_id: str, payload: Dict[str, Any],
 def _list(feature_id: str, athlete_id: str) -> List[Dict[str, Any]]:
     if not persistence.is_postgres_enabled():
         return []
-    _ensure_schema()
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
