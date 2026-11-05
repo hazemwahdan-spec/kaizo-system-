@@ -27,6 +27,8 @@ jobs:
         run: pip install fastapi pydantic pytest httpx2 "PyJWT[crypto]"
       - name: Compile backend and Coach productization modules
         run: python -m compileall -q backend productization
+      - name: Validate Cloudflare Worker staging contract
+        run: python -m pytest productization/test_cloudflare_worker_contract.py -q
       - name: Verify Coach ownership authorization and read-only boundaries
         run: >-
           python -m pytest
