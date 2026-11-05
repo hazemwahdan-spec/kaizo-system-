@@ -24,6 +24,9 @@ def test_cloudflare_staging_is_isolated_from_production_database():
     assert "hyperdrive.connectionString" in worker
     assert 'os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"' in worker
     assert 'os.environ.pop("DATABASE_URL", None)' in worker
+    assert "_DATABASE_LOCK = asyncio.Lock()" in worker
+    assert "async with _DATABASE_LOCK:" in worker
+    assert "persistence.initialize()" in worker
     assert "DATABASE_URL" not in json.dumps(config)
 
 
