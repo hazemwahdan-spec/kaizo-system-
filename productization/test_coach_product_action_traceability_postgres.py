@@ -25,7 +25,13 @@ def test_product_action_trace_is_durable_and_scoped_to_verified_coach():
         tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete["athlete_id"]
     )
     assert history and history["available"]
-    source_id = history["items"][0]["source_record_id"]
+    verified_items = [
+        item for item in history["items"]
+        if item.get("actor_attribution_verified") is True
+        and item.get("source_record_id") is not None
+    ]
+    assert verified_items, "PostgreSQL history must expose a verified actor-attributed source"
+    source_id = verified_items[0]["source_record_id"]
     created = coach_product_action_traceability.create_coach_product_action_trace(
         tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete["athlete_id"],
         product_action="COACH_REPORT_GENERATED",
