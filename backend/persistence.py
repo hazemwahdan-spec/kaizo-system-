@@ -277,6 +277,20 @@ CREATE TABLE IF NOT EXISTS kaizo_problem_statements (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_product_action_traces (
+    trace_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    product_action TEXT NOT NULL,
+    source_record_ids JSONB NOT NULL,
+    trace_reason TEXT NOT NULL,
+    traced_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_product_trace_scope
+    ON kaizo_coach_product_action_traces
+        (tenant_id, coach_actor_id, athlete_id, traced_at DESC);
 """
 
 

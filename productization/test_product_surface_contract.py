@@ -24,3 +24,28 @@ def test_read_only_roles_have_no_writes():
 def test_product_surface_never_claims_production_verification():
     data = json.loads(CONTRACT.read_text())
     assert data["production_verified"] is False
+
+
+def test_feat_007_queue_is_a_verified_coach_read_surface():
+    data = json.loads(CONTRACT.read_text())
+    coach = data["roles"]["coach"]
+    assert "coach_current_priority_queue" in coach["surfaces"]
+    assert "view_evidence_backed_current_priority_queue" in coach["allowed_actions"]
+    assert "verified_coach_tenant_scope_for_priority_queue_reads" in coach["mutation_requires"]
+    assert data["coach_final_authority"] is True
+    assert data["execution_authorized_default"] is False
+
+
+def test_feat_009_decision_workspace_is_a_verified_read_only_coach_surface():
+    data = json.loads(CONTRACT.read_text())
+    coach = data["roles"]["coach"]
+    workspace = data["coach_decision_cycle_workspace"]
+    assert "coach_decision_cycle_workspace" in coach["surfaces"]
+    assert "view_owned_athlete_decision_workspace" in coach["allowed_actions"]
+    assert "verified_coach_tenant_scope_for_decision_workspace_reads" in coach["mutation_requires"]
+    assert workspace["mode"] == "read_only"
+    assert workspace["writes"] is False
+    assert workspace["audit_events_on_read"] is False
+    assert workspace["historical_backfill"] is False
+    assert data["coach_final_authority"] is True
+    assert data["execution_authorized_default"] is False
