@@ -4,7 +4,7 @@ on:
   push:
     branches: [phase-7-identity-rbac-runtime-boundary]
   pull_request:
-    branches: [main, feat/coach-roster-ui-integration]
+    branches: [main, feat/coach-roster-ui-integration, feat/coach-training-groups, feat/coach-athlete-lifecycle, feat/coach-athlete-decision-history, feat/coach-home-dashboard, feat/coach-today-priority-queue, feat/coach-athlete-workflow-navigation, feat/coach-decision-cycle-workspace, feat/coach-action-history]
 
 jobs:
   identity-boundary:
@@ -18,5 +18,17 @@ jobs:
           python-version: "3.12"
       - name: Install test dependencies
         run: pip install fastapi pydantic pytest httpx2 PyJWT[crypto]
+      - name: Validate FEAT-006 Coach dashboard identity boundary
+        if: ${{ hashFiles('productization/test_coach_home_dashboard.py') != '' }}
+        run: python -m pytest productization/test_coach_home_dashboard.py -q
+      - name: Validate FEAT-007 Coach priority queue authorization
+        if: ${{ hashFiles('productization/test_coach_priority_queue_api.py') != '' }}
+        run: python -m pytest productization/test_coach_priority_queue_api.py -q
+      - name: Validate FEAT-009 Coach decision workspace authorization
+        if: ${{ hashFiles('productization/test_coach_decision_workspace.py') != '' }}
+        run: python -m pytest productization/test_coach_decision_workspace.py -q
+      - name: Validate FEAT-010 Coach action history authorization
+        if: ${{ hashFiles('productization/test_coach_action_history.py') != '' }}
+        run: python -m pytest productization/test_coach_action_history.py -q
       - name: Validate identity boundary
-        run: python -m pytest productization/test_identity.py productization/test_product_api.py productization/test_product_surface.py productization/test_product_api_security_regression.py productization/test_coach_roster_security.py productization/test_coach_groups_security.py -q
+        run: python -m pytest productization/test_identity.py productization/test_product_api.py productization/test_product_surface.py productization/test_product_api_security_regression.py productization/test_coach_roster_security.py productization/test_coach_groups_security.py productization/test_coach_athlete_lifecycle.py productization/test_coach_athlete_decision_history.py -q

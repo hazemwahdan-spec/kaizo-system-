@@ -50,3 +50,35 @@ def test_coach_roster_does_not_send_client_supplied_identity_scope():
 def test_coach_roster_does_not_use_legacy_global_athlete_list():
     assert 'productCall("/athletes")' not in APP
     assert 'productCall("/coach/athletes")' in APP
+
+def test_coach_training_groups_use_verified_scoped_api():
+    assert 'productCall("/coach/groups")' in APP
+    assert 'productCall("/coach/groups",{method:"POST"' in APP
+    assert 'productCall("/coach/groups/"+encodeURIComponent(groupId)+"/athletes"' in APP
+    assert 'method:"DELETE"' in APP
+    assert 'X-KAIZO-Actor' not in APP
+
+
+def test_coach_athlete_decision_history_uses_scoped_read_only_api():
+    assert 'productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-cycles")' in APP
+    assert 'loadCoachAthleteDecisionCycles(athleteId)' in APP
+    assert 'No historical records have been generated.' in APP
+    assert 'athleteDecisionCycles' in APP
+
+
+def test_coach_home_dashboard_uses_verified_owned_summary_api():
+    assert 'productCall("/coach/dashboard")' in APP
+    assert 'loadCoachDashboard()' in APP
+    assert 'coachDashboardMetrics' in APP
+    assert 'Recent recorded decisions' in APP
+    assert 'id="coachPriorityQueue"' in APP
+    assert 'no inferred deadlines' in APP
+
+
+def test_coach_priority_queue_uses_verified_evidence_and_fails_closed():
+    assert 'productCall("/coach/priority-queue")' in APP
+    assert 'function loadCoachPriorityQueue()' in APP
+    assert 'not tracked open tasks' in APP
+    assert 'review status not tracked' in APP
+    assert 'Coach judgment required' in APP
+    assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
