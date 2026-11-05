@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from productization import coach_roster, product_api
+from productization import coach_roster, product_api, identity
 from productization.identity import IdentityNotConfiguredError, Principal
 
 
@@ -131,7 +131,7 @@ def test_oidc_missing_or_invalid_bearer_fails_closed(monkeypatch):
 
 def test_oidc_navigation_uses_verified_claims_without_client_identity_headers(monkeypatch):
     monkeypatch.setattr(
-        product_api,
+        identity,
         "resolve_bearer_principal",
         lambda authorization: verified(),
     )
