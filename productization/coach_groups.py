@@ -13,47 +13,17 @@ _AUDIT: list[dict[str, Any]] = []
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
 def _schema() -> None:
-    if not persistence.is_postgres_enabled():
-        return
-    with persistence.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS kaizo_coach_training_groups (
-                    group_id TEXT PRIMARY KEY,
-                    tenant_id TEXT NOT NULL,
-                    coach_actor_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    UNIQUE (tenant_id, coach_actor_id, name)
-                )
-            """)
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_coach_training_groups_scope
-                ON kaizo_coach_training_groups (tenant_id, coach_actor_id, created_at)
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS kaizo_coach_training_group_members (
-                    group_id TEXT NOT NULL REFERENCES kaizo_coach_training_groups(group_id) ON DELETE CASCADE,
-                    athlete_id TEXT NOT NULL REFERENCES kaizo_athletes(athlete_id) ON DELETE CASCADE,
-                    tenant_id TEXT NOT NULL,
-                    coach_actor_id TEXT NOT NULL,
-                    assigned_at TEXT NOT NULL,
-                    PRIMARY KEY (group_id, athlete_id)
-                )
-            """)
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_coach_group_members_scope
-                ON kaizo_coach_training_group_members (tenant_id, coach_actor_id, group_id)
-            """)
-        conn.commit()
+    """Compatibility shim; schema is provisioned by persistence.initialize()."""
+    return
+
 
 def create_group(*, tenant_id: str, coach_actor_id: str, name: str) -> dict[str, Any]:
     clean=name.strip()
     if not clean: raise ValueError("group name is required")
     item={"group_id":str(uuid.uuid4()),"tenant_id":tenant_id,"coach_actor_id":coach_actor_id,"name":clean,"created_at":_now(),"athletes":[]}
     if persistence.is_postgres_enabled():
-        _schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""INSERT INTO kaizo_coach_training_groups
@@ -72,7 +42,6 @@ def create_group(*, tenant_id: str, coach_actor_id: str, name: str) -> dict[str,
 
 def list_groups(*, tenant_id: str, coach_actor_id: str) -> list[dict[str, Any]]:
     if persistence.is_postgres_enabled():
-        _schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""SELECT g.group_id,g.name,g.created_at,a.athlete_id,a.display_name
@@ -101,7 +70,6 @@ def list_groups(*, tenant_id: str, coach_actor_id: str) -> list[dict[str, Any]]:
 def assign_athlete(*,tenant_id:str,coach_actor_id:str,group_id:str,athlete_id:str)->bool:
     now=_now()
     if persistence.is_postgres_enabled():
-        _schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""SELECT 1 FROM kaizo_coach_training_groups
@@ -136,7 +104,6 @@ def assign_athlete(*,tenant_id:str,coach_actor_id:str,group_id:str,athlete_id:st
 def unassign_athlete(*,tenant_id:str,coach_actor_id:str,group_id:str,athlete_id:str)->bool:
     now=_now()
     if persistence.is_postgres_enabled():
-        _schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""SELECT 1 FROM kaizo_coach_training_groups
