@@ -44,4 +44,9 @@ jobs:
           uv python install 3.13
           uv sync --dev --no-install-project --python 3.13
       - name: Bundle Cloudflare Python Worker without deploying
-        run: uv run --no-sync --python 3.13 pywrangler deploy --dry-run
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv requirements.txt "$RUNNER_TEMP/kaizo-root-requirements.txt"
+          trap 'mv "$RUNNER_TEMP/kaizo-root-requirements.txt" requirements.txt' EXIT
+          uv run --no-sync --python 3.13 pywrangler deploy --dry-run
