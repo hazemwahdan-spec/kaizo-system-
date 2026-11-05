@@ -33,7 +33,7 @@ def test_trace_rejects_source_record_not_in_owned_coach_history(monkeypatch):
     athlete = owned_athlete()
     monkeypatch.setattr(coach_roster, "get_owned_athlete", lambda **kwargs: athlete)
     monkeypatch.setattr(coach_action_history, "get_coach_action_history", lambda **kwargs: {
-        "available": True, "items": [{"source_record_id": "owned-1"}]
+        "available": True, "items": [{"source_record_id": "owned-1", "actor_attribution_verified": True}]
     })
     monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: True)
     class Cursor:
@@ -134,3 +134,20 @@ def test_list_traces_never_initializes_schema_or_writes(monkeypatch):
     )
     assert result["status"] == "NO_TRACES"
     assert conn.cur.calls == 2
+
+
+def test_trace_rejects_unverified_history_record(monkeypatch):
+    athlete = owned_athlete()
+    monkeypatch.setattr(coach_roster, "get_owned_athlete", lambda **kwargs: athlete)
+    monkeypatch.setattr(coach_action_history, "get_coach_action_history", lambda **kwargs: {
+        "available": True,
+        "items": [{"source_record_id": "unverified-1", "actor_attribution_verified": False}],
+    })
+    monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: True)
+    import pytest
+    with pytest.raises(ValueError, match="Every source_record_id"):
+        coach_product_action_traceability.create_coach_product_action_trace(
+            tenant_id="TENANT-A", coach_actor_id="coach-A",
+            athlete_id=athlete["athlete_id"], product_action="REPORT_CREATED",
+            source_record_ids=["unverified-1"], trace_reason="unverified source must be rejected"
+        )
