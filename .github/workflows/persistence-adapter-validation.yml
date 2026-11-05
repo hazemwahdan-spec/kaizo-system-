@@ -11,6 +11,7 @@ on:
   pull_request:
     branches:
       - main
+      - feat/coach-athlete-ownership-boundary
       - feat/coach-roster-ui-integration
       - feat/coach-training-groups
       - feat/coach-athlete-lifecycle
