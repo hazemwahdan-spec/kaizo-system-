@@ -28,6 +28,6 @@ jobs:
       - name: Install Python Worker dependencies
         run: |
           uv python install 3.13
-          uv sync --dev --python 3.13
+          uv sync --dev --no-install-project --python 3.13
       - name: Deploy isolated in-memory staging Worker
-        run: uv run --python 3.13 pywrangler deploy
+        run: uv run --no-sync --python 3.13 pywrangler deploy
