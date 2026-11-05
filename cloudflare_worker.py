@@ -6,6 +6,7 @@ binding's connection string is never committed to source control.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 
 from workers import WorkerEntrypoint, asgi
@@ -18,6 +19,7 @@ import main as core
 import persistence
 
 _DATABASE_INITIALIZED = False
+_DATABASE_LOCK = asyncio.Lock()
 
 
 class Default(WorkerEntrypoint):
@@ -28,10 +30,6 @@ class Default(WorkerEntrypoint):
         if hyperdrive is not None:
             os.environ["DATABASE_URL"] = str(hyperdrive.connectionString)
             os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
-            if not _DATABASE_INITIALIZED:
-                persistence.initialize()
-                core.KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
-                _DATABASE_INITIALIZED = True
         else:
             # Staging stays isolated from production data.
             os.environ.pop("DATABASE_URL", None)
@@ -50,5 +48,16 @@ class Default(WorkerEntrypoint):
         ):
             value = getattr(self.env, name, None)
             os.environ[name] = str(value if value is not None else default)
+
+        if hyperdrive is not None:
+            # Cloudflare recommends serializing synchronous PostgreSQL driver
+            # operations in Python Workers. The current KAIZO adapter uses
+            # synchronous psycopg calls, so guard the request boundary.
+            async with _DATABASE_LOCK:
+                if not _DATABASE_INITIALIZED:
+                    persistence.initialize()
+                    core.KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
+                    _DATABASE_INITIALIZED = True
+                return await asgi.fetch(app, request, self.env)
 
         return await asgi.fetch(app, request, self.env)
