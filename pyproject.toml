@@ -11,7 +11,7 @@ dependencies = [
   "fastapi==0.115.6",
   "uvicorn[standard]==0.34.0; sys_platform != 'emscripten'",
   "psycopg[binary]==3.2.3; sys_platform != 'emscripten'",
-  "psycopg==3.2.3; sys_platform == 'emscripten',
+  "psycopg==3.2.3; sys_platform == 'emscripten'",
   "PyJWT[crypto]>=2.10,<3",
 ]
 
