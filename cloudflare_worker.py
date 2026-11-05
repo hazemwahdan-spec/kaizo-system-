@@ -1,8 +1,9 @@
 """Cloudflare Workers entrypoint for the KAIZO FastAPI application.
 
 The staging Worker deliberately uses in-memory persistence. Production can use
-Cloudflare Hyperdrive by adding the HYPERDRIVE binding in wrangler.jsonc; the
-binding's connection string is never committed to source control.
+Cloudflare Hyperdrive by adding the HYPERDRIVE binding in wrangler.jsonc; create
+that binding with caching disabled so Coach ownership and authorization reads
+cannot receive stale cached results. The connection string is never committed.
 """
 from __future__ import annotations
 
