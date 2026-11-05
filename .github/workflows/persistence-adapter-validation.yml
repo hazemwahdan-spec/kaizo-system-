@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feat/coach-athlete-ownership-boundary
       - feat/kaizo-persistence-adapter
       - feat-027-session-structure-timing
   pull_request:
