@@ -96,9 +96,6 @@ def test_review_requires_nonempty_query(monkeypatch):
     assert response.status_code == 422
 
 
-def test_postgres_review_reads_only_verified_owned_records():
-    # PostgreSQL integration is exercised in the dedicated workflow job.
-    pass
 
 
 def test_review_excludes_records_without_verified_actor_attribution(monkeypatch):
