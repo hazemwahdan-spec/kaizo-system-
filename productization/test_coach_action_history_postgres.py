@@ -54,7 +54,7 @@ def test_action_history_is_tenant_actor_and_owned_athlete_scoped_and_read_only()
             audit_rows = [
                 (coach, "COACH_ATHLETE_STATUS_CHANGED", {"athlete_id": aid}, tenant),
                 ("COACH-OTHER", "COACH_ATHLETE_STATUS_CHANGED", {"athlete_id": aid}, tenant),
-                (coach, "COACH_ATHLETE_STATUS_CHANGED", {"athlete_id": aid}, "TENANT-OTHER"),
+                (coach, "FOREIGN_TENANT_SENTINEL", {"athlete_id": aid}, "TENANT-OTHER"),
                 (coach, "LEGACY_UNSCOPED_EVENT", {"athlete_id": aid}, None),
                 (coach, "FOREIGN_ATHLETE_EVENT", {"athlete_id": foreign_coach["athlete_id"]}, tenant),
                 (coach, "COACH_DECISION_RECORDED", {"decision_id": decision}, tenant),
@@ -92,6 +92,7 @@ def test_action_history_is_tenant_actor_and_owned_athlete_scoped_and_read_only()
     state_items = [x for x in result["items"] if x["source"] == "FEAT-044_DECISION_STATE_LINK"]
     assert {x["action"] for x in audit_items} == {"COACH_ATHLETE_CREATED", "COACH_ATHLETE_STATUS_CHANGED", "COACH_DECISION_RECORDED"}
     assert all(x["actor_id"] == coach and x["actor_attribution_verified"] is True for x in audit_items)
+    assert "FOREIGN_TENANT_SENTINEL" not in {x["action"] for x in audit_items}
     assert len(state_items) == 1
     assert state_items[0]["decision_id"] == decision
     assert state_items[0]["actor_id"] is None

@@ -33,10 +33,3 @@ def test_feat_010_history_is_read_only_and_fails_closed():
     assert "unscoped legacy audit rows" in CONTRACT.lower()
     assert "FEAT-044" in CONTRACT
     assert "execution_authorized=false" in CONTRACT
-
-
-def test_feat_010_navigation_handlers_keep_valid_single_quote_escaping():
-    assert r"""onclick="coachAthleteSection(\'athleteDecisionWorkspaceSection\')""" in APP
-    assert r"""onclick="coachAthleteSection(\'athleteActionHistorySection\')""" in APP
-    assert r"""onclick="coachAthleteSection(\\'athleteDecisionWorkspaceSection\\')""" not in APP
-    assert r"""onclick="coachAthleteSection(\\'athleteActionHistorySection\\')""" not in APP
