@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from productization import coach_roster, product_api, identity
+from productization import coach_roster, product_api
 from productization.identity import IdentityNotConfiguredError, Principal
 
 
@@ -129,18 +129,18 @@ def test_oidc_missing_or_invalid_bearer_fails_closed(monkeypatch):
     )
     assert response.status_code == 401
 
-def test_oidc_navigation_uses_verified_claims_without_client_identity_headers(monkeypatch):
+def test_oidc_coach_route_uses_verified_claims_without_client_identity_headers(monkeypatch):
     monkeypatch.setattr(
-        identity,
+        product_api,
         "resolve_bearer_principal",
         lambda authorization: verified(),
     )
     response = client().get(
-        "/api/v1/product/navigation",
+        "/api/v1/product/coach/athletes",
         headers={"Authorization": "Bearer verified-coach-token"},
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["role"] == "coach"
+    assert body["total"] == 0
     assert body["coach_final_authority"] is True
     assert body["execution_authorized"] is False
