@@ -49,9 +49,9 @@ def deny(exc: Exception):
 
 @router.get("/navigation")
 def navigation(
-    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
-    role: str | None = Header(None, alias="X-KAIZO-Role"),
-    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
+    role: str = Header(..., alias="X-KAIZO-Role"),
+    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
@@ -73,9 +73,9 @@ class DecisionRequest(BaseModel):
 @router.post("/decision")
 def decision(
     req: DecisionRequest,
-    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
-    role: str | None = Header(None, alias="X-KAIZO-Role"),
-    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
+    role: str = Header(..., alias="X-KAIZO-Role"),
+    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
@@ -93,9 +93,9 @@ class InterventionRequest(DecisionRequest):
 @router.post("/intervention")
 def intervention(
     req: InterventionRequest,
-    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
-    role: str | None = Header(None, alias="X-KAIZO-Role"),
-    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
+    role: str = Header(..., alias="X-KAIZO-Role"),
+    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
@@ -111,9 +111,9 @@ def intervention(
 def progress(
     athlete_id: str,
     resource_tenant_id: str,
-    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
-    role: str | None = Header(None, alias="X-KAIZO-Role"),
-    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
+    role: str = Header(..., alias="X-KAIZO-Role"),
+    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
@@ -129,9 +129,9 @@ def progress(
 def parent_progress(
     athlete_id: str,
     resource_tenant_id: str,
-    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
-    role: str | None = Header(None, alias="X-KAIZO-Role"),
-    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
+    role: str = Header(..., alias="X-KAIZO-Role"),
+    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
