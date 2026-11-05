@@ -128,3 +128,19 @@ def test_oidc_missing_or_invalid_bearer_fails_closed(monkeypatch):
         headers={"Authorization": "Bearer invalid-token"},
     )
     assert response.status_code == 401
+
+def test_oidc_navigation_uses_verified_claims_without_client_identity_headers(monkeypatch):
+    monkeypatch.setattr(
+        product_api,
+        "resolve_bearer_principal",
+        lambda authorization: verified(),
+    )
+    response = client().get(
+        "/api/v1/product/navigation",
+        headers={"Authorization": "Bearer verified-coach-token"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["role"] == "coach"
+    assert body["coach_final_authority"] is True
+    assert body["execution_authorized"] is False
