@@ -7,19 +7,33 @@ binding's connection string is never committed to source control.
 from __future__ import annotations
 
 import os
+
 from workers import WorkerEntrypoint, asgi
+
+# Import the Core app during Worker startup so Cloudflare can snapshot the
+# application rather than charging its full import cost to the first request.
+# app.py sets up the existing backend/ and productization/ import paths.
+from app import app
+import main as core
+import persistence
+
+_DATABASE_INITIALIZED = False
 
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        hyperdrive = getattr(self.env, "HYPERDRIVE", None)
+        global _DATABASE_INITIALIZED
 
+        hyperdrive = getattr(self.env, "HYPERDRIVE", None)
         if hyperdrive is not None:
             os.environ["DATABASE_URL"] = str(hyperdrive.connectionString)
             os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
+            if not _DATABASE_INITIALIZED:
+                persistence.initialize()
+                core.KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
+                _DATABASE_INITIALIZED = True
         else:
-            # Staging stays isolated from production data and never silently
-            # falls back from a configured Hyperdrive connection.
+            # Staging stays isolated from production data.
             os.environ.pop("DATABASE_URL", None)
             os.environ["KAIZO_PERSISTENCE_MODE"] = str(
                 getattr(self.env, "KAIZO_PERSISTENCE_MODE", "memory")
@@ -36,9 +50,5 @@ class Default(WorkerEntrypoint):
         ):
             value = getattr(self.env, name, None)
             os.environ[name] = str(value if value is not None else default)
-
-        # Import only after the runtime bindings are available: main.py performs
-        # durable schema initialization when PostgreSQL mode is selected.
-        from app import app
 
         return await asgi.fetch(app, request, self.env)
