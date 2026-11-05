@@ -57,7 +57,7 @@ def test_trace_refuses_memory_only_storage_without_claiming_creation(monkeypatch
     athlete = owned_athlete()
     monkeypatch.setattr(coach_roster, "get_owned_athlete", lambda **kwargs: athlete)
     monkeypatch.setattr(coach_action_history, "get_coach_action_history", lambda **kwargs: {
-        "available": True, "items": [{"source_record_id": "owned-1"}]
+        "available": True, "items": [{"source_record_id": "owned-1", "actor_attribution_verified": True}]
     })
     monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: False)
     result = coach_product_action_traceability.create_coach_product_action_trace(
