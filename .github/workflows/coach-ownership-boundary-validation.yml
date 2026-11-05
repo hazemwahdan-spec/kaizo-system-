@@ -31,6 +31,7 @@ jobs:
         run: >-
           python -m pytest
           productization/test_coach_roster_security.py
+          productization/test_coach_roster_oidc_boundary.py
           productization/test_read_paths_no_ddl.py
           productization/test_coach_groups_security.py
           productization/test_coach_athlete_lifecycle.py
