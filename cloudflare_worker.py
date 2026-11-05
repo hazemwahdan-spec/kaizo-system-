@@ -7,13 +7,7 @@ binding's connection string is never committed to source control.
 from __future__ import annotations
 
 import os
-import sys
-
 from workers import WorkerEntrypoint, asgi
-
-# The existing FastAPI app keeps its current backend/productization module layout.
-sys.path.insert(0, "backend")
-sys.path.insert(0, ".")
 
 
 class Default(WorkerEntrypoint):
@@ -45,6 +39,6 @@ class Default(WorkerEntrypoint):
 
         # Import only after the runtime bindings are available: main.py performs
         # durable schema initialization when PostgreSQL mode is selected.
-        from main import app
+        from app import app
 
         return await asgi.fetch(app, request, self.env)
