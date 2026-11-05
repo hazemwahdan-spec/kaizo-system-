@@ -358,3 +358,68 @@ def list_owned_athlete_decision_cycles(*, tenant_id: str, coach_actor_id: str,
                     "title":item.get("title"),"objective":item.get("objective"),
                     "status":item.get("status"),"created_at":item.get("created_at")})
     return list(cycles.values())
+
+
+# FEAT-006: evidence-backed Coach home dashboard summary.
+def get_coach_home_dashboard(*, tenant_id: str, coach_actor_id: str) -> dict[str, Any]:
+    """Aggregate only data owned by the verified Coach within the tenant.
+
+    This is a summary surface, not a priority queue (FEAT-007). It never
+    synthesizes tasks, scores, attendance, or decision records.
+    """
+    athletes = list_owned_athletes(tenant_id=tenant_id, coach_actor_id=coach_actor_id)
+    groups_module = __import__("productization.coach_groups", fromlist=["list_groups"])
+    groups = groups_module.list_groups(tenant_id=tenant_id, coach_actor_id=coach_actor_id)
+    statuses = {status: 0 for status in sorted(ATHLETE_STATUSES)}
+    for athlete in athletes:
+        status = str(athlete.get("status") or "UNKNOWN").upper()
+        statuses[status] = statuses.get(status, 0) + 1
+
+    athlete_names = {a["athlete_id"]: a.get("display_name", a["athlete_id"]) for a in athletes}
+    recent: list[dict[str, Any]] = []
+    decision_total = 0
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""SELECT COUNT(*) FROM kaizo_decision_records d
+                    JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=d.athlete_id
+                    WHERE o.tenant_id=%s AND o.coach_actor_id=%s""", (tenant_id, coach_actor_id))
+                decision_total = int(cur.fetchone()[0])
+                cur.execute("""SELECT d.decision_id,d.athlete_id,a.display_name,
+                                      d.decision_summary,d.status,d.recorded_at,d.coach_action
+                    FROM kaizo_decision_records d
+                    JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=d.athlete_id
+                    JOIN kaizo_athletes a ON a.athlete_id=d.athlete_id
+                    WHERE o.tenant_id=%s AND o.coach_actor_id=%s
+                    ORDER BY d.recorded_at DESC,d.decision_id DESC LIMIT 5""",
+                    (tenant_id, coach_actor_id))
+                rows = cur.fetchall()
+        recent = [{"decision_id":r[0],"athlete_id":r[1],"athlete_name":r[2],
+                   "summary":r[3],"status":r[4],"recorded_at":r[5],"coach_action":r[6]}
+                  for r in rows]
+    else:
+        import sys
+        core = sys.modules.get("main")
+        records = getattr(core, "DECISION_RECORDS", {}) if core else {}
+        owned = set(athlete_names)
+        owned_records = [d for d in records.values() if d.get("athlete_id") in owned]
+        decision_total = len(owned_records)
+        owned_records.sort(key=lambda d: str(d.get("recorded_at") or ""), reverse=True)
+        recent = [{"decision_id":d.get("decision_id"),"athlete_id":d.get("athlete_id"),
+                   "athlete_name":athlete_names.get(d.get("athlete_id")),
+                   "summary":d.get("decision_summary"),"status":d.get("status"),
+                   "recorded_at":d.get("recorded_at"),"coach_action":d.get("coach_action")}
+                  for d in owned_records[:5]]
+
+    return {
+        "athlete_total": len(athletes),
+        "athlete_status_counts": statuses,
+        "training_group_total": len(groups),
+        "group_membership_total": sum(len(g.get("athletes", [])) for g in groups),
+        "decision_cycle_total": decision_total,
+        "recent_decisions": recent,
+        "priority_queue": {"available": False, "feature": "FEAT-007"},
+        "source_scope": "verified_coach_tenant_owned_records",
+        "coach_final_authority": True,
+        "execution_authorized": False,
+    }

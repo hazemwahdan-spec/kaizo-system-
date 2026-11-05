@@ -7,3 +7,21 @@
 .coach-athlete-row{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;background:#fff;color:#172033;border:1px solid #d0d5dd}
 .coach-athlete-row small{color:#667085;font-weight:500}
 @media(max-width:600px){.coach-roster-form{align-items:stretch;flex-direction:column}.coach-roster-form input{width:100%}.coach-athlete-row{align-items:flex-start;flex-direction:column}}
+
+.coach-athlete-navigation{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0}
+.coach-athlete-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 18px}
+.coach-athlete-tabs button[aria-pressed="true"]{background:#1d4ed8;color:#fff}
+.coach-athlete-tabs button[aria-pressed="false"]{background:#eef2f7;color:#172033}
+.coach-athlete-tabs button:focus-visible,.coach-athlete-navigation button:focus-visible,.coach-athlete-row:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+#athleteProfileSection,#athleteLifecycleSection,#athleteStatusHistorySection,#athleteDecisionCyclesSection{padding:12px 0}
+#athleteRosterSearch{min-width:240px;flex:1}
+
+.coach-workspace-section{margin:16px 0;padding:12px;border:1px solid #dbe3ee;border-radius:10px;background:#fff}
+.coach-workspace-record{margin:10px 0;padding:10px;border:1px solid #e5e7eb;border-radius:9px}
+.coach-workspace-record h5{margin:0 0 8px;font-size:14px}
+.coach-workspace-record .output{max-height:260px;min-height:36px}
+
+.coach-action-history-item{margin:12px 0;padding:12px;border:1px solid #dbe3ee;border-radius:9px;background:#fff}
+.coach-action-history-item h5{margin:0 0 8px;font-size:14px}
+.coach-action-history-item p{margin:6px 0}
+.coach-action-history-item small{color:#667085}
