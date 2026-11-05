@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kaizo-coach-core-staging",
+  "main": "cloudflare_worker.py",
+  "compatibility_date": "2026-11-05",
+  "compatibility_flags": ["python_workers"],
+  "assets": {
+    "directory": "./frontend",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*",
+      "/openapi.json",
+      "/docs*",
+      "/redoc*"
+    ]
+  },
+  "vars": {
+    "KAIZO_IDENTITY_MODE": "oidc",
+    "KAIZO_PERSISTENCE_MODE": "memory",
+    "KAIZO_OIDC_ISSUER": "https://kaizo-system.us.auth0.com/",
+    "KAIZO_OIDC_AUDIENCE": "https://api.kaizo.system",
+    "KAIZO_OIDC_JWKS_URL": "https://kaizo-system.us.auth0.com/.well-known/jwks.json"
+  }
+}
