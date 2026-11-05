@@ -154,7 +154,8 @@ def update_owned_athlete_status(*, tenant_id: str, coach_actor_id: str,
     now = _now()
     if persistence.is_postgres_enabled():
         with persistence.connection() as conn:
-            with conn.cursor() as cur:                cur.execute("""
+            with conn.cursor() as cur:
+                cur.execute("""
                     SELECT a.status FROM kaizo_athletes a
                     JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=a.athlete_id
                     WHERE o.tenant_id=%s AND o.coach_actor_id=%s AND o.athlete_id=%s
@@ -220,7 +221,8 @@ def list_owned_athlete_status_history(*, tenant_id: str, coach_actor_id: str,
         return None
     if persistence.is_postgres_enabled():
         with persistence.connection() as conn:
-            with conn.cursor() as cur:                cur.execute("""
+            with conn.cursor() as cur:
+                cur.execute("""
                     SELECT previous_status,new_status,reason,changed_at,coach_actor_id
                     FROM kaizo_coach_athlete_status_history
                     WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s
