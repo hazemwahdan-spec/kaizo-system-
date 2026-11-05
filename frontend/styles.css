@@ -15,3 +15,13 @@
 .coach-athlete-tabs button:focus-visible,.coach-athlete-navigation button:focus-visible,.coach-athlete-row:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
 #athleteProfileSection,#athleteLifecycleSection,#athleteStatusHistorySection,#athleteDecisionCyclesSection{padding:12px 0}
 #athleteRosterSearch{min-width:240px;flex:1}
+
+.coach-workspace-section{margin:16px 0;padding:12px;border:1px solid #dbe3ee;border-radius:10px;background:#fff}
+.coach-workspace-record{margin:10px 0;padding:10px;border:1px solid #e5e7eb;border-radius:9px}
+.coach-workspace-record h5{margin:0 0 8px;font-size:14px}
+.coach-workspace-record .output{max-height:260px;min-height:36px}
+
+.coach-action-history-item{margin:12px 0;padding:12px;border:1px solid #dbe3ee;border-radius:9px;background:#fff}
+.coach-action-history-item h5{margin:0 0 8px;font-size:14px}
+.coach-action-history-item p{margin:6px 0}
+.coach-action-history-item small{color:#667085}
