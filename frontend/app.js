@@ -1,4 +1,4 @@
-const API="https://kaizo-core-engine-production.up.railway.app/api/v1";
+const API=window.KAIZO_API_BASE || "/api/v1";
 const app=document.getElementById("app");
 app.innerHTML=[
 '<header class="top"><div><div class="brand">KAIZO SYSTEM</div><div id="roleCaption" style="color:#cbd5e1;font-size:13px">Commercial Product Surface · Core preserved</div></div><div class="top-actions"><label class="role-label">Role</label><select id="roleSelect" class="role-select"><option value="coach">Coach</option><option value="academy">Academy</option><option value="athlete">Athlete</option><option value="parent">Parent</option></select><button onclick="kaizoLogin()">Sign in</button><div id="health" class="status">Checking Core…</div></div></header>',
