@@ -49,14 +49,18 @@ def deny(exc: Exception):
 
 @router.get("/navigation")
 def navigation(
-    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
-    role: str = Header(..., alias="X-KAIZO-Role"),
-    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
+    # In OIDC mode, ctx derives role and tenant from the verified bearer token.
+    # Client identity headers remain optional development-only scaffolding.
     try:
-        return get_surface().navigation(ctx(actor_id, role, tenant_id, owner, authorization))
+        return get_surface().navigation(
+            ctx(actor_id or "", role or "", tenant_id or "", owner, authorization)
+        )
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
