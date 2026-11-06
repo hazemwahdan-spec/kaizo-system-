@@ -82,3 +82,9 @@ def test_coach_priority_queue_uses_verified_evidence_and_fails_closed():
     assert 'review status not tracked' in APP
     assert 'Coach judgment required' in APP
     assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
+    
+def test_railway_coach_ui_routes_api_calls_to_core_service():
+    auth_config = (ROOT / "frontend" / "auth-config.js").read_text()
+    assert 'window.location.hostname === "kaizo-coach-production.up.railway.app"' in auth_config
+    assert '"https://kaizo-core-engine-production.up.railway.app/api/v1"' in auth_config
+    assert '": "/api/v1"' in auth_config
