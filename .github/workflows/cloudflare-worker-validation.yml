@@ -1,0 +1,52 @@
+name: Cloudflare Python Worker Build Validation
+
+on:
+  push:
+    branches:
+      - feat/coach-athlete-ownership-boundary
+    paths:
+      - "cloudflare_worker.py"
+      - "wrangler.jsonc"
+      - "pyproject.toml"
+      - "app.py"
+      - "backend/**"
+      - "productization/**"
+      - "frontend/**"
+      - ".github/workflows/cloudflare-worker-validation.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "cloudflare_worker.py"
+      - "wrangler.jsonc"
+      - "pyproject.toml"
+      - "app.py"
+      - "backend/**"
+      - "productization/**"
+      - "frontend/**"
+      - ".github/workflows/cloudflare-worker-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@v6
+      - name: Install Python 3.13 and Worker tooling
+        run: |
+          uv python install 3.13
+          uv sync --dev --no-install-project --python 3.13
+      - name: Bundle Cloudflare Python Worker without deploying
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv requirements.txt "$RUNNER_TEMP/kaizo-root-requirements.txt"
+          trap 'mv "$RUNNER_TEMP/kaizo-root-requirements.txt" requirements.txt' EXIT
+          uv run --no-sync --python 3.13 pywrangler deploy --dry-run

@@ -277,6 +277,112 @@ CREATE TABLE IF NOT EXISTS kaizo_problem_statements (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_product_action_traces (
+    trace_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    product_action TEXT NOT NULL,
+    source_record_ids JSONB NOT NULL,
+    trace_reason TEXT NOT NULL,
+    traced_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_product_trace_scope
+    ON kaizo_coach_product_action_traces
+        (tenant_id, coach_actor_id, athlete_id, traced_at DESC);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_athlete_ownership (
+    athlete_id TEXT PRIMARY KEY REFERENCES kaizo_athletes(athlete_id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    assigned_at TEXT NOT NULL,
+    CONSTRAINT uq_coach_athlete_scope UNIQUE (tenant_id, coach_actor_id, athlete_id)
+);
+CREATE INDEX IF NOT EXISTS idx_coach_roster_scope
+    ON kaizo_coach_athlete_ownership (tenant_id, coach_actor_id, assigned_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_athlete_status_history (
+    history_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL REFERENCES kaizo_athletes(athlete_id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    previous_status TEXT NOT NULL,
+    new_status TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    changed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_athlete_status_history_scope
+    ON kaizo_coach_athlete_status_history
+        (tenant_id, coach_actor_id, athlete_id, changed_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_training_groups (
+    group_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (tenant_id, coach_actor_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_coach_training_groups_scope
+    ON kaizo_coach_training_groups (tenant_id, coach_actor_id, created_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_training_group_members (
+    group_id TEXT NOT NULL REFERENCES kaizo_coach_training_groups(group_id) ON DELETE CASCADE,
+    athlete_id TEXT NOT NULL REFERENCES kaizo_athletes(athlete_id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    assigned_at TEXT NOT NULL,
+    PRIMARY KEY (group_id, athlete_id)
+);
+CREATE INDEX IF NOT EXISTS idx_coach_group_members_scope
+    ON kaizo_coach_training_group_members (tenant_id, coach_actor_id, group_id);
+
+CREATE TABLE IF NOT EXISTS kaizo_training_workflow_records (
+    record_id TEXT PRIMARY KEY,
+    feature_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    decision_id TEXT,
+    session_id TEXT,
+    payload JSONB NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    coach_final_authority BOOLEAN NOT NULL,
+    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS idx_kaizo_training_workflow_feature
+    ON kaizo_training_workflow_records(feature_id, athlete_id, created_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_digital_twin_history (
+    history_id TEXT PRIMARY KEY,
+    entity_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    state JSONB NOT NULL,
+    source_event TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    recorded_by TEXT NOT NULL,
+    evidence_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    recorded_at TEXT NOT NULL,
+    coach_final_authority BOOLEAN NOT NULL,
+    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE(entity_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_kaizo_digital_twin_history_entity
+    ON kaizo_digital_twin_history(entity_id, version);
+
+CREATE TABLE IF NOT EXISTS kaizo_decision_state_links (
+    link_id TEXT PRIMARY KEY,
+    decision_id TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    state_version INTEGER NOT NULL,
+    state_ref TEXT NOT NULL,
+    linked_by TEXT NOT NULL,
+    linked_at TEXT NOT NULL,
+    coach_final_authority BOOLEAN NOT NULL,
+    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS idx_kaizo_decision_state_links_decision
+    ON kaizo_decision_state_links(decision_id, linked_at);
 """
 
 
