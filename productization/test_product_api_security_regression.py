@@ -40,9 +40,10 @@ def decision_payload(resource_tenant_id="TENANT-A"):
     }
 
 
-def test_missing_identity_headers_are_rejected():
+def test_missing_identity_headers_and_bearer_fail_closed():
     response = client().get("/api/v1/product/navigation")
-    assert response.status_code == 422
+    assert response.status_code == 503
+    assert "production identity is fail-closed" in response.json()["detail"]
 
 
 def test_unknown_role_is_rejected_closed(monkeypatch):
