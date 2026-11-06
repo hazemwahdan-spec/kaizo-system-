@@ -144,3 +144,22 @@ def test_oidc_coach_route_uses_verified_claims_without_client_identity_headers(m
     assert body["total"] == 0
     assert body["coach_final_authority"] is True
     assert body["execution_authorized"] is False
+    
+def test_navigation_uses_bearer_principal_without_client_identity_headers(monkeypatch):
+    def resolve(actor_id, role, tenant_id, owner, authorization=None):
+        assert actor_id == ""
+        assert role == ""
+        assert tenant_id == ""
+        assert authorization == "Bearer verified-coach-token"
+        return verified()
+
+    monkeypatch.setattr(product_api, "resolve_principal", resolve)
+    response = client().get(
+        "/api/v1/product/navigation",
+        headers={"Authorization": "Bearer verified-coach-token"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["role"] == "coach"
+    assert body["execution_authorized"] is False
+    assert body["coach_final_authority"] is True
