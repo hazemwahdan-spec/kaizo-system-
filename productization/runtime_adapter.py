@@ -54,6 +54,8 @@ class CoreRuntimeGateway:
         if execution_authorized:
             raise RuntimeAuthorizationError("execution authorization is forbidden")
         self._require_scoped_payload(payload)
+        if not str(payload.get("decision_id") or "").strip():
+            raise RuntimeAuthorizationError("decision_id is required for scoped adaptation")
         from main import AdaptationRequest
         return self._adaptation(AdaptationRequest(
             case_id=str(payload["case_id"]),
