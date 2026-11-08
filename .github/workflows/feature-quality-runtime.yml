@@ -3,11 +3,14 @@ name: Feature Quality Runtime Validation
 on:
   pull_request:
     paths:
+      - ".github/workflows/feature-quality-runtime.yml"
       - "backend/feature_runtime.py"
       - "backend/test_feature_runtime.py"
       - "backend/main.py"
       - "backend/requirements.txt"
       - "docs/product/KAIZO-FEATURE-QUALITY-TECHNICAL-EVIDENCE-BASELINE-V1.md"
+      - "docs/audits/KAIZO-75-FEATURE-EVIDENCE-TRACEABILITY-20261010.csv"
+      - "docs/audits/KAIZO-75-FEATURE-EVIDENCE-TRACEABILITY-NOTE-20261010.md"
   push:
     branches: ["main"]
 
@@ -23,4 +26,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pytest
-      - run: pytest -q test_feature_runtime.py
+      - name: Run feature runtime tests and save output
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest -q test_feature_runtime.py 2>&1 | tee feature-runtime-test-results.txt
+      - name: Upload test output evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-runtime-test-evidence
+          path: backend/feature-runtime-test-results.txt
+          if-no-files-found: warn
+          retention-days: 90
