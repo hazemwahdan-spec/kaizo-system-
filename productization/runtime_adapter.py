@@ -41,6 +41,7 @@ class CoreRuntimeGateway:
         from main import DecisionLoopRequest
         return self._decision_loop(DecisionLoopRequest(
             case_id=str(payload["case_id"]),
+            athlete_id=str(payload["athlete_id"]),
             decision=dict(payload["decision"]),
             intervention=dict(payload["intervention"]),
             response_kpi=dict(payload["response_kpi"]),
@@ -56,6 +57,8 @@ class CoreRuntimeGateway:
         from main import AdaptationRequest
         return self._adaptation(AdaptationRequest(
             case_id=str(payload["case_id"]),
+            athlete_id=str(payload["athlete_id"]),
+            decision_id=str(payload["decision_id"]),
             operation=str(payload["operation"]),
             common_core=dict(payload["common_core"]),
             dynamic_inputs=dict(payload["dynamic_inputs"]),
