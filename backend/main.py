@@ -2041,3 +2041,72 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 from productization.product_api import router as product_api_router
 app.include_router(product_api_router)
+
+
+# Legacy Core APIs below were built before the verified Coach ownership boundary.
+# They accept caller-supplied actor/athlete fields and cannot safely remain callable.
+# The replacement surfaces are the authenticated Product API, training-workflow,
+# and state-cycle routers above. No legacy rows are claimed or backfilled.
+LEGACY_UNSCOPED_COACH_ROUTE_PREFIXES = (
+    "/api/v1/athletes",
+    "/api/v1/assessments",
+    "/api/v1/problem-statements",
+    "/api/v1/diagnoses",
+    "/api/v1/decision-candidates",
+    "/api/v1/training-plans",
+    "/api/v1/training-sessions",
+    "/api/v1/training-dosages",
+    "/api/v1/problem-library/selections",
+    "/api/v1/kpis",
+    "/api/v1/state-snapshots",
+    "/api/v1/digital-twin",
+    "/api/v1/decision/loop",
+    "/api/v1/decision/adapt",
+    "/api/v1/rules/evaluate",
+    "/api/v1/safety/evaluate",
+    "/api/v1/knowledge/ingest",
+)
+
+
+def _is_legacy_unscoped_coach_route(path: str) -> bool:
+    return any(path == prefix or path.startswith(prefix + "/")
+               for prefix in LEGACY_UNSCOPED_COACH_ROUTE_PREFIXES)
+
+
+@app.middleware("http")
+async def retire_unscoped_legacy_coach_routes(request: Request, call_next):
+    import os
+    from fastapi.responses import JSONResponse
+
+    test_only_compatibility = (
+        os.getenv("KAIZO_IDENTITY_MODE", "production").strip().lower() == "development"
+        and os.getenv("KAIZO_ALLOW_UNSCOPED_LEGACY_ROUTES_FOR_TESTS", "").strip().lower() == "true"
+    )
+    if _is_legacy_unscoped_coach_route(request.url.path) and not test_only_compatibility:
+        return JSONResponse(
+            status_code=410,
+            content={
+                "detail": (
+                    "Unscoped legacy Core API retired. Use the authenticated "
+                    "Coach-scoped Product API, training-workflow, or state-cycle routes."
+                )
+            },
+        )
+    return await call_next(request)
+
+
+# Keep OpenAPI aligned with the runtime boundary: retired legacy routes must
+# not appear as supported Coach APIs. Shared read-only problem-library data
+# and the authenticated replacement routers remain documented.
+_original_openapi = app.openapi
+
+
+def _openapi_without_legacy_unscoped_coach_routes():
+    schema = _original_openapi()
+    for path in tuple(schema.get("paths", {})):
+        if _is_legacy_unscoped_coach_route(path):
+            schema["paths"].pop(path, None)
+    return schema
+
+
+app.openapi = _openapi_without_legacy_unscoped_coach_routes
