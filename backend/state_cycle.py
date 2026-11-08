@@ -22,6 +22,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ensure_schema() -> None:
+    """Compatibility hook; canonical schema is provisioned by persistence.initialize()."""
+    if persistence.is_postgres_enabled():
+        persistence.initialize()
+
+
 def _principal(authorization, actor_id, role, tenant_id, owner, athlete_id):
     principal = verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
     athlete = coach_roster.get_owned_athlete(
