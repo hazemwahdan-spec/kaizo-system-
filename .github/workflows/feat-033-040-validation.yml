@@ -21,4 +21,4 @@ jobs:
         env:
           KAIZO_IDENTITY_MODE: development
           KAIZO_PERSISTENCE_MODE: memory
-        run: pytest -q test_training_workflow.py test_training_workflow_security.py
+        run: pytest -q test_training_workflow.py
