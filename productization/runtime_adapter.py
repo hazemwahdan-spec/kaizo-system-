@@ -21,16 +21,23 @@ class RuntimeAuthorizationError(PermissionError):
 
 
 class CoreRuntimeGateway:
-    """Concrete gateway to the frozen backend/main.py Core functions."""
+    """Private bridge to Core decision executors; public legacy routes are retired."""
 
     def __init__(self):
-        from main import decision_loop
-        self._decision_loop = decision_loop
+        from main import _execute_decision_loop, _execute_adaptation
+        self._decision_loop = _execute_decision_loop
+        self._adaptation = _execute_adaptation
+
+    @staticmethod
+    def _require_scoped_payload(payload: Mapping[str, Any]) -> None:
+        if not str(payload.get("athlete_id") or "").strip():
+            raise RuntimeAuthorizationError("athlete_id is required for a scoped Coach decision")
 
     def request_decision(self, *, actor_id: str, tenant_id: str, role: str,
                          payload: Mapping[str, Any], execution_authorized: bool) -> Any:
         if execution_authorized:
             raise RuntimeAuthorizationError("execution authorization is forbidden")
+        self._require_scoped_payload(payload)
         from main import DecisionLoopRequest
         return self._decision_loop(DecisionLoopRequest(
             case_id=str(payload["case_id"]),
@@ -38,6 +45,23 @@ class CoreRuntimeGateway:
             intervention=dict(payload["intervention"]),
             response_kpi=dict(payload["response_kpi"]),
             retest=dict(payload["retest"]),
+            coach_final_authority=True,
+        ))
+
+    def adapt_decision(self, *, actor_id: str, tenant_id: str, role: str,
+                       payload: Mapping[str, Any], execution_authorized: bool) -> Any:
+        if execution_authorized:
+            raise RuntimeAuthorizationError("execution authorization is forbidden")
+        self._require_scoped_payload(payload)
+        from main import AdaptationRequest
+        return self._adaptation(AdaptationRequest(
+            case_id=str(payload["case_id"]),
+            operation=str(payload["operation"]),
+            common_core=dict(payload["common_core"]),
+            dynamic_inputs=dict(payload["dynamic_inputs"]),
+            individual_change=payload.get("individual_change"),
+            team_change=payload.get("team_change"),
+            composition_change=payload.get("composition_change"),
             coach_final_authority=True,
         ))
 
@@ -84,6 +108,16 @@ class ProductCoreRuntimeAdapter:
         if ctx.role != "coach":
             raise RuntimeAuthorizationError("only Coach may request a Core decision")
         return self.core.request_decision(
+            actor_id=ctx.actor_id, tenant_id=ctx.tenant_id, role=ctx.role,
+            payload=dict(payload), execution_authorized=False
+        )
+
+    def adapt_decision(self, ctx: RuntimeContext, resource_tenant_id: str,
+                       payload: Mapping[str, Any]) -> Any:
+        self._authorize(ctx, resource_tenant_id)
+        if ctx.role != "coach":
+            raise RuntimeAuthorizationError("only Coach may adapt a decision")
+        return self.core.adapt_decision(
             actor_id=ctx.actor_id, tenant_id=ctx.tenant_id, role=ctx.role,
             payload=dict(payload), execution_authorized=False
         )
