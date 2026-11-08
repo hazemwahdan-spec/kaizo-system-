@@ -20,6 +20,15 @@ def headers(role, tenant="T1", actor="A1", owner=None):
     return h
 
 
+
+def create_owned_athlete():
+    from productization import coach_roster
+    coach_roster.reset_memory_state()
+    return coach_roster.create_owned_athlete(
+        tenant_id="T1", coach_actor_id="A1", display_name="Product API test athlete"
+    )["athlete_id"]
+
+
 def test_product_navigation_api_exposes_all_roles():
     c = client()
     for role in ("academy", "coach", "athlete", "parent"):
@@ -33,8 +42,10 @@ def test_product_navigation_api_exposes_all_roles():
 
 def test_product_decision_api_is_coach_only():
     c = client()
+    athlete_id = create_owned_athlete()
     payload = {
         "resource_tenant_id": "T1",
+        "athlete_id": athlete_id,
         "case_id": "CASE-API-1",
         "decision": {"choice": "adapt"},
         "intervention": {"drill": "seoi"},
@@ -51,8 +62,10 @@ def test_product_decision_api_is_coach_only():
 
 def test_product_api_denies_cross_tenant():
     c = client()
+    athlete_id = create_owned_athlete()
     payload = {
         "resource_tenant_id": "T2",
+        "athlete_id": athlete_id,
         "case_id": "CASE-API-2",
         "decision": {"choice": "adapt"},
         "intervention": {"drill": "seoi"},
