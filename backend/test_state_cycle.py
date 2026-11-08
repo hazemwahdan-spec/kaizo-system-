@@ -92,7 +92,8 @@ def test_version_conflict_and_coach_authority_fail_closed():
 
 
 
-def decision_loop_payload(athlete_id=ATHLETE):
+def decision_loop_payload(athlete_id=None):
+    athlete_id = athlete_id or ATHLETE
     return {
         "case_id": "CASE-OWNERSHIP-1", "athlete_id": athlete_id,
         "decision": {"selected": "candidate-A"},
@@ -103,7 +104,8 @@ def decision_loop_payload(athlete_id=ATHLETE):
     }
 
 
-def adaptation_payload(athlete_id=ATHLETE):
+def adaptation_payload(athlete_id=None):
+    athlete_id = athlete_id or ATHLETE
     return {
         "case_id": "CASE-OWNERSHIP-1", "athlete_id": athlete_id,
         "operation": "individual_adaptation",
