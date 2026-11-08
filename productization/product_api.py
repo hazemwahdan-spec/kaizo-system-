@@ -106,7 +106,7 @@ def decision(
         )
         return get_surface().request_decision(
             context, req.resource_tenant_id,
-            req.model_dump(exclude={"resource_tenant_id", "athlete_id"}),
+            req.model_dump(exclude={"resource_tenant_id"}),
         )
     except RuntimeAuthorizationError as exc:
         deny(exc)
@@ -143,7 +143,7 @@ def adaptation(
         )
         return get_surface().adapt_decision(
             context, req.resource_tenant_id,
-            req.model_dump(exclude={"resource_tenant_id", "athlete_id"}),
+            req.model_dump(exclude={"resource_tenant_id"}),
         )
     except RuntimeAuthorizationError as exc:
         deny(exc)
