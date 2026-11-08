@@ -190,7 +190,10 @@ def test_phase4_decision_plan_kpi_retest_lineage_keeps_baseline():
     })
     assert baseline_capture["assessment_id"] == baseline["assessment_id"]
 
-    retest = post("/api/v1/features/feat-037/retest-capture", {
+    # Generic FEAT-037/038 endpoints accept caller-supplied actor and athlete
+    # identity, so they are intentionally retired. The dedicated protected
+    # FEAT-033..040 workflow owns retest/response lineage.
+    retest = client.post("/api/v1/features/feat-037/retest-capture", {
         "subject_id": athlete["athlete_id"],
         "actor_id": coach,
         "payload": {
@@ -206,37 +209,21 @@ def test_phase4_decision_plan_kpi_retest_lineage_keeps_baseline():
         "coach_final_authority": True,
         "execution_authorized": False,
     })
-    assert retest["feature_id"] == "FEAT-037"
-    assert retest["payload"]["baseline_ref"] == baseline["assessment_id"]
-    assert retest["payload"]["decision_ref"] == decision["decision_id"]
-    assert retest["payload"]["plan_ref"] == plan["plan_id"]
+    assert retest.status_code == 410, retest.text
 
-    comparison = post("/api/v1/features/feat-038/before-after-comparison", {
+    comparison = client.post("/api/v1/features/feat-038/before-after-comparison", {
         "subject_id": athlete["athlete_id"],
         "actor_id": coach,
         "payload": {
             "before_ref": baseline["assessment_id"],
-            "after_ref": retest["record_id"],
-            "comparison": {
-                "kpi_id": kpi_id,
-                "baseline_value": 4,
-                "retest_value": 6,
-                "interpretation": "Observed numeric change; no causal claim inferred by this test",
-            },
-            "decision_ref": decision["decision_id"],
-            "plan_ref": plan["plan_id"],
-            "baseline_capture_ref": baseline_capture["capture_id"],
+            "after_ref": "forged-retest",
+            "comparison": {"kpi_id": kpi_id, "baseline_value": 4, "retest_value": 6},
         },
-        "evidence_refs": [evidence["evidence_id"], baseline_capture["capture_id"], retest["record_id"]],
+        "evidence_refs": [evidence["evidence_id"], baseline_capture["capture_id"]],
         "coach_final_authority": True,
         "execution_authorized": False,
     })
-    assert comparison["feature_id"] == "FEAT-038"
-    assert comparison["payload"]["before_ref"] == baseline["assessment_id"]
-    assert comparison["payload"]["after_ref"] == retest["record_id"]
-    assert comparison["payload"]["comparison"]["baseline_value"] == 4
-    assert comparison["payload"]["comparison"]["retest_value"] == 6
-    assert comparison["execution_authorized"] is False
+    assert comparison.status_code == 410, comparison.text
 
     baseline_readback = client.get(f"/api/v1/assessments/{baseline['assessment_id']}")
     assert baseline_readback.status_code == 200, baseline_readback.text
