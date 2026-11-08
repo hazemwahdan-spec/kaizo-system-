@@ -27,7 +27,7 @@ jobs:
       - name: Checkout reviewed PR source
         uses: actions/checkout@v4
       - name: Build local image only
-        run: docker build --pull --tag kaizo-core:nonprod-check ./backend
+        run: docker build --pull --file backend/Dockerfile --tag kaizo-core:nonprod-check .
       - name: Verify image metadata
         run: |
           docker image inspect kaizo-core:nonprod-check \
