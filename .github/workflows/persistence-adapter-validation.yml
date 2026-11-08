@@ -31,6 +31,7 @@ on:
       - fix/coach-training-workflow-ownership-atomic-audit
       - fix/coach-digital-twin-state-cycle-ownership
       - fix/coach-retire-unscoped-feature-routes
+      - fix/coach-retire-unscoped-main-api
 
 jobs:
   validate-persistence-adapter:
