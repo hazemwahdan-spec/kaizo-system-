@@ -5,11 +5,12 @@ Coach Final Authority is mandatory; execution authorization is always false.
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 import persistence
+from knowledge_runtime_security import require_knowledge_runtime_ready
 
-router=APIRouter(prefix="/api/v1/knowledge-runtime",tags=["Knowledge Runtime"])
+router=APIRouter(prefix="/api/v1/knowledge-runtime",tags=["Knowledge Runtime"],dependencies=[Depends(require_knowledge_runtime_ready)])
 MEMORY_ITEMS:Dict[str,Dict[str,Any]]={}
 MEMORY_LINKS:List[Dict[str,Any]]=[]
 
