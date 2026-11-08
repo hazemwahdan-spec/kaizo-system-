@@ -16,5 +16,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install fastapi pydantic httpx pytest
-      - run: pytest -q test_training_workflow.py
+      - run: pip install fastapi pydantic httpx pytest PyJWT[crypto]
+      - name: Run FEAT-033..040 semantic and ownership security tests
+        env:
+          KAIZO_IDENTITY_MODE: development
+          KAIZO_PERSISTENCE_MODE: memory
+        run: pytest -q test_training_workflow.py test_training_workflow_security.py
