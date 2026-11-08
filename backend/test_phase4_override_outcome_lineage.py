@@ -193,7 +193,7 @@ def test_phase4_decision_plan_kpi_retest_lineage_keeps_baseline():
     # Generic FEAT-037/038 endpoints accept caller-supplied actor and athlete
     # identity, so they are intentionally retired. The dedicated protected
     # FEAT-033..040 workflow owns retest/response lineage.
-    retest = client.post("/api/v1/features/feat-037/retest-capture", {
+    retest = client.post("/api/v1/features/feat-037/retest-capture", json={
         "subject_id": athlete["athlete_id"],
         "actor_id": coach,
         "payload": {
@@ -211,7 +211,7 @@ def test_phase4_decision_plan_kpi_retest_lineage_keeps_baseline():
     })
     assert retest.status_code == 410, retest.text
 
-    comparison = client.post("/api/v1/features/feat-038/before-after-comparison", {
+    comparison = client.post("/api/v1/features/feat-038/before-after-comparison", json={
         "subject_id": athlete["athlete_id"],
         "actor_id": coach,
         "payload": {
