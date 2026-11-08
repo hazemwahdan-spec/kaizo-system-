@@ -98,6 +98,7 @@ def test_adapter_requires_athlete_scope_and_supports_adaptation():
     adapter = ProductCoreRuntimeAdapter(CoreRuntimeGateway())
     payload = {
         "athlete_id": "athlete-1",
+        "decision_id": "decision-adapter-1",
         "case_id": "CASE-ADAPT-1",
         "operation": "individual_adaptation",
         "common_core": {"principle": "retain"},
