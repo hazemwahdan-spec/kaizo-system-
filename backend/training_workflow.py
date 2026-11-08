@@ -1,24 +1,29 @@
-"""End-to-end training decision-cycle workflow for FEAT-033..040.
+"""Ownership-scoped, auditable FEAT-033..040 Coach workflow.
 
-This module adds feature-specific semantics on top of the durable persistence
-boundary. It never authorizes autonomous execution: Coach Final Authority is
-mandatory and execution_authorized is always False.
+Every request requires a verified Coach principal (OIDC in production) and a
+server-side ownership lookup. Caller-supplied actor identifiers are ignored.
+Training record and tenant-scoped audit event are committed in one transaction.
 """
-
-from datetime import datetime
+import json
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 import persistence
+from productization import coach_roster
+from productization.product_api import verified_coach_scope
 
 router = APIRouter(prefix="/api/v1/training-workflow", tags=["training-workflow"])
 
+_MEMORY_RECORDS: list[dict[str, Any]] = []
+_MEMORY_AUDIT: list[dict[str, Any]] = []
+
 
 def _now() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _require_authority(value: bool) -> None:
@@ -26,61 +31,161 @@ def _require_authority(value: bool) -> None:
         raise HTTPException(status_code=400, detail="coach_final_authority is required")
 
 
+def _coach_for_athlete(
+    athlete_id: str,
+    authorization: str | None,
+    actor_id: str | None,
+    role: str | None,
+    tenant_id: str | None,
+    owner: str | None,
+):
+    # verified_coach_scope uses JWT issuer/audience/JWKS validation in OIDC mode.
+    # Development headers are accepted only when KAIZO_IDENTITY_MODE=development.
+    principal = verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
+    if not persistence.is_postgres_enabled() and principal.verified:
+        raise HTTPException(status_code=503, detail="durable Coach workflow requires PostgreSQL")
+    athlete = coach_roster.get_owned_athlete(
+        tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+    )
+    if athlete is None:
+        # Avoid disclosing whether an athlete exists in another Coach/tenant scope.
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return principal
+
 
 def _ensure_schema() -> None:
-    """Compatibility shim; schema is provisioned by persistence.initialize()."""
-    return
+    """Provision only this feature's additive schema; never backfill legacy scope."""
+    if not persistence.is_postgres_enabled():
+        return
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS kaizo_training_workflow_records (
+                    record_id TEXT PRIMARY KEY,
+                    feature_id TEXT NOT NULL,
+                    athlete_id TEXT NOT NULL,
+                    decision_id TEXT,
+                    session_id TEXT,
+                    payload JSONB NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    coach_final_authority BOOLEAN NOT NULL,
+                    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE,
+                    tenant_id TEXT,
+                    coach_actor_id TEXT
+                )
+            """)
+            cur.execute("ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS tenant_id TEXT")
+            cur.execute("ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS coach_actor_id TEXT")
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_kaizo_training_workflow_scope
+                ON kaizo_training_workflow_records
+                    (feature_id, tenant_id, coach_actor_id, athlete_id, created_at)
+            """)
+        conn.commit()
 
 
-def _save(feature_id: str, athlete_id: str, payload: Dict[str, Any],
-          created_by: str, decision_id: Optional[str] = None,
-          session_id: Optional[str] = None) -> Dict[str, Any]:
+def _save(
+    feature_id: str,
+    athlete_id: str,
+    payload: Dict[str, Any],
+    principal: Any,
+    decision_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> Dict[str, Any]:
     record = {
         "record_id": str(uuid4()),
         "feature_id": feature_id,
         "athlete_id": athlete_id,
+        "tenant_id": principal.tenant_id,
+        "coach_actor_id": principal.actor_id,
         "decision_id": decision_id,
         "session_id": session_id,
         "payload": payload,
-        "created_by": created_by,
+        "created_by": principal.actor_id,
         "created_at": _now(),
         "coach_final_authority": True,
         "execution_authorized": False,
     }
+    audit = {
+        "timestamp": record["created_at"],
+        "who": principal.actor_id,
+        "action": f"{feature_id}_RECORDED",
+        "old_value": None,
+        "new_value": record,
+        "why": "Training workflow record persisted under verified Coach ownership and Coach Final Authority.",
+        "tenant_id": principal.tenant_id,
+    }
+
     if persistence.is_postgres_enabled():
+        _ensure_schema()
+        # One connection and one transaction: either both the workflow record
+        # and its tenant-scoped audit event commit, or neither does.
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO kaizo_training_workflow_records
                     (record_id,feature_id,athlete_id,decision_id,session_id,payload,
-                     created_by,created_at,coach_final_authority,execution_authorized)
-                    VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)""",
-                    (record["record_id"], feature_id, athlete_id, decision_id,
-                     session_id, __import__("json").dumps(payload), created_by,
-                     record["created_at"], True, False),
+                     created_by,created_at,coach_final_authority,execution_authorized,
+                     tenant_id,coach_actor_id)
+                    SELECT %s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s
+                    WHERE EXISTS (
+                        SELECT 1 FROM kaizo_coach_athlete_ownership
+                        WHERE athlete_id=%s AND tenant_id=%s AND coach_actor_id=%s
+                    )
+                    RETURNING record_id""",
+                    (
+                        record["record_id"], feature_id, athlete_id, decision_id,
+                        session_id, json.dumps(payload), principal.actor_id,
+                        record["created_at"], True, False,
+                        principal.tenant_id, principal.actor_id,
+                        athlete_id, principal.tenant_id, principal.actor_id,
+                    ),
+                )
+                if cur.fetchone() is None:
+                    raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+                cur.execute(
+                    """INSERT INTO kaizo_audit_logs
+                    (timestamp,who,action,old_value,new_value,why,tenant_id)
+                    VALUES (%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s)""",
+                    (
+                        audit["timestamp"], audit["who"], audit["action"],
+                        json.dumps(audit["old_value"]), json.dumps(audit["new_value"]),
+                        audit["why"], audit["tenant_id"],
+                    ),
                 )
             conn.commit()
-        persistence.append_audit(
-            timestamp=record["created_at"], who=created_by,
-            action=f"{feature_id}_RECORDED", old_value=None, new_value=record,
-            why="Training workflow record persisted under Coach Final Authority.",
-        )
+    else:
+        # Explicitly development/test-only adapter. Production OIDC is refused
+        # above unless durable PostgreSQL is active.
+        _MEMORY_RECORDS.append(record)
+        _MEMORY_AUDIT.append(audit)
     return record
 
 
-def _list(feature_id: str, athlete_id: str) -> List[Dict[str, Any]]:
+def _list(feature_id: str, athlete_id: str, tenant_id: str, coach_actor_id: str) -> List[Dict[str, Any]]:
     if not persistence.is_postgres_enabled():
-        return []
+        return [
+            dict(item) for item in _MEMORY_RECORDS
+            if item["feature_id"] == feature_id
+            and item["athlete_id"] == athlete_id
+            and item["tenant_id"] == tenant_id
+            and item["coach_actor_id"] == coach_actor_id
+        ]
+    _ensure_schema()
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT record_id,feature_id,athlete_id,decision_id,session_id,
                           payload,created_by,created_at,coach_final_authority,
-                          execution_authorized
+                          execution_authorized,tenant_id,coach_actor_id
                    FROM kaizo_training_workflow_records
                    WHERE feature_id=%s AND athlete_id=%s
+                     AND tenant_id=%s AND coach_actor_id=%s
                    ORDER BY created_at,record_id""",
-                (feature_id, athlete_id),
+                (feature_id, athlete_id, tenant_id, coach_actor_id),
             )
             rows = cur.fetchall()
     return [{
@@ -88,7 +193,14 @@ def _list(feature_id: str, athlete_id: str) -> List[Dict[str, Any]]:
         "decision_id": r[3], "session_id": r[4], "payload": r[5],
         "created_by": r[6], "created_at": r[7],
         "coach_final_authority": r[8], "execution_authorized": r[9],
+        "tenant_id": r[10], "coach_actor_id": r[11],
     } for r in rows]
+
+
+def reset_memory_state() -> None:
+    """Test helper; clears only the isolated in-memory adapter."""
+    _MEMORY_RECORDS.clear()
+    _MEMORY_AUDIT.clear()
 
 
 class DecisionDrillRequest(BaseModel):
@@ -97,7 +209,6 @@ class DecisionDrillRequest(BaseModel):
     drill_id: str
     rationale: str
     evidence_refs: List[str] = Field(min_length=1)
-    selected_by: str
     coach_final_authority: bool = True
 
 
@@ -109,7 +220,6 @@ class DrillPrescriptionRequest(BaseModel):
     objective: str
     dosage: Dict[str, Any]
     constraints: List[str] = Field(default_factory=list)
-    prescribed_by: str
     coach_final_authority: bool = True
 
 
@@ -119,7 +229,6 @@ class ExecutionCueRequest(BaseModel):
     drill_id: str
     cues: List[str] = Field(min_length=1)
     checklist: List[str] = Field(min_length=1)
-    created_by: str
     coach_final_authority: bool = True
 
 
@@ -128,7 +237,6 @@ class ResponseRequest(BaseModel):
     session_id: str
     response: Dict[str, Any]
     kpi_values: Dict[str, Any]
-    observed_by: str
     coach_final_authority: bool = True
 
 
@@ -138,7 +246,6 @@ class RetestRequest(BaseModel):
     baseline_reference: str
     retest_values: Dict[str, Any]
     evidence_refs: List[str] = Field(min_length=1)
-    retested_by: str
     coach_final_authority: bool = True
 
 
@@ -147,7 +254,6 @@ class ComparisonRequest(BaseModel):
     baseline: Dict[str, Any]
     current: Dict[str, Any]
     comparison_method: str
-    compared_by: str
     coach_final_authority: bool = True
 
 
@@ -155,7 +261,6 @@ class ProgressRequest(BaseModel):
     athlete_id: str
     state: Dict[str, Any]
     evidence_refs: List[str] = Field(min_length=1)
-    updated_by: str
     coach_final_authority: bool = True
 
 
@@ -165,92 +270,166 @@ class NextDecisionRequest(BaseModel):
     trigger_type: str
     trigger_reason: str
     required_evidence: List[str] = Field(min_length=1)
-    created_by: str
     coach_final_authority: bool = True
 
 
+def _headers(
+    authorization: str | None, actor_id: str | None, role: str | None,
+    tenant_id: str | None, owner: str | None, athlete_id: str,
+):
+    return _coach_for_athlete(athlete_id, authorization, actor_id, role, tenant_id, owner)
+
+
 @router.post("/feat-033/decision-drill", status_code=status.HTTP_201_CREATED)
-def select_decision_drill(req: DecisionDrillRequest):
+def select_decision_drill(
+    req: DecisionDrillRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
     if not req.rationale.strip() or not req.drill_id.strip():
         raise HTTPException(400, "drill_id and rationale are required")
-    return _save("FEAT-033", req.athlete_id, req.model_dump(),
-                 req.selected_by, req.decision_id)
+    return _save("FEAT-033", req.athlete_id, req.model_dump(), principal, req.decision_id)
 
 
 @router.post("/feat-034/drill-prescription", status_code=status.HTTP_201_CREATED)
-def prescribe_drill(req: DrillPrescriptionRequest):
+def prescribe_drill(
+    req: DrillPrescriptionRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
     d = req.dosage
     if not d or any(k not in d for k in ("sets", "reps")):
         raise HTTPException(400, "dosage requires sets and reps")
     if not isinstance(d["sets"], int) or d["sets"] <= 0 or not isinstance(d["reps"], int) or d["reps"] <= 0:
         raise HTTPException(400, "sets and reps must be positive integers")
-    return _save("FEAT-034", req.athlete_id, req.model_dump(),
-                 req.prescribed_by, req.decision_id, req.session_id)
+    return _save("FEAT-034", req.athlete_id, req.model_dump(), principal, req.decision_id, req.session_id)
 
 
 @router.post("/feat-035/execution-cues", status_code=status.HTTP_201_CREATED)
-def record_execution_cues(req: ExecutionCueRequest):
+def record_execution_cues(
+    req: ExecutionCueRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
     if any(not item.strip() for item in req.cues + req.checklist):
         raise HTTPException(400, "cues and checklist items must be non-empty")
-    return _save("FEAT-035", req.athlete_id, req.model_dump(),
-                 req.created_by, session_id=req.session_id)
+    return _save("FEAT-035", req.athlete_id, req.model_dump(), principal, session_id=req.session_id)
 
 
 @router.post("/feat-036/training-response", status_code=status.HTTP_201_CREATED)
-def capture_training_response(req: ResponseRequest):
+def capture_training_response(
+    req: ResponseRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
     if not req.response or not req.kpi_values:
         raise HTTPException(400, "response and kpi_values are required")
-    return _save("FEAT-036", req.athlete_id, req.model_dump(),
-                 req.observed_by, session_id=req.session_id)
+    return _save("FEAT-036", req.athlete_id, req.model_dump(), principal, session_id=req.session_id)
 
 
 @router.post("/feat-037/retest", status_code=status.HTTP_201_CREATED)
-def capture_retest(req: RetestRequest):
+def capture_retest(
+    req: RetestRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
     if not req.baseline_reference.strip() or not req.retest_values:
         raise HTTPException(400, "baseline_reference and retest_values are required")
-    return _save("FEAT-037", req.athlete_id, req.model_dump(),
-                 req.retested_by, session_id=req.session_id)
+    return _save("FEAT-037", req.athlete_id, req.model_dump(), principal, session_id=req.session_id)
 
 
 @router.post("/feat-038/before-after", status_code=status.HTTP_201_CREATED)
-def compare_before_after(req: ComparisonRequest):
+def compare_before_after(
+    req: ComparisonRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
     if not req.baseline or not req.current or not req.comparison_method.strip():
         raise HTTPException(400, "baseline, current and comparison_method are required")
-    return _save("FEAT-038", req.athlete_id, req.model_dump(), req.compared_by)
+    return _save("FEAT-038", req.athlete_id, req.model_dump(), principal)
 
 
 @router.post("/feat-039/progress-state", status_code=status.HTTP_201_CREATED)
-def update_progress_state(req: ProgressRequest):
+def update_progress_state(
+    req: ProgressRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
     if not req.state:
         raise HTTPException(400, "state is required")
-    return _save("FEAT-039", req.athlete_id, req.model_dump(), req.updated_by)
+    return _save("FEAT-039", req.athlete_id, req.model_dump(), principal)
 
 
 @router.post("/feat-040/next-decision-trigger", status_code=status.HTTP_201_CREATED)
-def create_next_decision_trigger(req: NextDecisionRequest):
+def create_next_decision_trigger(
+    req: NextDecisionRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
     if not req.trigger_type.strip() or not req.trigger_reason.strip():
         raise HTTPException(400, "trigger_type and trigger_reason are required")
-    return _save("FEAT-040", req.athlete_id, req.model_dump(),
-                 req.created_by, session_id=req.session_id)
+    return _save("FEAT-040", req.athlete_id, req.model_dump(), principal, session_id=req.session_id)
 
 
 @router.get("/athletes/{athlete_id}")
-def get_training_workflow(athlete_id: str):
+def get_training_workflow(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _headers(authorization, actor_id, role, tenant_id, owner, athlete_id)
     return {
         "athlete_id": athlete_id,
         "features": {
-            feature: _list(feature, athlete_id)
+            feature: _list(feature, athlete_id, principal.tenant_id, principal.actor_id)
             for feature in (
-                "FEAT-033","FEAT-034","FEAT-035","FEAT-036",
-                "FEAT-037","FEAT-038","FEAT-039","FEAT-040"
+                "FEAT-033", "FEAT-034", "FEAT-035", "FEAT-036",
+                "FEAT-037", "FEAT-038", "FEAT-039", "FEAT-040",
             )
         },
+        "coach_final_authority": True,
+        "execution_authorized": False,
     }
