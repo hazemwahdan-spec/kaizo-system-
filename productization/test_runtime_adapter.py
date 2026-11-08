@@ -18,11 +18,22 @@ from productization.runtime_adapter import (
 
 DECISION_PAYLOAD = {
     "case_id": "CASE-P7-E2E",
+    "athlete_id": "athlete-1",
     "decision": {"type": "SELECTION", "value": "candidate-a"},
     "intervention": {"type": "DRILL", "value": "seoi"},
     "response_kpi": {"kpi": "entry_quality", "value": 7},
     "retest": {"result": "PASS"},
 }
+
+
+def setup_function():
+    from productization import coach_roster
+    coach_roster.reset_memory_state()
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id="academy-a", coach_actor_id="coach-1",
+        display_name="Runtime adapter ownership test",
+    )
+    DECISION_PAYLOAD["athlete_id"] = athlete["athlete_id"]
 
 
 def test_adapter_binds_to_real_frozen_core():
@@ -91,4 +102,16 @@ def test_coach_approval_is_required_before_intervention():
             RuntimeContext("coach-1", "coach", "academy-a", "athlete-1", coach_approved=False),
             "academy-a",
             DECISION_PAYLOAD,
+        )
+
+
+
+def test_adapter_rejects_an_athlete_not_owned_by_the_verified_coach():
+    adapter = ProductCoreRuntimeAdapter(CoreRuntimeGateway())
+    payload = {**DECISION_PAYLOAD, "athlete_id": "not-owned-by-coach-1"}
+    with pytest.raises(RuntimeAuthorizationError, match="athlete not found"):
+        adapter.request_decision(
+            RuntimeContext("coach-1", "coach", "academy-a"),
+            "academy-a",
+            payload,
         )
