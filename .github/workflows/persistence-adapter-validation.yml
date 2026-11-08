@@ -8,6 +8,8 @@ on:
       - feat/coach-athlete-ownership-boundary
       - feat/kaizo-persistence-adapter
       - feat-027-session-structure-timing
+      - fix/coach-training-workflow-ownership-atomic-audit
+      - fix/coach-digital-twin-state-cycle-ownership
   pull_request:
     branches:
       - main
@@ -23,6 +25,9 @@ on:
       - feat/coach-action-history
       - feat/coach-audit-review
       - feat/coach-product-action-traceability
+      - fix/coach-ui-fail-closed-legacy-tools
+      - fix/coach-training-workflow-ownership-atomic-audit
+      - fix/coach-digital-twin-state-cycle-ownership
 
 jobs:
   validate-persistence-adapter:
@@ -63,6 +68,12 @@ jobs:
         run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
       - name: Verify durable Coach athlete ownership and tenant audit
         run: PYTHONPATH=..:. pytest -q ../productization/test_coach_roster_postgres.py ../productization/test_coach_groups_postgres.py ../productization/test_coach_athlete_lifecycle_postgres.py ../productization/test_coach_athlete_decision_history_postgres.py
+      - name: Verify FEAT-033..040 Coach workflow ownership and atomic audit
+        run: PYTHONPATH=..:. pytest -q ../productization/test_training_workflow_postgres.py
+      - name: Verify FEAT-042..045 scoped Digital Twin state cycle
+        run: PYTHONPATH=..:. pytest -q test_state_cycle.py test_feat_041_digital_twin.py
+      - name: Verify scoped Digital Twin PostgreSQL persistence and atomic audit rollback
+        run: PYTHONPATH=..:. pytest -q test_state_cycle_postgres.py
       - name: Verify FEAT-006 PostgreSQL Coach dashboard aggregation
         if: ${{ hashFiles('productization/test_coach_home_dashboard_postgres.py') != '' }}
         run: PYTHONPATH=..:. pytest -q ../productization/test_coach_home_dashboard_postgres.py
@@ -98,6 +109,8 @@ jobs:
         run: PYTHONPATH=. python test_feat_016_problem_statement.py
       - name: Run FEAT-017 problem library selection acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT017ProblemLibrarySelectionTests
+      - name: Run FEAT-018 cause/context framing acceptance tests
+        run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT018CauseContextFramingTests
       - name: Run FEAT-019 evidence-linked diagnosis acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT019EvidenceLinkedDiagnosisTests
       - name: Run FEAT-020 diagnosis confidence acceptance tests

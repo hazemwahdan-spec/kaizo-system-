@@ -2,22 +2,8 @@ const API=window.KAIZO_API_BASE || "/api/v1";
 const app=document.getElementById("app");
 app.innerHTML=[
 '<header class="top"><div><div class="brand">KAIZO SYSTEM</div><div id="roleCaption" style="color:#cbd5e1;font-size:13px">Commercial Product Surface · Core preserved</div></div><div class="top-actions"><label class="role-label">Role</label><select id="roleSelect" class="role-select"><option value="coach">Coach</option><option value="academy">Academy</option><option value="athlete">Athlete</option><option value="parent">Parent</option></select><button onclick="kaizoLogin()">Sign in</button><div id="health" class="status">Checking Core…</div></div></header>',
-'<main class="wrap"><section id="productNav" class="card span-12 product-nav"></section><section id="roleView" class="card span-12 role-view"></section><div id="coachWorkspace" class="grid">',
-'<section id="coach-decision-case" class="card span-12"><h2>Decision Case</h2><div class="row">',
-'<div class="field"><label>Case ID</label><input id="caseId"></div><div class="field"><label>Athlete ID</label><input id="athleteId" placeholder="ATH-001"></div>',
-'<div class="field"><label>Age Group</label><select id="age"><option>under11</option></select></div><div class="field"><label>Gender</label><select id="gender"><option>male</option></select></div>',
-'<div class="field"><label>Weight Category</label><select id="weight"><option>-42kg</option></select></div><div class="field"><label>Metric</label><select id="metric"><option>grip_strength</option></select></div>',
-'<div class="field"><label>Actual Value (kg)</label><input id="value" type="number" step="0.1" placeholder="18"></div></div>',
-'<div class="row" style="margin-top:12px"><button onclick="evaluateRule()">Evaluate with Core</button><button class="secondary" onclick="health()">Refresh Health</button></div>',
-'<div id="evalNote" class="notice" style="margin-top:12px">Coach remains the final authority. Unvalidated numeric claims are blocked by Core.</div><pre id="evalOut" class="output" style="margin-top:12px"></pre></section>',
-'<section id="coach-adapt-decision" class="card span-6"><h3>Adapt Decision</h3><div class="row"><div class="field"><label>Operation</label><select id="operation"><option>individual_adaptation</option><option>team_adaptation</option><option>subgroup_recalculation</option><option>individual_change</option></select></div><div class="field"><label>Dynamic Inputs</label><input id="dynamic" value="competition_pressure"></div></div><button style="margin-top:10px" onclick="adapt()">Run Adaptation</button><pre id="adaptOut" class="output" style="margin-top:12px"></pre></section>',
-'<section id="coach-decision-loop" class="card span-6"><h3>Decision Loop</h3><div class="row"><div class="field"><label>Decision</label><input id="decision" value="Increase grip-entry decision quality"></div><div class="field"><label>Intervention</label><input id="intervention" value="Constraint-led gripping drill"></div><div class="field"><label>KPI</label><input id="kpi" value="clean entries / 5 reps"></div><div class="field"><label>Retest</label><input id="retest" value="same scenario, independent retest"></div></div><button style="margin-top:10px" onclick="loop()">Complete Loop</button><pre id="loopOut" class="output" style="margin-top:12px"></pre></section>',
-'<section id="coach-digital-twin" class="card span-6"><h3>Digital Twin</h3><div class="row"><div class="field"><label>Entity ID</label><input id="entity" value="ATH-001"></div><div class="field"><label>State JSON</label><input id="twinState" value=\'{"readiness":"training","grip":"medium"}\'></div></div><button style="margin-top:10px" onclick="syncTwin()">Sync State</button><button class="secondary" style="margin:10px 0 0 6px" onclick="getTwin()">Read State</button><pre id="twinOut" class="output" style="margin-top:12px"></pre></section>',
-'<section id="coach-audit-trail" class="card span-6"><h3>Audit Trail · Restricted</h3><p class="muted">Core currently permits tenant audit reads only for verified Academy principals. Coach action history needs a separate tenant-scoped API; this view does not grant access.</p><button onclick="audit()">Refresh Audit</button><pre id="auditOut" class="output" style="margin-top:12px"></pre></section>
-',
-'</div></main>'
+'<main class="wrap"><section id="productNav" class="card span-12 product-nav"></section><section id="roleView" class="card span-12 role-view"></section></main>'
 ].join("");
-caseId.value="COACH-"+Date.now();
 const PRODUCT_API=API+"/product";
 const roleSelect=document.getElementById("roleSelect");
 roleSelect.addEventListener("change", renderProductRole);
@@ -26,7 +12,7 @@ async function kaizoLogin(){try{if(window.KAIZO_AUTH_READY)await window.KAIZO_AU
 async function productAccessToken(){if(window.KAIZO_AUTH_READY)await window.KAIZO_AUTH_READY;const auth=window.KAIZO_AUTH;if(!auth||typeof auth.getAccessTokenSilently!=="function")throw new Error(window.KAIZO_AUTH_INIT_ERROR||"AUTHENTICATION_REQUIRED: verified Auth0 SPA session is not initialized. Role selection and X-KAIZO headers are not credentials.");const token=await auth.getAccessTokenSilently();if(!token)throw new Error("AUTHENTICATION_REQUIRED: no verified access token was issued.");return token}
 function actorForRole(role){return ({coach:"coach-demo",academy:"academy-demo",athlete:"ATH-001",parent:"parent-demo"})[role]}
 function ownerForRole(role){return role==="athlete"?"ATH-001":role==="parent"?"ATH-001":role==="coach"?"ATH-001":""}
-async function renderProductRole(){ const role=roleSelect.value; document.getElementById("roleCaption").textContent="Commercial Product Surface · "+role+" · execution authorization disabled"; const workspace=document.getElementById("coachWorkspace"); workspace.style.display=role==="coach"?"grid":"none"; try{const nav=await productCall("/navigation"); document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"chips\">"+nav.surfaces.map(x=>"<span class=\"chip\">"+x+"</span>").join("")+"</div><div class=\"governance\">Coach Final Authority: <b>"+nav.coach_final_authority+"</b> · Execution Authorized: <b>"+nav.execution_authorized+"</b></div>"; if(role==="coach"){document.getElementById("roleView").innerHTML=coachDashboard();await loadCoachDashboard();await loadCoachRoster();await loadCoachGroups()} else if(role==="athlete"){const p=await productCall("/athletes/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>My Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else if(role==="parent"){const p=await productCall("/parents/linked/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>Linked Athlete Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else {document.getElementById("roleView").innerHTML="<h3>Academy Dashboard</h3><p class=\"muted\">Academy surfaces are tenant-scoped. Group/coach management remains server-authorized.</p>"}}catch(e){const message=String(e&&e.message?e.message:e);document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"notice\">API request failed. Diagnostic details are shown below.</div>";document.getElementById("roleView").innerHTML="<h3>KAIZO request diagnostic</h3><p class=\"notice\">"+escapeHtml(message)+"</p><p class=\"muted\">A frontend/API error is not an authorization decision. Verify the Core response and server-side authorization before closing this issue.</p>"}}
+async function renderProductRole(){ const role=roleSelect.value; document.getElementById("roleCaption").textContent="Commercial Product Surface · "+role+" · execution authorization disabled"; try{const nav=await productCall("/navigation"); document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"chips\">"+nav.surfaces.map(x=>"<span class=\"chip\">"+x+"</span>").join("")+"</div><div class=\"governance\">Coach Final Authority: <b>"+nav.coach_final_authority+"</b> · Execution Authorized: <b>"+nav.execution_authorized+"</b></div>"; if(role==="coach"){document.getElementById("roleView").innerHTML=coachDashboard();await loadCoachDashboard();await loadCoachRoster();await loadCoachGroups()} else if(role==="athlete"){const p=await productCall("/athletes/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>My Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else if(role==="parent"){const p=await productCall("/parents/linked/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>Linked Athlete Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else {document.getElementById("roleView").innerHTML="<h3>Academy Dashboard</h3><p class=\"muted\">Academy surfaces are tenant-scoped. Group/coach management remains server-authorized.</p>"}}catch(e){const message=String(e&&e.message?e.message:e);document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"notice\">API request failed. Diagnostic details are shown below.</div>";document.getElementById("roleView").innerHTML="<h3>KAIZO request diagnostic</h3><p class=\"notice\">"+escapeHtml(message)+"</p><p class=\"muted\">A frontend/API error is not an authorization decision. Verify the Core response and server-side authorization before closing this issue.</p>"}}
 renderProductRole();
 
 
@@ -96,7 +82,7 @@ function returnCoachRoster(){
  if(search)search.focus();
 }
 function coachAthleteSection(sectionId){
- const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionWorkspaceSection","athleteActionHistorySection"];
+ const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionWorkspaceSection","athleteActionHistorySection","athleteAuditReviewSection"];
  if(!ids.includes(sectionId))return;
  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=id!==sectionId});
  document.querySelectorAll("[data-athlete-section]").forEach(button=>{
@@ -153,14 +139,16 @@ async function viewCoachAthlete(athleteId){
    '<button type="button" data-athlete-section="athleteStatusHistorySection" aria-pressed="false" onclick="coachAthleteSection(\'athleteStatusHistorySection\')">Status history</button>'+
    '<button type="button" data-athlete-section="athleteDecisionCyclesSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionCyclesSection\')">Decision history</button>'+
    '<button type="button" data-athlete-section="athleteDecisionWorkspaceSection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteDecisionWorkspaceSection\\')">Decision workspace</button>'+
-   '<button type="button" data-athlete-section="athleteActionHistorySection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteActionHistorySection\\')">Action history</button></nav>'+
+   '<button type="button" data-athlete-section="athleteActionHistorySection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteActionHistorySection\\')">Action history</button>'+
+   '<button type="button" data-athlete-section="athleteAuditReviewSection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteAuditReviewSection\\')">Audit review</button></nav>'+
    '<section id="athleteProfileSection"><h4>Verified athlete profile</h4><pre class="output">'+escapeHtml(pretty(result))+'</pre></section>'+
    '<section id="athleteLifecycleSection" hidden><h4>Athlete lifecycle</h4><p>Current status: <strong>'+escapeHtml(result.status||"Unknown")+'</strong></p>'+
    (next.length?'<label for="athleteNextStatus">Change status</label><select id="athleteNextStatus">'+next.map(s=>'<option value="'+s+'">'+s+'</option>').join("")+'</select><label for="athleteStatusReason">Reason (required)</label><input id="athleteStatusReason" maxlength="500" required placeholder="Record why this status changes"><button type="button" onclick="changeCoachAthleteStatus(\''+escapeHtml(athleteId)+'\')">Save lifecycle change</button>':'<p class="muted">Archived is terminal. No further status transition is permitted.</p>')+'</section>'+
    '<section id="athleteStatusHistorySection" hidden><h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div></section>'+
    '<section id="athleteDecisionCyclesSection" hidden><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div></section>'+
    '<section id="athleteDecisionWorkspaceSection" hidden><h4>Decision-cycle workspace</h4><p class="muted">Read-only view of persisted assessments, attached evidence, diagnosis, Coach decisions, training and retest records.</p><div id="athleteDecisionWorkspaceNotice" class="notice">Loading persisted decision-cycle evidence…</div><div id="athleteDecisionWorkspaceContent"></div></section>'+
-   '<section id="athleteActionHistorySection" hidden><h4>Coach action history</h4><p class="muted">Only tenant-scoped events attributable to this verified Coach are shown. FEAT-044 state links are related lineage; their actor is not verified.</p><div id="athleteActionHistoryNotice" class="notice">Loading recorded actions…</div><div id="athleteActionHistoryContent"></div></section>';
+   '<section id="athleteActionHistorySection" hidden><h4>Coach action history</h4><p class="muted">Only tenant-scoped events attributable to this verified Coach are shown. FEAT-044 state links are related lineage; their actor is not verified.</p><div id="athleteActionHistoryNotice" class="notice">Loading recorded actions…</div><div id="athleteActionHistoryContent"></div></section>'+
+   '<section id="athleteAuditReviewSection" hidden><h4>Coach-scoped audit review</h4><p class="muted">Search is restricted to this selected athlete and the verified Coach/tenant scope.</p><label for="coachAuditQuery">Search term</label><input id="coachAuditQuery" maxlength="200" placeholder="Enter an action, decision, or reason"><button type="button" onclick="loadCoachAthleteAuditReview()">Search verified audit</button><div id="athleteAuditReviewNotice" class="notice">Enter a search term to review this athlete’s verified audit events.</div><div id="athleteAuditReviewContent"></div></section>';
   loadCoachAthleteStatusHistory(athleteId);
   loadCoachAthleteDecisionCycles(athleteId);
   loadCoachDecisionWorkspace(athleteId);
@@ -258,6 +246,30 @@ async function loadCoachActionHistory(athleteId){
  }
 }
 
+async function loadCoachAthleteAuditReview(){
+ const athleteId=selectedCoachAthleteId;
+ const notice=document.getElementById("athleteAuditReviewNotice");
+ const content=document.getElementById("athleteAuditReviewContent");
+ const query=(document.getElementById("coachAuditQuery")?.value||"").trim();
+ if(!notice||!content)return;
+ if(!athleteId){notice.textContent="Select an athlete from your verified roster first.";content.textContent="";return}
+ if(!query){notice.textContent="Enter a search term. No audit query was sent.";content.textContent="";return}
+ notice.textContent="Searching verified audit events for this owned athlete…";content.innerHTML="";
+ try{
+  const path="/coach/athletes/"+encodeURIComponent(athleteId)+"/audit-review?query="+encodeURIComponent(query);
+  const data=await productCall(path);
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  const rows=Array.isArray(data.results)?data.results:[];
+  if(data.status==="INSUFFICIENT_EVIDENCE"){notice.textContent="Audit evidence is unavailable: "+String(data.message||"durable evidence is required");return}
+  notice.textContent=rows.length?rows.length+" verified audit match(es). Read-only review; no audit event was created.":"No verified audit events match this search.";
+  content.innerHTML=rows.map(item=>'<article class="coach-action-history-item"><h5>'+escapeHtml(item.action||"Recorded action")+'</h5><p>Verified Coach actor: '+escapeHtml(item.actor_id||"")+'</p><small>'+escapeHtml(item.occurred_at||"Timestamp unavailable")+'</small><p>'+escapeHtml(item.reason||"")+'</p><small>Source: '+escapeHtml(item.source||"")+' · '+escapeHtml(item.source_record_id||"")+'</small></article>').join("");
+ }catch(e){
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  notice.textContent="Audit review unavailable: "+String(e&&e.message?e.message:e);
+  content.textContent="No audit data is displayed when authentication or authorization fails.";
+ }
+}
+
 async function loadCoachAthleteStatusHistory(athleteId){
  const target=document.getElementById("athleteStatusHistory");if(!target)return;
  try{const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/status-history");
@@ -281,8 +293,7 @@ async function loadCoachAthleteDecisionCycles(athleteId){
       ((c.training_plans||[]).length?(c.training_plans||[]).map(p=>'<p class="muted">'+escapeHtml(p.title||p.plan_id)+' · '+escapeHtml(p.status||"")+'</p>').join(""):'<p class="muted">No linked training plans.</p>')+'</article>').join("");
   }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;target.textContent="Decision history unavailable: "+String(e&&e.message?e.message:e)}
 }
-\nfunction coachGo(id){const target=document.getElementById(id);if(target){target.scrollIntoView({behavior:"smooth",block:"start"});target.setAttribute("tabindex","-1");target.focus({preventScroll:true})}}
-function coachDashboard(){return `
+\nfunction coachDashboard(){return `
 <div class="coach-dashboard">
   <div class="coach-dashboard-head"><div><h2>Coach Home</h2><p class="muted">Decision support and workflow navigation. Coach retains final authority; execution remains disabled unless Core authorizes it.</p></div><span class="coach-state">CORE-GOVERNED</span></div>
   <section class="coach-dashboard-summary" aria-live="polite">
@@ -297,19 +308,14 @@ function coachDashboard(){return `
     <div id="coachPriorityQueueItems"></div>
   </section>
   <div class="coach-metrics">
-    <article class="coach-metric"><span class="muted">Decision cycle</span><strong>Ready to enter</strong><small>Evaluate → adapt → intervene → retest.</small></article>
-    <article class="coach-metric"><span class="muted">Audit review</span><strong>Authorization required</strong><small>Audit requests must be verified by Core; failures are shown, not hidden.</small></article>
+    <article class="coach-metric"><span class="muted">Decision records</span><strong>Read-only</strong><small>Review existing persisted cycles. New decision writes remain unavailable until a Coach-owned API is implemented.</small></article>
+    <article class="coach-metric"><span class="muted">Scoped audit review</span><strong>Per athlete</strong><small>Select an owned athlete and use the Audit review tab to search verified Coach actions.</small></article>
   </div>
-  <section id="coach-roster" class="coach-roster"><div class="coach-roster-head"><div><h3>My Athlete Roster</h3><p class="muted">Only athletes assigned to the authenticated coach in the authenticated tenant are shown.</p></div><button class="secondary" onclick="loadCoachRoster()">Refresh roster</button></div><form id="coachAthleteForm" class="coach-roster-form" onsubmit="createCoachAthlete(event)"><label for="newAthleteName">Athlete name</label><input id="newAthleteName" name="display_name" maxlength="120" required placeholder="Enter athlete name"><button type="submit">Add athlete to my roster</button></form><div class="coach-roster-form"><label for="athleteRosterSearch">Search my athletes</label><input id="athleteRosterSearch" type="search" maxlength="120" placeholder="Search by name or athlete ID" oninput="filterCoachRoster()"><button class="secondary" type="button" onclick="returnCoachRoster()">Back to roster</button></div><div id="coachRosterNotice" class="notice" role="status">Sign in with a verified Coach account to load your roster.</div><div id="coachRosterList" class="coach-roster-list"></div><pre id="coachAthleteDetail" class="output" aria-live="polite"></pre><div id="coachAthleteLifecycle" class="coach-roster" aria-live="polite"></div></section><section id="coach-groups" class="coach-roster"><div class="coach-roster-head"><div><h3>My Training Groups</h3><p class="muted">Groups and membership are restricted to your verified Coach and tenant scope.</p></div><button class="secondary" onclick="loadCoachGroups()">Refresh groups</button></div><form class="coach-roster-form" onsubmit="createCoachGroup(event)"><label for="newCoachGroupName">Group name</label><input id="newCoachGroupName" maxlength="100" required placeholder="e.g. U15 competition group"><button type="submit">Create group</button></form><div class="row"><label for="groupAthleteSelect">My athlete</label><select id="groupAthleteSelect"><option value="">Load your roster first</option></select></div><div id="coachGroupsNotice" class="notice" role="status">Sign in as Coach to load your groups.</div><div id="coachGroupsList"></div></section><h3>Open Coach workflow</h3>
-  <div class="coach-actions">
-    <button onclick="coachGo('coach-decision-case')">1. Evaluate athlete</button>
-    <button onclick="coachGo('coach-adapt-decision')">2. Adapt decision</button>
-    <button onclick="coachGo('coach-decision-loop')">3. Record intervention & retest</button>
-    <button class="secondary" onclick="coachGo('coach-digital-twin')">4. Review athlete state</button>
-    <button class="secondary" onclick="coachGo('coach-audit-trail')">5. Check audit access</button>
-    <button class="secondary" onclick="coachGo('coach-action-history')">6. Review my actions</button>
-  </div>
-  <p class="notice coach-honesty">Athlete navigation uses the verified Coach roster and existing scoped profile, lifecycle, status-history, and decision-history records. Coach remains the final authority.</p>
+  <section id="coach-roster" class="coach-roster"><div class="coach-roster-head"><div><h3>My Athlete Roster</h3><p class="muted">Only athletes assigned to the authenticated coach in the authenticated tenant are shown.</p></div><button class="secondary" onclick="loadCoachRoster()">Refresh roster</button></div><form id="coachAthleteForm" class="coach-roster-form" onsubmit="createCoachAthlete(event)"><label for="newAthleteName">Athlete name</label><input id="newAthleteName" name="display_name" maxlength="120" required placeholder="Enter athlete name"><button type="submit">Add athlete to my roster</button></form><div class="coach-roster-form"><label for="athleteRosterSearch">Search my athletes</label><input id="athleteRosterSearch" type="search" maxlength="120" placeholder="Search by name or athlete ID" oninput="filterCoachRoster()"><button class="secondary" type="button" onclick="returnCoachRoster()">Back to roster</button></div><div id="coachRosterNotice" class="notice" role="status">Sign in with a verified Coach account to load your roster.</div><div id="coachRosterList" class="coach-roster-list"></div><pre id="coachAthleteDetail" class="output" aria-live="polite"></pre><div id="coachAthleteLifecycle" class="coach-roster" aria-live="polite"></div></section><section id="coach-groups" class="coach-roster"><div class="coach-roster-head"><div><h3>My Training Groups</h3><p class="muted">Groups and membership are restricted to your verified Coach and tenant scope.</p></div><button class="secondary" onclick="loadCoachGroups()">Refresh groups</button></div><form class="coach-roster-form" onsubmit="createCoachGroup(event)"><label for="newCoachGroupName">Group name</label><input id="newCoachGroupName" maxlength="100" required placeholder="e.g. U15 competition group"><button type="submit">Create group</button></form><div class="row"><label for="groupAthleteSelect">My athlete</label><select id="groupAthleteSelect"><option value="">Load your roster first</option></select></div><div id="coachGroupsNotice" class="notice" role="status">Sign in as Coach to load your groups.</div><div id="coachGroupsList"></div></section><section class="coach-legacy-actions notice" aria-live="polite">
+  <h3>Decision and Digital Twin writes are not connected</h3>
+  <p>Legacy Core endpoints do not yet enforce Coach, tenant, and owned-athlete scope. These actions are intentionally unavailable here; no unscoped request will be sent. Verified read-only profile, lifecycle, decision history, workspace, action history, and audit review remain available.</p>
+</section>
+<p class="notice coach-honesty">Athlete navigation uses the verified Coach roster and existing scoped profile, lifecycle, status-history, decision-history, workspace, action-history, and audit-review records. Coach remains the final authority.</p>
 </div>` }
 
 async function call(path,opts){const r=await fetch(API+path,opts||{});const j=await r.json();if(!r.ok)throw new Error(JSON.stringify(j));return j}
@@ -317,12 +323,6 @@ function escapeHtml(value){return String(value).replace(/&/g,"&amp;").replace(/<
 function pretty(x){return JSON.stringify(x,null,2)}
 async function health(){try{const j=await call("/health");healthEl.textContent="CORE ONLINE";healthEl.style.background="#166534";return j}catch(e){healthEl.textContent="CORE UNREACHABLE";healthEl.style.background="#991b1b";return {error:String(e)}}}
 const healthEl=document.getElementById("health");
-async function evaluateRule(){const j=await call("/rules/evaluate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({athlete_id:athleteId.value||"UNSET",age_group:age.value,gender:gender.value,weight_category:weight.value,metric_name:metric.value,actual_value:value.value===""?null:Number(value.value)})});evalOut.textContent=pretty(j);evalNote.textContent=j.status==="HOLD"?"HOLD: Core blocked the path; review diagnostics.":"Decision returned by Core; Coach retains final authority."}
-async function adapt(){const j=await call("/decision/adapt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({case_id:caseId.value,operation:operation.value,common_core:{goal:"coach decision support"},dynamic_inputs:{context:dynamic.value},coach_final_authority:true})});adaptOut.textContent=pretty(j)}
-async function loop(){const j=await call("/decision/loop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({case_id:caseId.value,decision:{text:decision.value},intervention:{text:intervention.value},response_kpi:{metric:kpi.value},retest:{method:retest.value},coach_final_authority:true})});loopOut.textContent=pretty(j)}
-async function syncTwin(){let s;try{s=JSON.parse(twinState.value)}catch(e){twinOut.textContent="Invalid JSON";return}const j=await call("/digital-twin/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({case_id:caseId.value,entity_id:entity.value,state:s,source_event:"coach_workspace_update",coach_final_authority:true})});twinOut.textContent=pretty(j)}
-async function getTwin(){const j=await call("/digital-twin/"+encodeURIComponent(entity.value));twinOut.textContent=pretty(j)}
-async function audit(){try{const token=await productAccessToken();const r=await fetch(API+"/audit/logs",{headers:{"Authorization":"Bearer "+token}});const raw=await r.text();let j;try{j=raw?JSON.parse(raw):null}catch(_){j={message:"Core returned a non-JSON response",response_excerpt:raw.slice(0,500)}}if(!r.ok)throw new Error("HTTP "+r.status+" "+r.statusText+": "+JSON.stringify(j));auditOut.textContent=pretty(j)}catch(e){auditOut.textContent=String(e&&e.message?e.message:e)}}
 
 health();
 

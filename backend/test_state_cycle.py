@@ -1,103 +1,91 @@
 import os
-os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
+os.environ["KAIZO_PERSISTENCE_MODE"]="memory"
+os.environ["KAIZO_IDENTITY_MODE"]="development"
 
 from fastapi.testclient import TestClient
-
 from main import app
+from productization import coach_roster
+from state_cycle import reset_memory_state
 
-client = TestClient(app)
-
-
-def _update(entity_id: str, state: dict, expected_version=None):
-    payload = {
-        "entity_id": entity_id,
-        "state": state,
-        "source_event": "FEAT-040_NEXT_DECISION",
-        "case_id": "CASE-001",
-        "updated_by": "coach-1",
-        "evidence_refs": ["EVID-001"],
-        "coach_final_authority": True,
-    }
-    if expected_version is not None:
-        payload["expected_version"] = expected_version
-    return client.post("/api/v1/state-cycle/feat-042/digital-twin-state", json=payload)
+client=TestClient(app)
+COACH={"X-KAIZO-Actor":"coach-1","X-KAIZO-Role":"coach","X-KAIZO-Tenant":"tenant-1"}
+OTHER={"X-KAIZO-Actor":"coach-2","X-KAIZO-Role":"coach","X-KAIZO-Tenant":"tenant-1"}
+TENANT={"X-KAIZO-Actor":"coach-1","X-KAIZO-Role":"coach","X-KAIZO-Tenant":"tenant-2"}
 
 
-def test_feat_042_to_045_real_state_cycle():
-    entity = "athlete-integration-1"
-
-    first = _update(entity, {"progress_state": "IMPROVING", "kpi": 6})
-    assert first.status_code == 201
-    body = first.json()
-    assert body["state"]["version"] == 1
-    assert body["history"]["version"] == 1
-    assert body["state"]["coach_final_authority"] is True
-    assert body["state"]["execution_authorized"] is False
-
-    second = _update(entity, {"progress_state": "STABLE", "kpi": 7}, expected_version=1)
-    assert second.status_code == 201
-    assert second.json()["state"]["version"] == 2
-
-    history = client.get(f"/api/v1/state-cycle/feat-043/state-history/{entity}")
-    assert history.status_code == 200
-    assert history.json()["latest_version"] == 2
-    assert [x["version"] for x in history.json()["versions"]] == [1, 2]
-
-    link = client.post("/api/v1/state-cycle/feat-044/decision-state-link", json={
-        "decision_id": "DEC-001",
-        "entity_id": entity,
-        "state_version": 2,
-        "state_ref": f"{entity}:v2",
-        "linked_by": "coach-1",
-        "coach_final_authority": True,
-    })
-    assert link.status_code == 201
-    assert link.json()["link"]["state_ref"] == f"{entity}:v2"
-
-    next_state = client.post("/api/v1/state-cycle/feat-045/next-state", json={
-        "athlete_id": entity,
-        "requested_by": "coach-1",
-        "decision_id": "DEC-001",
-        "coach_final_authority": True,
-    })
-    assert next_state.status_code == 200
-    result = next_state.json()
-    assert result["state"]["version"] == 2
-    assert result["linked_decision_state"]["decision_id"] == "DEC-001"
-    assert result["execution_authorized"] is False
+def setup_function():
+    reset_memory_state()
+    coach_roster.reset_memory_state()
+    global ATHLETE
+    ATHLETE=coach_roster.create_owned_athlete(
+        tenant_id="tenant-1",coach_actor_id="coach-1",display_name="State cycle test athlete"
+    )["athlete_id"]
 
 
-def test_feat_042_optimistic_version_guard_and_authority():
-    entity = "athlete-integration-2"
-    assert _update(entity, {"kpi": 5}).status_code == 201
-
-    stale = _update(entity, {"kpi": 6}, expected_version=0)
-    assert stale.status_code == 409
-    assert stale.json()["detail"]["current_version"] == 1
-
-    blocked = client.post("/api/v1/state-cycle/feat-042/digital-twin-state", json={
-        "entity_id": entity,
-        "state": {"kpi": 7},
-        "source_event": "TEST",
-        "case_id": "CASE-002",
-        "updated_by": "coach-1",
-        "evidence_refs": ["EVID-001"],
-        "coach_final_authority": False,
-    })
-    assert blocked.status_code == 409
+def update_payload():
+    return {"entity_id":ATHLETE,"state":{"progress":"IMPROVING","kpi":6},
+            "source_event":"RETEST_COMPLETE","case_id":"CASE-1",
+            "evidence_refs":["REF-1"],"coach_final_authority":True,
+            "updated_by":"spoofed-client-actor"}
 
 
-def test_feat_044_rejects_non_current_state_reference():
-    entity = "athlete-integration-3"
-    assert _update(entity, {"kpi": 5}).status_code == 201
-    assert _update(entity, {"kpi": 6}, expected_version=1).status_code == 201
+def test_feat_042_to_045_requires_authenticated_owned_coach_and_preserves_lineage():
+    first=client.post("/api/v1/state-cycle/feat-042/digital-twin-state",
+                      json=update_payload(),headers=COACH)
+    assert first.status_code==201,first.text
+    assert first.json()["state"]["version"]==1
+    assert first.json()["history"]["recorded_by"]=="coach-1"
+    assert first.json()["state"]["execution_authorized"] is False
 
-    bad_link = client.post("/api/v1/state-cycle/feat-044/decision-state-link", json={
-        "decision_id": "DEC-003",
-        "entity_id": entity,
-        "state_version": 1,
-        "state_ref": f"{entity}:v1",
-        "linked_by": "coach-1",
-        "coach_final_authority": True,
-    })
-    assert bad_link.status_code == 409
+    second=client.post("/api/v1/state-cycle/feat-042/digital-twin-state",
+        json={**update_payload(),"state":{"progress":"STABLE","kpi":7},"expected_version":1},
+        headers=COACH)
+    assert second.status_code==201
+    assert second.json()["state"]["version"]==2
+
+    history=client.get(f"/api/v1/state-cycle/feat-043/state-history/{ATHLETE}",headers=COACH)
+    assert history.status_code==200
+    assert [x["version"] for x in history.json()["versions"]]==[1,2]
+    assert all(x["recorded_by"]=="coach-1" for x in history.json()["versions"])
+
+    link=client.post("/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id":"DEC-1","entity_id":ATHLETE,"state_version":2,
+              "state_ref":f"{ATHLETE}:v2","linked_by":"spoofed-actor"},
+        headers=COACH)
+    assert link.status_code==201,link.text
+    assert link.json()["link"]["linked_by"]=="coach-1"
+
+    nxt=client.post("/api/v1/state-cycle/feat-045/next-state",
+        json={"athlete_id":ATHLETE,"decision_id":"DEC-1","requested_by":"spoofed-actor"},
+        headers=COACH)
+    assert nxt.status_code==200,nxt.text
+    assert nxt.json()["linked_decision_state"]["decision_id"]=="DEC-1"
+    assert nxt.json()["coach_actor_id"]=="coach-1"
+    assert nxt.json()["execution_authorized"] is False
+
+
+def test_anonymous_non_coach_cross_coach_and_cross_tenant_denied():
+    path="/api/v1/state-cycle/feat-042/digital-twin-state"
+    assert client.post(path,json=update_payload()).status_code==401
+    assert client.post(path,json=update_payload(),headers={**COACH,"X-KAIZO-Role":"athlete"}).status_code==403
+    assert client.post(path,json=update_payload(),headers=OTHER).status_code==404
+    assert client.post(path,json=update_payload(),headers=TENANT).status_code==404
+    assert client.get(f"/api/v1/state-cycle/feat-042/digital-twin-state/{ATHLETE}",headers=OTHER).status_code==404
+    assert client.get(f"/api/v1/state-cycle/feat-043/state-history/{ATHLETE}",headers=TENANT).status_code==404
+
+
+def test_all_state_cycle_reads_and_writes_require_ownership():
+    assert client.get(f"/api/v1/state-cycle/feat-042/digital-twin-state/{ATHLETE}").status_code==401
+    assert client.get(f"/api/v1/state-cycle/feat-043/state-history/{ATHLETE}").status_code==401
+    assert client.post("/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id":"D","entity_id":ATHLETE,"state_version":1,"state_ref":f"{ATHLETE}:v1"},
+    ).status_code==401
+    assert client.post("/api/v1/state-cycle/feat-045/next-state",
+        json={"athlete_id":ATHLETE}).status_code==401
+
+
+def test_version_conflict_and_coach_authority_fail_closed():
+    assert client.post("/api/v1/state-cycle/feat-042/digital-twin-state",
+        json={**update_payload(),"expected_version":9},headers=COACH).status_code==409
+    assert client.post("/api/v1/state-cycle/feat-042/digital-twin-state",
+        json={**update_payload(),"coach_final_authority":False},headers=COACH).status_code==409

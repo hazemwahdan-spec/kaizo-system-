@@ -106,6 +106,11 @@ CREATE TABLE IF NOT EXISTS kaizo_digital_twin_state (
     case_id TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+-- New Coach scope columns; legacy rows remain NULL and are never auto-attributed.
+ALTER TABLE kaizo_digital_twin_state ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE kaizo_digital_twin_state ADD COLUMN IF NOT EXISTS coach_actor_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_digital_twin_state_coach_scope
+    ON kaizo_digital_twin_state(tenant_id, coach_actor_id, entity_id);
 
 CREATE TABLE IF NOT EXISTS kaizo_knowledge_repository (
     item_id TEXT PRIMARY KEY,
@@ -348,10 +353,15 @@ CREATE TABLE IF NOT EXISTS kaizo_training_workflow_records (
     created_by TEXT NOT NULL,
     created_at TEXT NOT NULL,
     coach_final_authority BOOLEAN NOT NULL,
-    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE
+    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE,
+    tenant_id TEXT,
+    coach_actor_id TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_kaizo_training_workflow_feature
-    ON kaizo_training_workflow_records(feature_id, athlete_id, created_at);
+-- Additive compatibility for existing rows: legacy workflow records stay unscoped.
+ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS coach_actor_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_kaizo_training_workflow_scope
+    ON kaizo_training_workflow_records(feature_id, tenant_id, coach_actor_id, athlete_id, created_at);
 
 CREATE TABLE IF NOT EXISTS kaizo_digital_twin_history (
     history_id TEXT PRIMARY KEY,
@@ -365,10 +375,14 @@ CREATE TABLE IF NOT EXISTS kaizo_digital_twin_history (
     recorded_at TEXT NOT NULL,
     coach_final_authority BOOLEAN NOT NULL,
     execution_authorized BOOLEAN NOT NULL DEFAULT FALSE,
+    tenant_id TEXT,
+    coach_actor_id TEXT,
     UNIQUE(entity_id, version)
 );
+ALTER TABLE kaizo_digital_twin_history ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE kaizo_digital_twin_history ADD COLUMN IF NOT EXISTS coach_actor_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_kaizo_digital_twin_history_entity
-    ON kaizo_digital_twin_history(entity_id, version);
+    ON kaizo_digital_twin_history(tenant_id, coach_actor_id, entity_id, version);
 
 CREATE TABLE IF NOT EXISTS kaizo_decision_state_links (
     link_id TEXT PRIMARY KEY,
@@ -379,10 +393,14 @@ CREATE TABLE IF NOT EXISTS kaizo_decision_state_links (
     linked_by TEXT NOT NULL,
     linked_at TEXT NOT NULL,
     coach_final_authority BOOLEAN NOT NULL,
-    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE
+    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE,
+    tenant_id TEXT,
+    coach_actor_id TEXT
 );
+ALTER TABLE kaizo_decision_state_links ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE kaizo_decision_state_links ADD COLUMN IF NOT EXISTS coach_actor_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_kaizo_decision_state_links_decision
-    ON kaizo_decision_state_links(decision_id, linked_at);
+    ON kaizo_decision_state_links(tenant_id, coach_actor_id, decision_id, linked_at);
 """
 
 

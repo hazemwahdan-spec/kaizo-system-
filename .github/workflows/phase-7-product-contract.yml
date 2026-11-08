@@ -11,6 +11,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest httpx
+      - name: Validate Coach decision and adaptation ownership
+        working-directory: backend
+        env:
+          PYTHONPATH: ..
+          KAIZO_IDENTITY_MODE: development
+        run: pytest -q ../productization/test_product_api.py ../productization/test_runtime_adapter.py
       - name: Validate role contract
         run: |
           python - <<'PY'
