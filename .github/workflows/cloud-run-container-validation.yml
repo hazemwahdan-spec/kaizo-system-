@@ -19,10 +19,10 @@ permissions:
   contents: read
 
 jobs:
-  build-only:
-    name: Build container (no push, no deploy)
+  build-and-local-smoke:
+    name: Build and local container smoke (no push, no deploy)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout reviewed PR source
         uses: actions/checkout@v4
@@ -32,3 +32,36 @@ jobs:
         run: |
           docker image inspect kaizo-core:nonprod-check \
             --format 'User={{.Config.User}} Entrypoint={{json .Config.Cmd}}'
+      - name: Start local container with disposable in-memory settings
+        run: |
+          docker run --detach --rm --name kaizo-core-smoke \
+            --publish 127.0.0.1:18080:8080 \
+            --env PORT=8080 \
+            --env KAIZO_IDENTITY_MODE=development \
+            --env KAIZO_PERSISTENCE_MODE=memory \
+            kaizo-core:nonprod-check
+      - name: Verify local health, OpenAPI, and anonymous audit denial
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker logs kaizo-core-smoke || true
+            docker stop kaizo-core-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          ready=0
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/api/v1/health >/tmp/kaizo-health.json; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = "1"
+          python -c 'import json; d=json.load(open("/tmp/kaizo-health.json")); assert d.get("status") == "Online", d; print("LOCAL_HEALTH_PASS", d)'
+          curl --fail --silent --show-error http://127.0.0.1:18080/openapi.json >/tmp/kaizo-openapi.json
+          python -c 'import json; d=json.load(open("/tmp/kaizo-openapi.json")); assert d.get("info",{}).get("title") == "KAIZO Core Engine API", d.get("info"); print("LOCAL_OPENAPI_PASS", len(d.get("paths",{})), "paths")'
+          status="$(curl --silent --output /dev/null --write-out "%{http_code}" http://127.0.0.1:18080/api/v1/audit/logs)"
+          case "$status" in
+            401|403|503) echo "LOCAL_ANONYMOUS_AUDIT_DENIAL_PASS HTTP $status" ;;
+            *) echo "LOCAL_ANONYMOUS_AUDIT_DENIAL_FAIL HTTP $status"; exit 1 ;;
+          esac
