@@ -174,7 +174,7 @@ def _list(feature_id: str, athlete_id: str, tenant_id: str, coach_actor_id: str)
             and item["tenant_id"] == tenant_id
             and item["coach_actor_id"] == coach_actor_id
         ]
-    _ensure_schema()
+    # Read paths must never initialize or mutate schema; migrations/writes own DDL.
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
