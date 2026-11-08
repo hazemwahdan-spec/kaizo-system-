@@ -56,9 +56,35 @@ def _coach_for_athlete(
 
 
 def _ensure_schema() -> None:
-    """Apply the idempotent canonical schema, including additive scope columns."""
-    if persistence.is_postgres_enabled():
-        persistence.initialize()
+    """Provision only this feature's additive schema; never backfill legacy scope."""
+    if not persistence.is_postgres_enabled():
+        return
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS kaizo_training_workflow_records (
+                    record_id TEXT PRIMARY KEY,
+                    feature_id TEXT NOT NULL,
+                    athlete_id TEXT NOT NULL,
+                    decision_id TEXT,
+                    session_id TEXT,
+                    payload JSONB NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    coach_final_authority BOOLEAN NOT NULL,
+                    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE,
+                    tenant_id TEXT,
+                    coach_actor_id TEXT
+                )
+            """)
+            cur.execute("ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS tenant_id TEXT")
+            cur.execute("ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS coach_actor_id TEXT")
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_kaizo_training_workflow_scope
+                ON kaizo_training_workflow_records
+                    (feature_id, tenant_id, coach_actor_id, athlete_id, created_at)
+            """)
+        conn.commit()
 
 
 def _save(
