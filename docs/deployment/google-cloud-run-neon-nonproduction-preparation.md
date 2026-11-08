@@ -6,7 +6,7 @@
 
 ## Decision and boundaries
 
-- Candidate runtime: one Cloud Run service for the FastAPI Core API, built from `backend/`.
+- Candidate runtime: one Cloud Run service for the FastAPI Core API, built from the repository root using `backend/Dockerfile`.
 - Candidate database: a **new, disposable Neon Free project** for non-production only.
 - Keep the Coach web UI on its existing frontend host during this preparation. Do not create a second frontend deployment as part of this change.
 - Do not connect to, migrate, copy, or modify the existing KAIZO production Neon database.
@@ -39,19 +39,19 @@ Official free-plan FAQ: https://neon.com/docs/introduction/free-plan
 
 ## Container contract
 
-- Build context: `backend/`
+- Build context: repository root (`.`), so the shared `productization/` package is included
 - Runtime: Python 3.11
 - ASGI entrypoint: `main:app`
 - Bind address: `0.0.0.0`
 - Port: Cloud Run's `PORT` environment variable, defaulting to 8080 for local checks
 - Runtime user: unprivileged UID/GID 10001
 - Dependencies: pinned in `backend/requirements.txt`
-- `.dockerignore` excludes local environment files, VCS metadata, caches, and tests from the image context.
+- Root `.dockerignore` excludes local environment files, VCS metadata, caches, and tests from the image context.
 
 Local, non-deploying validation command:
 
 ```sh
-docker build --pull --file backend/Dockerfile --tag kaizo-core:nonprod-check .nonprod-check ./backend
+docker build --pull --file backend/Dockerfile --tag kaizo-core:nonprod-check .
 ```
 
 No `docker push`, `gcloud run deploy`, or provider mutation is part of this PR.
