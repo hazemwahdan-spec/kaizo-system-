@@ -67,6 +67,7 @@ def navigation(
 
 class DecisionRequest(BaseModel):
     resource_tenant_id: str
+    athlete_id: str
     case_id: str
     decision: Dict[str, Any]
     intervention: Dict[str, Any]
@@ -74,18 +75,76 @@ class DecisionRequest(BaseModel):
     retest: Dict[str, Any]
 
 
+def _verified_owned_coach_athlete(authorization, actor_id, role, tenant_id, owner, athlete_id):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    athlete = coach_roster.get_owned_athlete(
+        tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+    )
+    if athlete is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return principal
+
+
 @router.post("/decision")
 def decision(
     req: DecisionRequest,
-    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
-    role: str = Header(..., alias="X-KAIZO-Role"),
-    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
+    principal = _verified_owned_coach_athlete(
+        authorization, actor_id, role, tenant_id, owner, req.athlete_id
+    )
     try:
-        return get_surface().request_decision(ctx(actor_id, role, tenant_id, owner, authorization), req.resource_tenant_id,
-                                        req.model_dump(exclude={"resource_tenant_id"}))
+        context = RuntimeContext(
+            actor_id=principal.actor_id, role=principal.role,
+            tenant_id=principal.tenant_id, resource_owner_id=req.athlete_id,
+        )
+        return get_surface().request_decision(
+            context, req.resource_tenant_id,
+            req.model_dump(exclude={"resource_tenant_id", "athlete_id"}),
+        )
+    except RuntimeAuthorizationError as exc:
+        deny(exc)
+
+
+class AdaptationRequest(BaseModel):
+    resource_tenant_id: str
+    athlete_id: str
+    case_id: str
+    operation: str
+    common_core: Dict[str, Any]
+    dynamic_inputs: Dict[str, Any]
+    individual_change: Dict[str, Any] | None = None
+    team_change: Dict[str, Any] | None = None
+    composition_change: Dict[str, Any] | None = None
+
+
+@router.post("/adaptation")
+def adaptation(
+    req: AdaptationRequest,
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+    authorization: str | None = Header(None, alias="Authorization"),
+):
+    principal = _verified_owned_coach_athlete(
+        authorization, actor_id, role, tenant_id, owner, req.athlete_id
+    )
+    try:
+        context = RuntimeContext(
+            actor_id=principal.actor_id, role=principal.role,
+            tenant_id=principal.tenant_id, resource_owner_id=req.athlete_id,
+        )
+        return get_surface().adapt_decision(
+            context, req.resource_tenant_id,
+            req.model_dump(exclude={"resource_tenant_id", "athlete_id"}),
+        )
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
