@@ -112,9 +112,36 @@ def decision(
         deny(exc)
 
 
+def _verified_owned_coach_decision(principal, athlete_id, decision_id):
+    if not str(decision_id or "").strip():
+        raise HTTPException(status_code=422, detail="decision_id is required for adaptation")
+    import persistence
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1
+                       FROM kaizo_decision_records d
+                       JOIN kaizo_coach_athlete_ownership o
+                         ON o.athlete_id=d.athlete_id
+                       WHERE d.decision_id=%s AND d.athlete_id=%s
+                         AND o.tenant_id=%s AND o.coach_actor_id=%s""",
+                    (decision_id, athlete_id, principal.tenant_id, principal.actor_id),
+                )
+                found = cur.fetchone() is not None
+    else:
+        import sys
+        core = sys.modules.get("main")
+        record = getattr(core, "DECISION_RECORDS", {}).get(decision_id) if core else None
+        found = bool(record and record.get("athlete_id") == athlete_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="decision not found in Coach athlete scope")
+
+
 class AdaptationRequest(BaseModel):
     resource_tenant_id: str
     athlete_id: str
+    decision_id: str
     case_id: str
     operation: str
     common_core: Dict[str, Any]
@@ -136,6 +163,7 @@ def adaptation(
     principal = _verified_owned_coach_athlete(
         authorization, actor_id, role, tenant_id, owner, req.athlete_id
     )
+    _verified_owned_coach_decision(principal, req.athlete_id, req.decision_id)
     try:
         context = RuntimeContext(
             actor_id=principal.actor_id, role=principal.role,
