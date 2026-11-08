@@ -6,6 +6,10 @@ on:
       - "infra/google-cloud-run-neon-nonprod-prep"
     paths:
       - "backend/**"
+      - "productization/**"
+      - ".dockerignore"
+      - "productization/**"
+      - ".dockerignore"
       - ".github/workflows/cloud-run-container-validation.yml"
       - "docs/deployment/google-cloud-run-neon-nonproduction-preparation.md"
   pull_request:
