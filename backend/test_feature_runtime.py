@@ -55,7 +55,7 @@ def test_internal_feature_validation_still_requires_evidence():
     with pytest.raises(HTTPException) as exc:
         _validate("FEAT-031", req)
     assert exc.value.status_code == 400
-    assert "evidence_refs" in str(exc.value.detail)
+    assert "at least one evidence reference" in str(exc.value.detail)
 
 def test_feature_list_and_get():
     r=client.post("/api/v1/features/feat-061/academy-entity",json={
