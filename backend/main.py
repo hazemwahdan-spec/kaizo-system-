@@ -1799,6 +1799,7 @@ class DigitalTwinSyncRequest(BaseModel):
 
 @app.post("/api/v1/digital-twin/sync", status_code=status.HTTP_200_OK)
 def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="Unscoped legacy Digital Twin endpoint retired; use authenticated /api/v1/state-cycle routes.")
     if not req.coach_final_authority:
         output = {
             "case_id": req.case_id, "entity_id": req.entity_id,
@@ -1854,6 +1855,7 @@ def synchronize_digital_twin(req: DigitalTwinSyncRequest) -> Dict[str, Any]:
 
 @app.get("/api/v1/digital-twin/{entity_id}")
 def get_digital_twin(entity_id: str) -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="Unscoped legacy Digital Twin endpoint retired; use authenticated /api/v1/state-cycle routes.")
     twin = persistence.get_digital_twin(entity_id) if persistence.is_postgres_enabled() else DIGITAL_TWIN_STATE.get(entity_id)
     if twin is None:
         return {
