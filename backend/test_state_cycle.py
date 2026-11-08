@@ -89,3 +89,68 @@ def test_version_conflict_and_coach_authority_fail_closed():
         json={**update_payload(),"expected_version":9},headers=COACH).status_code==409
     assert client.post("/api/v1/state-cycle/feat-042/digital-twin-state",
         json={**update_payload(),"coach_final_authority":False},headers=COACH).status_code==409
+
+
+
+def decision_loop_payload(athlete_id=ATHLETE):
+    return {
+        "case_id": "CASE-OWNERSHIP-1", "athlete_id": athlete_id,
+        "decision": {"selected": "candidate-A"},
+        "intervention": {"drill": "seoi"},
+        "response_kpi": {"entry_quality": 7},
+        "retest": {"result": "PASS"},
+        "coach_final_authority": True,
+    }
+
+
+def adaptation_payload(athlete_id=ATHLETE):
+    return {
+        "case_id": "CASE-OWNERSHIP-1", "athlete_id": athlete_id,
+        "operation": "individual_adaptation",
+        "common_core": {"plan": "CORE-A"},
+        "dynamic_inputs": {"retest": "PASS"},
+        "individual_change": {"task": "shorter decision window"},
+        "coach_final_authority": True,
+    }
+
+
+def test_legacy_decision_loop_and_adaptation_routes_require_owned_coach_scope():
+    for path, payload in (
+        ("/api/v1/decision/loop", decision_loop_payload()),
+        ("/api/v1/decision/adapt", adaptation_payload()),
+    ):
+        assert client.post(path, json=payload).status_code == 401
+        assert client.post(path, json=payload, headers={**COACH, "X-KAIZO-Role": "athlete"}).status_code == 403
+        assert client.post(path, json=payload, headers=OTHER).status_code == 404
+        assert client.post(path, json=payload, headers=TENANT).status_code == 404
+        assert client.post(path, json={k: v for k, v in payload.items() if k != "athlete_id"},
+                           headers=COACH).status_code == 422
+
+
+def test_case_id_and_caller_authority_boolean_do_not_grant_athlete_access():
+    other_athlete = coach_roster.create_owned_athlete(
+        tenant_id="tenant-1", coach_actor_id="coach-2", display_name="Other Coach athlete"
+    )["athlete_id"]
+    payload = decision_loop_payload(athlete_id=other_athlete)
+    # A matching case_id and a true caller boolean cannot cross the ownership boundary.
+    assert client.post("/api/v1/decision/loop", json=payload, headers=COACH).status_code == 404
+
+    own_payload = {**decision_loop_payload(), "coach_final_authority": False}
+    held = client.post("/api/v1/decision/loop", json=own_payload, headers=COACH)
+    assert held.status_code == 200
+    assert held.json()["status"] == "HOLD"
+    assert held.json()["recorded_by"] == "coach-1"
+
+
+def test_owned_coach_can_execute_scoped_decision_and_adaptation():
+    loop = client.post("/api/v1/decision/loop", json=decision_loop_payload(), headers=COACH)
+    assert loop.status_code == 200, loop.text
+    assert loop.json()["status"] == "LOOP_COMPLETED"
+    assert loop.json()["athlete_id"] == ATHLETE
+    assert loop.json()["recorded_by"] == "coach-1"
+
+    adapted = client.post("/api/v1/decision/adapt", json=adaptation_payload(), headers=COACH)
+    assert adapted.status_code == 200, adapted.text
+    assert adapted.json()["status"] == "ADAPTED"
+    assert adapted.json()["athlete_id"] == ATHLETE
+    assert adapted.json()["recorded_by"] == "coach-1"
