@@ -88,3 +88,26 @@ def test_railway_coach_ui_routes_api_calls_to_core_service():
     assert 'window.location.hostname === "kaizo-coach-production.up.railway.app"' in auth_config
     assert '"https://kaizo-core-engine-production.up.railway.app/api/v1"' in auth_config
     assert ': "/api/v1"' in auth_config
+
+def test_coach_ui_fails_closed_for_unscoped_core_decision_and_digital_twin_actions():
+    for route in (
+        "/rules/evaluate",
+        "/decision/adapt",
+        "/decision/loop",
+        "/digital-twin/sync",
+        "/digital-twin/",
+        "/audit/logs",
+    ):
+        assert route not in APP
+    assert "Decision and Digital Twin writes are not connected" in APP
+    assert "no unscoped request will be sent" in APP
+    assert 'id="coachWorkspace"' not in APP
+    assert "coachGo(" not in APP
+
+
+def test_coach_audit_review_uses_selected_owned_athlete_and_product_bearer():
+    assert '"/coach/athletes/"+encodeURIComponent(athleteId)+"/audit-review?query="+encodeURIComponent(query)' in APP
+    assert "function loadCoachAthleteAuditReview()" in APP
+    assert "athleteAuditReviewSection" in APP
+    assert "productAccessToken()" in APP
+    assert 'fetch(API+"/audit/logs"' not in APP
