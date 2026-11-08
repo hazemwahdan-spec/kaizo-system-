@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      KAIZO_PRODUCTION_BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-core-engine-production.up.railway.app' }}
+      KAIZO_PRODUCTION_BASE_URL: ${{ vars.KAIZO_PHASE4_PRODUCTION_BASE_URL || 'https://kaizo-system-ipoj.vercel.app' }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
       AUTH0_AUDIENCE: https://api.kaizo.system
       A_CLIENT_ID: ${{ secrets.AUTH0_ACADEMY_A_CLIENT_ID }}
@@ -51,29 +52,43 @@ jobs:
           done
           echo "SHORT_LIVED_TOKEN_ISSUANCE: PASS"
 
+      - name: Install JWT signature verification dependency
+        shell: bash
+        run: python -m pip install --disable-pip-version-check 'PyJWT[crypto]>=2.8,<3'
+
       - name: Verify distinct signed academy tenant claims
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os, json, base64, sys
+          import os, sys, jwt
+          domain = os.environ["AUTH0_DOMAIN"].strip().removeprefix("https://").removeprefix("http://").rstrip("/")
+          issuer = f"https://{domain}/"
+          audience = os.environ["AUTH0_AUDIENCE"]
+          jwks = jwt.PyJWKClient(issuer + ".well-known/jwks.json")
           ns = "https://kaizo.system/"
           tenants = {}
           for academy in ("A", "B"):
               token = os.environ["KAIZO_ACADEMY_"+academy+"_TOKEN"]
               try:
-                  part = token.split(".")[1]
-                  claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
-              except Exception:
-                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (token is not a readable JWT)")
+                  signing_key = jwks.get_signing_key_from_jwt(token)
+                  claims = jwt.decode(
+                      token,
+                      signing_key.key,
+                      algorithms=["RS256"],
+                      audience=audience,
+                      issuer=issuer,
+                  )
+              except Exception as exc:
+                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (JWT signature/issuer/audience verification failed: {type(exc).__name__})")
                   sys.exit(1)
               role = claims.get(ns+"kaizo_role") or claims.get("kaizo_role") or claims.get("role")
               tenant = claims.get(ns+"tenant_id") or claims.get(ns+"kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id")
               if role != "academy" or not isinstance(tenant, str) or not tenant.strip():
-                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (academy role or tenant claim missing)")
+                  print(f"ACADEMY_{academy}_CLAIMS: BLOCKED (verified academy role or tenant claim missing)")
                   sys.exit(1)
               tenants[academy] = tenant
-              print(f"ACADEMY_{academy}_CLAIMS: PASS (role=academy; tenant claim present; value withheld)")
+              print(f"ACADEMY_{academy}_CLAIMS: PASS (signature, issuer, audience, role and tenant claim verified; value withheld)")
           if tenants["A"] == tenants["B"]:
               print("DISTINCT_TENANT_IDENTITIES: FAIL (both clients resolve to the same tenant)")
               sys.exit(1)
@@ -85,14 +100,29 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os, json, base64, urllib.request, urllib.error, sys
+          import os, json, urllib.request, urllib.error, urllib.parse, sys, jwt
           base = os.environ["KAIZO_PRODUCTION_BASE_URL"].rstrip("/")
           ns = "https://kaizo.system/"
+          domain = os.environ["AUTH0_DOMAIN"].strip().removeprefix("https://").removeprefix("http://").rstrip("/")
+          issuer = f"https://{domain}/"
+          jwks = jwt.PyJWKClient(issuer + ".well-known/jwks.json")
           def tenant(token):
-              claims=json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=" * (-len(token.split(".")[1]) % 4)))
-              return claims.get(ns+"tenant_id") or claims.get(ns+"kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id")
+              signing_key = jwks.get_signing_key_from_jwt(token)
+              claims = jwt.decode(
+                  token, signing_key.key, algorithms=["RS256"],
+                  audience=os.environ["AUTH0_AUDIENCE"], issuer=issuer,
+                  options={"require": ["sub", "iss", "aud", "exp"]},
+              )
+              role = claims.get(ns+"kaizo_role") or claims.get("kaizo_role") or claims.get("role")
+              value = claims.get(ns+"tenant_id") or claims.get(ns+"kaizo_tenant_id") or claims.get("tenant_id") or claims.get("kaizo_tenant_id")
+              if role != "academy" or not isinstance(value, str) or not value.strip():
+                  raise ValueError("verified academy role/tenant claim missing")
+              return value
           def get(path, token):
-              req=urllib.request.Request(base+path, headers={"Authorization":"Bearer "+token})
+              headers={"Authorization":"Bearer "+token}
+              bypass=os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET","")
+              if bypass: headers["x-vercel-protection-bypass"]=bypass
+              req=urllib.request.Request(base+path, headers=headers)
               try:
                   with urllib.request.urlopen(req, timeout=25) as r: return r.status, json.loads(r.read())
               except urllib.error.HTTPError as e:
@@ -114,19 +144,29 @@ jobs:
               if any(row.get("tenant_id") != own for row in logs):
                   print(f"LIVE_AUDIT_SCOPE_{label}: FAIL (foreign or unscoped row returned)")
                   sys.exit(1)
-              code2,spoof=get("/api/v1/audit/logs?tenant_id="+other,token)
-              if code2 != 200 or spoof.get("tenant_id") != own:
-                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (query parameter altered or blocked the signed tenant scope)")
-                  sys.exit(1)
-              if any(row.get("tenant_id") != own for row in spoof.get("logs",[])):
-                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (foreign tenant row returned)")
-                  sys.exit(1)
-              ids=lambda d: sorted(str(x.get("id",x.get("audit_id",x.get("event_id","")))) for x in d.get("logs",[]))
-              if ids(body) != ids(spoof):
-                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (result set changed when caller supplied tenant_id)")
+              code2,spoof=get("/api/v1/audit/logs?"+urllib.parse.urlencode({"tenant_id": other}),token)
+              if code2 in (400,403,422):
+                  # Explicitly rejecting caller-supplied tenant scope is safe,
+                  # provided the denial response discloses no audit rows.
+                  if spoof.get("logs") not in (None, []):
+                      print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (denial response disclosed audit rows)")
+                      sys.exit(1)
+              elif code2 == 200:
+                  if spoof.get("tenant_id") != own:
+                      print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (query parameter altered signed tenant scope)")
+                      sys.exit(1)
+                  if any(row.get("tenant_id") != own for row in spoof.get("logs",[])):
+                      print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (foreign tenant row returned)")
+                      sys.exit(1)
+                  ids=lambda d: sorted(str(x.get("id",x.get("audit_id",x.get("event_id","")))) for x in d.get("logs",[]))
+                  if ids(body) != ids(spoof):
+                      print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (result set changed when caller supplied tenant_id)")
+                      sys.exit(1)
+              else:
+                  print(f"TENANT_SPOOF_RESISTANCE_{label}: FAIL (unexpected HTTP {code2})")
                   sys.exit(1)
               print(f"LIVE_AUDIT_SCOPE_{label}: PASS (persisted records are tenant-bound)")
-              print(f"TENANT_SPOOF_RESISTANCE_{label}: PASS")
+              print(f"TENANT_SPOOF_RESISTANCE_{label}: PASS (ignored without scope change or safely rejected)")
           print("PHASE4_LIVE_CROSS_TENANT_ISOLATION: PASS")
           PY
 
@@ -135,7 +175,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS --connect-timeout 10 --max-time 25 "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
+          VERCEL_CURL_ARGS=()
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then VERCEL_CURL_ARGS=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}"); fi
+          curl -fsS "${VERCEL_CURL_ARGS[@]}" --connect-timeout 10 --max-time 25 "${KAIZO_PRODUCTION_BASE_URL}/api/v1/health" >/tmp/health.json
           python - <<'PY'
           import json
           d=json.load(open('/tmp/health.json'))
