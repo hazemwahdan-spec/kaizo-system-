@@ -67,6 +67,7 @@ def navigation(
 
 class DecisionRequest(BaseModel):
     resource_tenant_id: str
+    athlete_id: str
     case_id: str
     decision: Dict[str, Any]
     intervention: Dict[str, Any]
@@ -77,15 +78,21 @@ class DecisionRequest(BaseModel):
 @router.post("/decision")
 def decision(
     req: DecisionRequest,
-    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
-    role: str = Header(..., alias="X-KAIZO-Role"),
-    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
     try:
-        return get_surface().request_decision(ctx(actor_id, role, tenant_id, owner, authorization), req.resource_tenant_id,
-                                        req.model_dump(exclude={"resource_tenant_id"}))
+        principal = verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
+        context = RuntimeContext(
+            actor_id=principal.actor_id, role=principal.role, tenant_id=principal.tenant_id,
+            resource_owner_id=principal.resource_owner_id,
+        )
+        return get_surface().request_decision(
+            context, req.resource_tenant_id, req.model_dump(exclude={"resource_tenant_id"})
+        )
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
@@ -97,16 +104,22 @@ class InterventionRequest(DecisionRequest):
 @router.post("/intervention")
 def intervention(
     req: InterventionRequest,
-    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
-    role: str = Header(..., alias="X-KAIZO-Role"),
-    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
     try:
-        c = ctx(actor_id, role, tenant_id, owner, authorization)
-        c = RuntimeContext(c.actor_id, c.role, c.tenant_id, c.resource_owner_id, req.coach_approved)
-        return get_surface().record_intervention(c, req.resource_tenant_id, req.model_dump(exclude={"resource_tenant_id", "coach_approved"}))
+        principal = verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
+        context = RuntimeContext(
+            actor_id=principal.actor_id, role=principal.role, tenant_id=principal.tenant_id,
+            resource_owner_id=principal.resource_owner_id, coach_approved=req.coach_approved,
+        )
+        return get_surface().record_intervention(
+            context, req.resource_tenant_id,
+            req.model_dump(exclude={"resource_tenant_id", "coach_approved"}),
+        )
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
