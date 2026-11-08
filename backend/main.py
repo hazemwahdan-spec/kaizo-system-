@@ -1948,6 +1948,7 @@ def list_state_snapshots(athlete_id: Optional[str] = None) -> Dict[str, Any]:
 
 class DecisionLoopRequest(BaseModel):
     case_id: str
+    athlete_id: Optional[str] = None
     decision: Dict[str, Any]
     intervention: Dict[str, Any]
     response_kpi: Dict[str, Any]
@@ -1956,7 +1957,7 @@ class DecisionLoopRequest(BaseModel):
 
 def _execute_decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
     if not req.coach_final_authority:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
+        output = {"case_id": req.case_id, "athlete_id": req.athlete_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
         log_action(req.case_id, "DECISION_LOOP_HOLD", None, output, "Coach Final Authority is required.")
         return output
     missing = [name for name, value in {
@@ -1966,11 +1967,12 @@ def _execute_decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
         "retest": req.retest,
     }.items() if not value]
     if missing:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"MISSING_DECISION_LOOP_INPUT", "missing_inputs":missing, "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
+        output = {"case_id": req.case_id, "athlete_id": req.athlete_id, "status":"HOLD", "reason_code":"MISSING_DECISION_LOOP_INPUT", "missing_inputs":missing, "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
         log_action(req.case_id, "DECISION_LOOP_HOLD", None, output, "Required decision loop input is missing.")
         return output
     output = {
         "case_id": req.case_id,
+        "athlete_id": req.athlete_id,
         "status":"LOOP_COMPLETED",
         "coach_final_authority":True,
         "chain":["Decision","Intervention","Response/KPI","Retest","Audit"],
@@ -1985,6 +1987,8 @@ def _execute_decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
 
 class AdaptationRequest(BaseModel):
     case_id: str
+    athlete_id: Optional[str] = None
+    decision_id: Optional[str] = None
     operation: str
     common_core: Dict[str, Any]
     dynamic_inputs: Dict[str, Any]
@@ -1996,18 +2000,18 @@ class AdaptationRequest(BaseModel):
 def _execute_adaptation(req: AdaptationRequest) -> Dict[str, Any]:
     allowed = {"individual_adaptation","team_adaptation","subgroup_recalculation","individual_change"}
     if req.operation not in allowed:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"UNSUPPORTED_ADAPTATION_OPERATION", "diagnostic_required":True, "allowed_operations":sorted(allowed), "timestamp":datetime.utcnow().isoformat()}
+        output = {"case_id": req.case_id, "athlete_id": req.athlete_id, "decision_id": req.decision_id, "status":"HOLD", "reason_code":"UNSUPPORTED_ADAPTATION_OPERATION", "diagnostic_required":True, "allowed_operations":sorted(allowed), "timestamp":datetime.utcnow().isoformat()}
         log_action(req.case_id, "DECISION_ADAPTATION_HOLD", None, output, "Unsupported adaptation operation.")
         return output
     if not req.coach_final_authority:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
+        output = {"case_id": req.case_id, "athlete_id": req.athlete_id, "decision_id": req.decision_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
         log_action(req.case_id, "DECISION_ADAPTATION_HOLD", None, output, "Coach Final Authority is required.")
         return output
     if not req.common_core or not req.dynamic_inputs:
-        output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"MISSING_ADAPTATION_INPUT", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
+        output = {"case_id": req.case_id, "athlete_id": req.athlete_id, "decision_id": req.decision_id, "status":"HOLD", "reason_code":"MISSING_ADAPTATION_INPUT", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
         log_action(req.case_id, "DECISION_ADAPTATION_HOLD", None, output, "Required adaptation inputs are missing.")
         return output
-    output = {"case_id":req.case_id,"status":"ADAPTED","operation":req.operation,"common_core_preserved":True,"adaptation_basis":req.dynamic_inputs,"coach_final_authority":True,"timestamp":datetime.utcnow().isoformat()}
+    output = {"case_id":req.case_id,"athlete_id":req.athlete_id,"decision_id":req.decision_id,"status":"ADAPTED","operation":req.operation,"common_core_preserved":True,"adaptation_basis":req.dynamic_inputs,"coach_final_authority":True,"timestamp":datetime.utcnow().isoformat()}
     if req.operation == "individual_adaptation":
         output.update({"scope":"individual","individual_change":req.individual_change or {}})
     elif req.operation == "team_adaptation":
