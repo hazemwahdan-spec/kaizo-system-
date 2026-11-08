@@ -355,7 +355,7 @@ CREATE TABLE IF NOT EXISTS kaizo_training_workflow_records (
 -- Additive compatibility for existing rows: legacy workflow records stay unscoped.
 ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS tenant_id TEXT;
 ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS coach_actor_id TEXT;
-CREATE INDEX IF NOT EXISTS idx_kaizo_training_workflow_feature
+CREATE INDEX IF NOT EXISTS idx_kaizo_training_workflow_scope
     ON kaizo_training_workflow_records(feature_id, tenant_id, coach_actor_id, athlete_id, created_at);
 
 CREATE TABLE IF NOT EXISTS kaizo_digital_twin_history (
