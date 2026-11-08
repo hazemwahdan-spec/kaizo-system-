@@ -9,6 +9,7 @@ on:
       - feat/kaizo-persistence-adapter
       - feat-027-session-structure-timing
       - fix/coach-training-workflow-ownership-atomic-audit
+      - fix/coach-digital-twin-state-cycle-ownership
   pull_request:
     branches:
       - main
@@ -25,6 +26,8 @@ on:
       - feat/coach-audit-review
       - feat/coach-product-action-traceability
       - fix/coach-ui-fail-closed-legacy-tools
+      - fix/coach-training-workflow-ownership-atomic-audit
+      - fix/coach-digital-twin-state-cycle-ownership
 
 jobs:
   validate-persistence-adapter:
