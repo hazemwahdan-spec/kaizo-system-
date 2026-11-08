@@ -51,7 +51,7 @@ Official free-plan FAQ: https://neon.com/docs/introduction/free-plan
 Local, non-deploying validation command:
 
 ```sh
-docker build -t kaizo-core:nonprod-check ./backend
+docker build --pull --file backend/Dockerfile --tag kaizo-core:nonprod-check .nonprod-check ./backend
 ```
 
 No `docker push`, `gcloud run deploy`, or provider mutation is part of this PR.
