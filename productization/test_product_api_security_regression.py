@@ -29,9 +29,19 @@ def headers(role="coach", tenant="TENANT-A", actor="test-actor", owner=None):
     return value
 
 
-def decision_payload(resource_tenant_id="TENANT-A"):
+
+def create_owned_athlete(actor="test-actor", tenant="TENANT-A"):
+    from productization import coach_roster
+    coach_roster.reset_memory_state()
+    return coach_roster.create_owned_athlete(
+        tenant_id=tenant, coach_actor_id=actor, display_name="Security regression athlete"
+    )["athlete_id"]
+
+
+def decision_payload(resource_tenant_id="TENANT-A", athlete_id="athlete-A"):
     return {
         "resource_tenant_id": resource_tenant_id,
+        "athlete_id": athlete_id,
         "case_id": "SECURITY-REGRESSION-CASE",
         "decision": {"choice": "adapt"},
         "intervention": {"drill": "controlled-test"},
@@ -76,7 +86,8 @@ def test_athlete_progress_rejects_cross_tenant_resource():
 
 def test_intervention_requires_coach_role_and_explicit_approval():
     c = client()
-    unapproved = {**decision_payload(), "coach_approved": False}
+    athlete_id = create_owned_athlete()
+    unapproved = {**decision_payload(athlete_id=athlete_id), "coach_approved": False}
     denied = c.post(
         "/api/v1/product/intervention",
         json=unapproved,
@@ -84,7 +95,7 @@ def test_intervention_requires_coach_role_and_explicit_approval():
     )
     assert denied.status_code == 403
 
-    non_coach = {**decision_payload(), "coach_approved": True}
+    non_coach = {**decision_payload(athlete_id=athlete_id), "coach_approved": True}
     role_denied = c.post(
         "/api/v1/product/intervention",
         json=non_coach,
@@ -94,9 +105,10 @@ def test_intervention_requires_coach_role_and_explicit_approval():
 
 
 def test_intervention_with_coach_approval_stays_non_executing():
+    athlete_id = create_owned_athlete()
     response = client().post(
         "/api/v1/product/intervention",
-        json={**decision_payload(), "coach_approved": True},
+        json={**decision_payload(athlete_id=athlete_id), "coach_approved": True},
         headers=headers(role="coach", owner="athlete-A"),
     )
     assert response.status_code == 200
