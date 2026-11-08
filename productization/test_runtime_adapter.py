@@ -17,6 +17,7 @@ from productization.runtime_adapter import (
 
 
 DECISION_PAYLOAD = {
+    "athlete_id": "athlete-1",
     "case_id": "CASE-P7-E2E",
     "decision": {"type": "SELECTION", "value": "candidate-a"},
     "intervention": {"type": "DRILL", "value": "seoi"},
@@ -91,4 +92,26 @@ def test_coach_approval_is_required_before_intervention():
             RuntimeContext("coach-1", "coach", "academy-a", "athlete-1", coach_approved=False),
             "academy-a",
             DECISION_PAYLOAD,
+        )
+
+def test_adapter_requires_athlete_scope_and_supports_adaptation():
+    adapter = ProductCoreRuntimeAdapter(CoreRuntimeGateway())
+    payload = {
+        "athlete_id": "athlete-1",
+        "case_id": "CASE-ADAPT-1",
+        "operation": "individual_adaptation",
+        "common_core": {"principle": "retain"},
+        "dynamic_inputs": {"readiness": "medium"},
+        "individual_change": {"load": "adjust"},
+    }
+    coach = RuntimeContext("coach-1", "coach", "academy-a", "athlete-1")
+    result = adapter.adapt_decision(coach, "academy-a", payload)
+    assert result["status"] == "ADAPTED"
+    assert result["scope"] == "individual"
+    assert result["execution_authorized"] is False
+
+    with pytest.raises(RuntimeAuthorizationError, match="athlete_id"):
+        adapter.request_decision(
+            coach, "academy-a",
+            {k: v for k, v in DECISION_PAYLOAD.items() if k != "athlete_id"},
         )
