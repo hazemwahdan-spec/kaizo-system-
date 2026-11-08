@@ -83,7 +83,7 @@ def test_coach_read_paths_issue_select_only_and_never_initialize_schema(monkeypa
     assert coach_groups.list_groups(
         tenant_id="tenant-1", coach_actor_id="coach-1"
     ) == []
-    assert training_workflow._list("FEAT-036", "athlete-1") == []
+    assert training_workflow._list("FEAT-036", "athlete-1", "tenant-1", "coach-1") == []
     assert state_cycle.get_state_history("athlete-1")["versions"] == []
     assert state_cycle._latest_link(decision_id="decision-1") is None
 
