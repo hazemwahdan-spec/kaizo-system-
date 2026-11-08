@@ -152,9 +152,14 @@ def test_product_adaptation_requires_owned_athlete():
     athlete = coach_roster.create_owned_athlete(
         tenant_id="T1", coach_actor_id="A1", display_name="Adaptation athlete"
     )
+    import main
+    main.DECISION_RECORDS["decision-owned-1"] = {
+        "decision_id": "decision-owned-1", "athlete_id": athlete["athlete_id"]
+    }
     payload = {
         "resource_tenant_id": "T1",
         "athlete_id": athlete["athlete_id"],
+        "decision_id": "decision-owned-1",
         "case_id": "CASE-ADAPT-API",
         "operation": "individual_adaptation",
         "common_core": {"principle": "retain"},
