@@ -149,15 +149,18 @@ def test_product_decision_requires_owned_athlete_and_rejects_case_only_or_cross_
     response = c.post("/api/v1/product/decision", json=payload, headers=headers("coach"))
     assert response.status_code == 404
 
-    other_athlete = create_owned_athlete()
     from productization import coach_roster
+    coach_roster.reset_memory_state()
     coach_roster.create_owned_athlete(
-        tenant_id="T1", coach_actor_id="A2", display_name="Other Coach athlete"
+        tenant_id="T1", coach_actor_id="A1", display_name="Current Coach athlete"
     )
+    other_athlete = coach_roster.create_owned_athlete(
+        tenant_id="T1", coach_actor_id="A2", display_name="Other Coach athlete"
+    )["athlete_id"]
     payload["athlete_id"] = other_athlete
     payload["case_id"] = "CASE-ONLY"
     response = c.post("/api/v1/product/decision", json=payload, headers=headers("coach"))
-    assert response.status_code == 200
+    assert response.status_code == 404
 
 
 def test_product_adaptation_requires_owned_athlete_and_existing_decision():
