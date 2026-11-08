@@ -84,8 +84,15 @@ def test_coach_read_paths_issue_select_only_and_never_initialize_schema(monkeypa
         tenant_id="tenant-1", coach_actor_id="coach-1"
     ) == []
     assert training_workflow._list("FEAT-036", "athlete-1", "tenant-1", "coach-1") == []
-    assert state_cycle.get_state_history("athlete-1")["versions"] == []
-    assert state_cycle._latest_link(decision_id="decision-1") is None
+    principal = state_cycle._common_headers(
+        None, "coach-1", "coach", "tenant-1", None, "athlete-1"
+    )
+    assert state_cycle.get_state_history(
+        "athlete-1", actor_id="coach-1", role="coach", tenant_id="tenant-1"
+    )["versions"] == []
+    assert state_cycle._latest_link(
+        decision_id="decision-1", athlete_id="athlete-1", principal=principal
+    ) is None
 
     all_queries = [query for connection in connections for query in connection.cursor_instance.queries]
     assert all_queries, "The regression must exercise database read paths"
