@@ -127,3 +127,68 @@ def test_parent_progress_forwards_authorization_header_to_identity_context(monke
 
     assert response.status_code == 200
     assert observed["authorization"] == "Bearer regression-token"
+
+def test_product_decision_requires_owned_athlete_and_rejects_case_only():
+    c = client()
+    payload = {
+        "resource_tenant_id": "T1",
+        "case_id": "CASE-ONLY",
+        "decision": {"choice": "adapt"},
+        "intervention": {"drill": "seoi"},
+        "response_kpi": {"score": 1},
+        "retest": {"score": 1},
+    }
+    response = c.post("/api/v1/product/decision", json=payload, headers=headers("coach"))
+    assert response.status_code == 422
+
+    payload["athlete_id"] = "not-owned-by-this-coach"
+    response = c.post("/api/v1/product/decision", json=payload, headers=headers("coach"))
+    assert response.status_code == 404
+
+
+def test_product_adaptation_requires_owned_athlete():
+    from productization import coach_roster
+    coach_roster.reset_memory_state()
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id="T1", coach_actor_id="A1", display_name="Adaptation athlete"
+    )
+    payload = {
+        "resource_tenant_id": "T1",
+        "athlete_id": athlete["athlete_id"],
+        "case_id": "CASE-ADAPT-API",
+        "operation": "individual_adaptation",
+        "common_core": {"principle": "retain"},
+        "dynamic_inputs": {"readiness": "medium"},
+        "individual_change": {"load": "adjust"},
+    }
+    response = client().post("/api/v1/product/adaptation", json=payload, headers=headers("coach"))
+    assert response.status_code == 200
+    assert response.json()["status"] == "ADAPTED"
+
+    payload["athlete_id"] = "another-coachs-athlete"
+    response = client().post("/api/v1/product/adaptation", json=payload, headers=headers("coach"))
+    assert response.status_code == 404
+
+
+def test_legacy_decision_endpoints_are_retired():
+    c = client()
+    loop = c.post("/api/v1/decision/loop", json={
+        "case_id": "CASE-UNSCOPED", "decision": {"x": 1},
+        "intervention": {"x": 1}, "response_kpi": {"x": 1}, "retest": {"x": 1},
+    })
+    adaptation = c.post("/api/v1/decision/adapt", json={
+        "case_id": "CASE-UNSCOPED", "operation": "individual_adaptation",
+        "common_core": {"x": 1}, "dynamic_inputs": {"x": 1},
+    })
+    assert loop.status_code == 410
+    assert adaptation.status_code == 410
+
+
+def test_anonymous_decision_request_fails_closed(monkeypatch):
+    monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
+    response = client().post("/api/v1/product/decision", json={
+        "resource_tenant_id": "T1", "athlete_id": "athlete-1",
+        "case_id": "CASE-ANON", "decision": {"x": 1},
+        "intervention": {"x": 1}, "response_kpi": {"x": 1}, "retest": {"x": 1},
+    })
+    assert response.status_code == 401
