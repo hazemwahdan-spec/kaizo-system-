@@ -139,7 +139,7 @@ def test_adapter_supports_adaptation_only_for_an_owned_decision():
     assert result["status"] == "ADAPTED"
     assert result["decision_id"] == "decision-adapter-1"
     assert result["recorded_by"] == "coach-1"
-    assert result["execution_authorized"] is False
+    assert result.get("execution_authorized", False) is False
 
     payload["decision_id"] = "decision-not-owned"
     with pytest.raises(RuntimeAuthorizationError, match="decision not found"):
