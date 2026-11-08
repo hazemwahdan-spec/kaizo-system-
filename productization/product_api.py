@@ -184,16 +184,25 @@ class InterventionRequest(DecisionRequest):
 @router.post("/intervention")
 def intervention(
     req: InterventionRequest,
-    actor_id: str = Header(..., alias="X-KAIZO-Actor"),
-    role: str = Header(..., alias="X-KAIZO-Role"),
-    tenant_id: str = Header(..., alias="X-KAIZO-Tenant"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
+    principal = _verified_owned_coach_athlete(
+        authorization, actor_id, role, tenant_id, owner, req.athlete_id
+    )
     try:
-        c = ctx(actor_id, role, tenant_id, owner, authorization)
-        c = RuntimeContext(c.actor_id, c.role, c.tenant_id, c.resource_owner_id, req.coach_approved)
-        return get_surface().record_intervention(c, req.resource_tenant_id, req.model_dump(exclude={"resource_tenant_id", "coach_approved"}))
+        context = RuntimeContext(
+            actor_id=principal.actor_id, role=principal.role,
+            tenant_id=principal.tenant_id, resource_owner_id=req.athlete_id,
+            coach_approved=req.coach_approved,
+        )
+        return get_surface().record_intervention(
+            context, req.resource_tenant_id,
+            req.model_dump(exclude={"resource_tenant_id", "coach_approved"}),
+        )
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
