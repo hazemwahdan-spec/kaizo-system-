@@ -3,7 +3,7 @@ Framework: FastAPI + Pydantic
 Slogan: Better Every Day
 """
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status, Header
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from contextvars import ContextVar
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -1946,31 +1946,6 @@ def list_state_snapshots(athlete_id: Optional[str] = None) -> Dict[str, Any]:
     return {"total_snapshots": len(snapshots), "snapshots": snapshots}
 
 
-def _require_owned_coach_athlete(
-    athlete_id: str | None,
-    authorization: str | None,
-    actor_id: str | None,
-    role: str | None,
-    tenant_id: str | None,
-    owner: str | None,
-):
-    """Authenticate a Coach first, then resolve the athlete inside that Coach's tenant scope."""
-    from productization import coach_roster
-    from productization.product_api import verified_coach_scope
-
-    principal = verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
-    if not athlete_id or not athlete_id.strip():
-        raise HTTPException(status_code=422, detail="athlete_id is required")
-    athlete = coach_roster.get_owned_athlete(
-        tenant_id=principal.tenant_id,
-        coach_actor_id=principal.actor_id,
-        athlete_id=athlete_id,
-    )
-    if athlete is None:
-        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
-    return principal
-
-
 class DecisionLoopRequest(BaseModel):
     case_id: str
     athlete_id: Optional[str] = None
@@ -1978,7 +1953,7 @@ class DecisionLoopRequest(BaseModel):
     intervention: Dict[str, Any]
     response_kpi: Dict[str, Any]
     retest: Dict[str, Any]
-    # This caller flag may restrict a request, but can never grant Coach authority.
+    # Internal executor guard only; public callers cannot invoke this function directly.
     coach_final_authority: bool = True
 
 
@@ -2019,31 +1994,16 @@ def _execute_decision_loop(req: DecisionLoopRequest, actor_id: str) -> Dict[str,
     return output
 
 
-@app.post("/api/v1/decision/loop", status_code=status.HTTP_200_OK)
-def decision_loop(
-    req: DecisionLoopRequest,
-    authorization: str | None = Header(None, alias="Authorization"),
-    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
-    role: str | None = Header(None, alias="X-KAIZO-Role"),
-    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
-    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
-) -> Dict[str, Any]:
-    principal = _require_owned_coach_athlete(
-        req.athlete_id, authorization, actor_id, role, tenant_id, owner
-    )
-    return _execute_decision_loop(req, principal.actor_id)
-
-
 class AdaptationRequest(BaseModel):
     case_id: str
     athlete_id: Optional[str] = None
+    decision_id: Optional[str] = None
     operation: str
     common_core: Dict[str, Any]
     dynamic_inputs: Dict[str, Any]
     individual_change: Optional[Dict[str, Any]] = None
     team_change: Optional[Dict[str, Any]] = None
     composition_change: Optional[Dict[str, Any]] = None
-    # False can hold an authenticated request; True is not an authentication credential.
     coach_final_authority: bool = True
 
 
@@ -2051,35 +2011,37 @@ def _execute_adaptation(req: AdaptationRequest, actor_id: str) -> Dict[str, Any]
     allowed = {"individual_adaptation", "team_adaptation", "subgroup_recalculation", "individual_change"}
     if req.operation not in allowed:
         output = {
-            "case_id": req.case_id, "athlete_id": req.athlete_id, "status": "HOLD",
-            "reason_code": "UNSUPPORTED_ADAPTATION_OPERATION", "diagnostic_required": True,
-            "allowed_operations": sorted(allowed), "recorded_by": actor_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "case_id": req.case_id, "athlete_id": req.athlete_id, "decision_id": req.decision_id,
+            "status": "HOLD", "reason_code": "UNSUPPORTED_ADAPTATION_OPERATION",
+            "diagnostic_required": True, "allowed_operations": sorted(allowed),
+            "recorded_by": actor_id, "timestamp": datetime.utcnow().isoformat(),
         }
         log_action(actor_id, "DECISION_ADAPTATION_HOLD", None, output,
                    "Unsupported adaptation operation.")
         return output
     if not req.coach_final_authority:
         output = {
-            "case_id": req.case_id, "athlete_id": req.athlete_id, "status": "HOLD",
-            "reason_code": "COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required": True,
-            "recorded_by": actor_id, "timestamp": datetime.utcnow().isoformat(),
+            "case_id": req.case_id, "athlete_id": req.athlete_id, "decision_id": req.decision_id,
+            "status": "HOLD", "reason_code": "COACH_FINAL_AUTHORITY_REQUIRED",
+            "diagnostic_required": True, "recorded_by": actor_id,
+            "timestamp": datetime.utcnow().isoformat(),
         }
         log_action(actor_id, "DECISION_ADAPTATION_HOLD", None, output,
                    "Verified Coach did not confirm Coach Final Authority.")
         return output
     if not req.common_core or not req.dynamic_inputs:
         output = {
-            "case_id": req.case_id, "athlete_id": req.athlete_id, "status": "HOLD",
-            "reason_code": "MISSING_ADAPTATION_INPUT", "diagnostic_required": True,
-            "recorded_by": actor_id, "timestamp": datetime.utcnow().isoformat(),
+            "case_id": req.case_id, "athlete_id": req.athlete_id, "decision_id": req.decision_id,
+            "status": "HOLD", "reason_code": "MISSING_ADAPTATION_INPUT",
+            "diagnostic_required": True, "recorded_by": actor_id,
+            "timestamp": datetime.utcnow().isoformat(),
         }
         log_action(actor_id, "DECISION_ADAPTATION_HOLD", None, output,
                    "Required adaptation inputs are missing.")
         return output
     output = {
-        "case_id": req.case_id, "athlete_id": req.athlete_id, "status": "ADAPTED",
-        "operation": req.operation, "common_core_preserved": True,
+        "case_id": req.case_id, "athlete_id": req.athlete_id, "decision_id": req.decision_id,
+        "status": "ADAPTED", "operation": req.operation, "common_core_preserved": True,
         "adaptation_basis": req.dynamic_inputs, "coach_final_authority": True,
         "recorded_by": actor_id, "timestamp": datetime.utcnow().isoformat(),
     }
@@ -2102,19 +2064,20 @@ def _execute_adaptation(req: AdaptationRequest, actor_id: str) -> Dict[str, Any]
     return output
 
 
-@app.post("/api/v1/decision/adapt", status_code=status.HTTP_200_OK)
-def adapt_decision(
-    req: AdaptationRequest,
-    authorization: str | None = Header(None, alias="Authorization"),
-    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
-    role: str | None = Header(None, alias="X-KAIZO-Role"),
-    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
-    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
-) -> Dict[str, Any]:
-    principal = _require_owned_coach_athlete(
-        req.athlete_id, authorization, actor_id, role, tenant_id, owner
+@app.post("/api/v1/decision/loop", status_code=status.HTTP_410_GONE)
+def decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
+    raise HTTPException(
+        status_code=410,
+        detail="Unscoped legacy Decision Loop retired; use authenticated /api/v1/product/decision.",
     )
-    return _execute_adaptation(req, principal.actor_id)
+
+
+@app.post("/api/v1/decision/adapt", status_code=status.HTTP_410_GONE)
+def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
+    raise HTTPException(
+        status_code=410,
+        detail="Unscoped legacy Decision Adaptation retired; use authenticated /api/v1/product/adaptation.",
+    )
 
 
 # Mounted after Core decision functions are defined to keep the product-to-Core boundary acyclic.
