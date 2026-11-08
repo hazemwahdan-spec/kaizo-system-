@@ -1,0 +1,27 @@
+name: Cloud Run Container Validation
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/cloud-run-container-validation.yml"
+      - "docs/deployment/google-cloud-run-neon-nonproduction-preparation.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-only:
+    name: Build container (no push, no deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout reviewed PR source
+        uses: actions/checkout@v4
+      - name: Build local image only
+        run: docker build --pull --tag kaizo-core:nonprod-check ./backend
+      - name: Verify image metadata
+        run: |
+          docker image inspect kaizo-core:nonprod-check \
+            --format 'User={{.Config.User}} Entrypoint={{json .Config.Cmd}}'
