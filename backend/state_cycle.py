@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api/v1/state-cycle", tags=["state-cycle"])
 _MEMORY_STATE: Dict[tuple[str, str, str], Dict[str, Any]] = {}
 _MEMORY_HISTORY: List[Dict[str, Any]] = []
 _MEMORY_LINKS: List[Dict[str, Any]] = []
+_MEMORY_AUDIT: List[Dict[str, Any]] = []
 
 
 def _now() -> str:
@@ -334,12 +335,22 @@ def retrieve_next_state(req: NextStateRequest,
     state=_get_state(req.athlete_id,principal)
     if state is None: raise HTTPException(404,detail="no Digital Twin state in Coach scope")
     link=_latest_link(req.decision_id,req.athlete_id,principal)
-    return {"feature_id":"FEAT-045","athlete_id":req.athlete_id,"retrieved_at":_now(),
+    result={"feature_id":"FEAT-045","athlete_id":req.athlete_id,"retrieved_at":_now(),
             "state":state,"linked_decision_state":link,"coach_actor_id":principal.actor_id,
             "tenant_id":principal.tenant_id,"coach_final_authority":True,"execution_authorized":False}
+    audit={"timestamp":result["retrieved_at"],"who":principal.actor_id,
+           "action":"FEAT-045_NEXT_STATE_RETRIEVED","old_value":None,"new_value":result,
+           "why":"Latest owned Digital Twin state retrieved as input to the next Coach decision; no autonomous execution.",
+           "tenant_id":principal.tenant_id}
+    if persistence.is_postgres_enabled():
+        persistence.append_tenant_audit(**audit)
+    else:
+        _MEMORY_AUDIT.append(audit)
+    return result
 
 
 def reset_memory_state():
     _MEMORY_STATE.clear()
     _MEMORY_HISTORY.clear()
     _MEMORY_LINKS.clear()
+    _MEMORY_AUDIT.clear()
