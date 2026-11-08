@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/coach-athlete-ownership-boundary
+      - fix/coach-decision-loop-athlete-ownership
   pull_request:
     branches:
       - main
