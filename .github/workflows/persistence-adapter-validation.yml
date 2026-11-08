@@ -10,6 +10,8 @@ on:
       - feat-027-session-structure-timing
       - fix/coach-training-workflow-ownership-atomic-audit
       - fix/coach-digital-twin-state-cycle-ownership
+      - fix/coach-retire-unscoped-feature-routes
+      - fix/coach-retire-unscoped-main-api
   pull_request:
     branches:
       - main
@@ -28,6 +30,7 @@ on:
       - fix/coach-ui-fail-closed-legacy-tools
       - fix/coach-training-workflow-ownership-atomic-audit
       - fix/coach-digital-twin-state-cycle-ownership
+      - fix/coach-retire-unscoped-feature-routes
 
 jobs:
   validate-persistence-adapter:
