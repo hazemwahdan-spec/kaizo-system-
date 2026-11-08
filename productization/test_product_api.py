@@ -170,7 +170,12 @@ def test_product_adaptation_requires_owned_athlete():
     assert response.status_code == 200
     assert response.json()["status"] == "ADAPTED"
 
+    payload["decision_id"] = "decision-owned-by-another-coach"
+    response = client().post("/api/v1/product/adaptation", json=payload, headers=headers("coach"))
+    assert response.status_code == 404
+
     payload["athlete_id"] = "another-coachs-athlete"
+    payload["decision_id"] = "decision-owned-1"
     response = client().post("/api/v1/product/adaptation", json=payload, headers=headers("coach"))
     assert response.status_code == 404
 
@@ -197,3 +202,33 @@ def test_anonymous_decision_request_fails_closed(monkeypatch):
         "intervention": {"x": 1}, "response_kpi": {"x": 1}, "retest": {"x": 1},
     })
     assert response.status_code == 401
+
+
+def test_intervention_also_enforces_verified_coach_athlete_ownership():
+    from productization import coach_roster
+    coach_roster.reset_memory_state()
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id="T1", coach_actor_id="A1", display_name="Intervention athlete"
+    )
+    payload = {
+        "resource_tenant_id": "T1",
+        "athlete_id": athlete["athlete_id"],
+        "case_id": "CASE-INTERVENTION",
+        "decision": {"choice": "retain"},
+        "intervention": {"drill": "seoi"},
+        "response_kpi": {"score": 1},
+        "retest": {"score": 1},
+        "coach_approved": True,
+    }
+    denied = client().post(
+        "/api/v1/product/intervention", json=payload,
+        headers=headers("coach", actor="A2"),
+    )
+    assert denied.status_code == 404
+
+    allowed = client().post(
+        "/api/v1/product/intervention", json=payload,
+        headers=headers("coach", actor="A1"),
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["athlete_id"] == athlete["athlete_id"]
