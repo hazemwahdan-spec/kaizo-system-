@@ -1954,8 +1954,7 @@ class DecisionLoopRequest(BaseModel):
     retest: Dict[str, Any]
     coach_final_authority: bool = True
 
-@app.post("/api/v1/decision/loop", status_code=status.HTTP_200_OK)
-def decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
+def _execute_decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
     if not req.coach_final_authority:
         output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"COACH_FINAL_AUTHORITY_REQUIRED", "diagnostic_required":True, "timestamp":datetime.utcnow().isoformat()}
         log_action(req.case_id, "DECISION_LOOP_HOLD", None, output, "Coach Final Authority is required.")
@@ -1994,8 +1993,7 @@ class AdaptationRequest(BaseModel):
     composition_change: Optional[Dict[str, Any]] = None
     coach_final_authority: bool = True
 
-@app.post("/api/v1/decision/adapt", status_code=status.HTTP_200_OK)
-def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
+def _execute_adaptation(req: AdaptationRequest) -> Dict[str, Any]:
     allowed = {"individual_adaptation","team_adaptation","subgroup_recalculation","individual_change"}
     if req.operation not in allowed:
         output = {"case_id": req.case_id, "status":"HOLD", "reason_code":"UNSUPPORTED_ADAPTATION_OPERATION", "diagnostic_required":True, "allowed_operations":sorted(allowed), "timestamp":datetime.utcnow().isoformat()}
@@ -2020,6 +2018,16 @@ def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
         output.update({"scope":"individual","individual_change":req.individual_change or {},"isolated_output_change":True})
     log_action(req.case_id, "DECISION_ADAPTATION", None, output, "Runtime adaptation executed under Coach Final Authority with Common Core preservation.")
     return output
+
+@app.post("/api/v1/decision/loop", status_code=status.HTTP_410_GONE)
+def decision_loop(req: DecisionLoopRequest) -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="Unscoped legacy Decision Loop retired; use authenticated /api/v1/product/decision.")
+
+
+@app.post("/api/v1/decision/adapt", status_code=status.HTTP_410_GONE)
+def adapt_decision(req: AdaptationRequest) -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="Unscoped legacy Decision Adaptation retired; use authenticated /api/v1/product/adaptation.")
+
 
 # Mounted after Core decision functions are defined to keep the product-to-Core boundary acyclic.
 import sys
