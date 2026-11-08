@@ -32,9 +32,15 @@ def test_product_navigation_api_exposes_all_roles():
 
 
 def test_product_decision_api_is_coach_only():
+    from productization import coach_roster
+    coach_roster.reset_memory_state()
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id="T1", coach_actor_id="A1", display_name="Test athlete"
+    )
     c = client()
     payload = {
         "resource_tenant_id": "T1",
+        "athlete_id": athlete["athlete_id"],
         "case_id": "CASE-API-1",
         "decision": {"choice": "adapt"},
         "intervention": {"drill": "seoi"},
@@ -50,9 +56,15 @@ def test_product_decision_api_is_coach_only():
 
 
 def test_product_api_denies_cross_tenant():
+    from productization import coach_roster
+    coach_roster.reset_memory_state()
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id="T1", coach_actor_id="A1", display_name="Test athlete"
+    )
     c = client()
     payload = {
         "resource_tenant_id": "T2",
+        "athlete_id": athlete["athlete_id"],
         "case_id": "CASE-API-2",
         "decision": {"choice": "adapt"},
         "intervention": {"drill": "seoi"},
