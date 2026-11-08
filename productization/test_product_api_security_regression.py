@@ -120,3 +120,40 @@ def test_intervention_with_coach_approval_stays_non_executing():
 def test_oidc_verify_rejects_missing_bearer():
     response = client().get("/api/v1/product/auth/oidc/verify")
     assert response.status_code == 401
+
+
+
+def test_decision_api_uses_verified_bearer_claims_not_spoofed_identity_headers(monkeypatch):
+    from productization import product_api, coach_roster
+    from productization.identity import Principal
+    import main
+
+    monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
+    coach_roster.reset_memory_state()
+    athlete_id = coach_roster.create_owned_athlete(
+        tenant_id="TENANT-A", coach_actor_id="trusted-coach",
+        display_name="OIDC scoped decision athlete",
+    )["athlete_id"]
+    trusted = Principal(
+        actor_id="trusted-coach", role="coach", tenant_id="TENANT-A",
+        resource_owner_id=None, verified=True, source="oidc_jwt",
+    )
+    def resolve(_authorization):
+        assert _authorization == "Bearer verified-test-token"
+        return trusted
+
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", resolve)
+    monkeypatch.setattr(main, "resolve_bearer_principal", resolve)
+    response = client().post(
+        "/api/v1/product/decision",
+        json=decision_payload(athlete_id=athlete_id),
+        headers={
+            "Authorization": "Bearer verified-test-token",
+            "X-KAIZO-Actor": "spoofed-actor",
+            "X-KAIZO-Role": "athlete",
+            "X-KAIZO-Tenant": "TENANT-SPOOFED",
+            "X-KAIZO-Resource-Owner": "other-athlete",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["recorded_by"] == "trusted-coach"
