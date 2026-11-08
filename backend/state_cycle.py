@@ -34,46 +34,10 @@ def _authority(value: bool) -> None:
         raise HTTPException(status_code=409, detail="Coach Final Authority is mandatory")
 
 
-def _ensure_schema() -> None:
-    if not persistence.is_postgres_enabled():
-        return
-    with persistence.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS kaizo_digital_twin_history (
-                    history_id TEXT PRIMARY KEY,
-                    entity_id TEXT NOT NULL,
-                    version INTEGER NOT NULL,
-                    state JSONB NOT NULL,
-                    source_event TEXT NOT NULL,
-                    case_id TEXT NOT NULL,
-                    recorded_by TEXT NOT NULL,
-                    evidence_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
-                    recorded_at TEXT NOT NULL,
-                    coach_final_authority BOOLEAN NOT NULL,
-                    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE,
-                    UNIQUE(entity_id, version)
-                );
-                CREATE INDEX IF NOT EXISTS idx_kaizo_digital_twin_history_entity
-                    ON kaizo_digital_twin_history(entity_id, version);
 
-                CREATE TABLE IF NOT EXISTS kaizo_decision_state_links (
-                    link_id TEXT PRIMARY KEY,
-                    decision_id TEXT NOT NULL,
-                    entity_id TEXT NOT NULL,
-                    state_version INTEGER NOT NULL,
-                    state_ref TEXT NOT NULL,
-                    linked_by TEXT NOT NULL,
-                    linked_at TEXT NOT NULL,
-                    coach_final_authority BOOLEAN NOT NULL,
-                    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE
-                );
-                CREATE INDEX IF NOT EXISTS idx_kaizo_decision_state_links_decision
-                    ON kaizo_decision_state_links(decision_id, linked_at);
-                """
-            )
-        conn.commit()
+def _ensure_schema() -> None:
+    """Compatibility shim; schema is provisioned by persistence.initialize()."""
+    return
 
 
 def _get_state(entity_id: str) -> Optional[Dict[str, Any]]:
@@ -91,7 +55,6 @@ def _save_state(record: Dict[str, Any]) -> None:
 def _save_history(record: Dict[str, Any]) -> None:
     _MEMORY_HISTORY.append(record)
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -116,7 +79,6 @@ def _save_history(record: Dict[str, Any]) -> None:
 def _save_link(record: Dict[str, Any]) -> None:
     _MEMORY_LINKS.append(record)
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -138,7 +100,6 @@ def _save_link(record: Dict[str, Any]) -> None:
 def _latest_link(decision_id: Optional[str] = None,
                   entity_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 if decision_id:
@@ -273,7 +234,6 @@ def get_digital_twin(entity_id: str) -> Dict[str, Any]:
 @router.get("/feat-043/state-history/{entity_id}")
 def get_state_history(entity_id: str) -> Dict[str, Any]:
     if persistence.is_postgres_enabled():
-        _ensure_schema()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(

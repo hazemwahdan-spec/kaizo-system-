@@ -1,0 +1,70 @@
+name: Coach Ownership Boundary Validation
+
+on:
+  push:
+    branches:
+      - feat/coach-athlete-ownership-boundary
+  pull_request:
+    branches:
+      - main
+      - feat/coach-athlete-ownership-boundary
+
+permissions:
+  contents: read
+
+jobs:
+  coach-runtime-and-ui:
+    runs-on: ubuntu-latest
+    env:
+      KAIZO_IDENTITY_MODE: development
+      KAIZO_PERSISTENCE_MODE: memory
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Coach runtime test dependencies
+        run: pip install fastapi pydantic pytest httpx2 "PyJWT[crypto]"
+      - name: Compile backend and Coach productization modules
+        run: python -m compileall -q backend productization app.py cloudflare_worker.py
+      - name: Validate Cloudflare Worker staging contract
+        run: python -m pytest productization/test_cloudflare_worker_contract.py -q
+      - name: Verify Coach ownership authorization and read-only boundaries
+        run: >-
+          python -m pytest
+          productization/test_coach_roster_security.py
+          productization/test_coach_roster_oidc_boundary.py
+          productization/test_read_paths_no_ddl.py
+          productization/test_coach_groups_security.py
+          productization/test_coach_athlete_lifecycle.py
+          productization/test_coach_athlete_decision_history.py
+          -q
+      - name: Verify Coach dashboard, queue, workspace, and action traceability
+        run: >-
+          python -m pytest
+          productization/test_coach_home_dashboard.py
+          productization/test_coach_priority_queue.py
+          productization/test_coach_priority_queue_api.py
+          productization/test_coach_decision_workspace.py
+          productization/test_coach_action_history.py
+          productization/test_coach_audit_review.py
+          productization/test_coach_product_action_traceability.py
+          -q
+      - name: Verify product API identity and authorization contracts
+        run: >-
+          python -m pytest
+          productization/test_identity.py
+          productization/test_product_api.py
+          productization/test_product_api_security_regression.py
+          productization/test_product_surface.py
+          productization/test_runtime_adapter.py
+          productization/test_product_surface_contract.py
+          -q
+      - name: Verify Coach frontend contracts
+        run: >-
+          python -m pytest
+          frontend/test_product_ui_contract.py
+          frontend/test_feat_008_navigation_contract.py
+          frontend/test_feat_009_decision_workspace_contract.py
+          frontend/test_feat_010_action_history_contract.py
+          -q
