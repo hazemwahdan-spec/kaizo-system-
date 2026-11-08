@@ -8,6 +8,7 @@ on:
       - feat/coach-athlete-ownership-boundary
       - feat/kaizo-persistence-adapter
       - feat-027-session-structure-timing
+      - fix/coach-training-workflow-ownership-atomic-audit
   pull_request:
     branches:
       - main
