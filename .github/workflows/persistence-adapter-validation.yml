@@ -23,6 +23,7 @@ on:
       - feat/coach-action-history
       - feat/coach-audit-review
       - feat/coach-product-action-traceability
+      - fix/coach-ui-fail-closed-legacy-tools
 
 jobs:
   validate-persistence-adapter:
