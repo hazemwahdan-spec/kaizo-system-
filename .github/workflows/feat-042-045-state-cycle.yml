@@ -12,10 +12,18 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-latest
+    env:
+      KAIZO_IDENTITY_MODE: development
+      KAIZO_PERSISTENCE_MODE: memory
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: python -m pip install -r backend/requirements.txt pytest
-      - run: python -m pytest -q backend/test_state_cycle.py
+      - run: >-
+          python -m pytest -q
+          backend/test_state_cycle.py
+          productization/test_runtime_adapter.py
+          productization/test_product_api.py
+          productization/test_product_api_security_regression.py
