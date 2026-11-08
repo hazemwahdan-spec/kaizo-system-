@@ -115,3 +115,32 @@ def test_adapter_rejects_an_athlete_not_owned_by_the_verified_coach():
             "academy-a",
             payload,
         )
+
+
+
+def test_adapter_supports_adaptation_only_for_an_owned_decision():
+    import main
+    adapter = ProductCoreRuntimeAdapter(CoreRuntimeGateway())
+    athlete_id = DECISION_PAYLOAD["athlete_id"]
+    main.DECISION_RECORDS["decision-adapter-1"] = {
+        "decision_id": "decision-adapter-1", "athlete_id": athlete_id
+    }
+    payload = {
+        "athlete_id": athlete_id,
+        "decision_id": "decision-adapter-1",
+        "case_id": "CASE-ADAPT-1",
+        "operation": "individual_adaptation",
+        "common_core": {"principle": "retain"},
+        "dynamic_inputs": {"readiness": "medium"},
+        "individual_change": {"load": "adjust"},
+    }
+    coach = RuntimeContext("coach-1", "coach", "academy-a")
+    result = adapter.adapt_decision(coach, "academy-a", payload)
+    assert result["status"] == "ADAPTED"
+    assert result["decision_id"] == "decision-adapter-1"
+    assert result["recorded_by"] == "coach-1"
+    assert result["execution_authorized"] is False
+
+    payload["decision_id"] = "decision-not-owned"
+    with pytest.raises(RuntimeAuthorizationError, match="decision not found"):
+        adapter.adapt_decision(coach, "academy-a", payload)
