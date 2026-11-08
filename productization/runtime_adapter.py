@@ -24,22 +24,25 @@ class CoreRuntimeGateway:
     """Concrete gateway to the frozen backend/main.py Core functions."""
 
     def __init__(self):
-        from main import decision_loop
-        self._decision_loop = decision_loop
+        from main import _execute_decision_loop
+        self._decision_loop = _execute_decision_loop
 
     def request_decision(self, *, actor_id: str, tenant_id: str, role: str,
                          payload: Mapping[str, Any], execution_authorized: bool) -> Any:
         if execution_authorized:
             raise RuntimeAuthorizationError("execution authorization is forbidden")
+        if role != "coach":
+            raise RuntimeAuthorizationError("only Coach may enter the Core decision loop")
         from main import DecisionLoopRequest
         return self._decision_loop(DecisionLoopRequest(
             case_id=str(payload["case_id"]),
+            athlete_id=str(payload["athlete_id"]),
             decision=dict(payload["decision"]),
             intervention=dict(payload["intervention"]),
             response_kpi=dict(payload["response_kpi"]),
             retest=dict(payload["retest"]),
             coach_final_authority=True,
-        ))
+        ), actor_id=actor_id)
 
     def record_intervention(self, *, actor_id: str, tenant_id: str, role: str,
                             payload: Mapping[str, Any], execution_authorized: bool) -> Any:
@@ -78,11 +81,24 @@ class ProductCoreRuntimeAdapter:
         if ctx.role not in self.ROLE_SET:
             raise RuntimeAuthorizationError("unsupported product role")
 
+    @staticmethod
+    def _authorize_owned_athlete(ctx: RuntimeContext, payload: Mapping[str, Any]) -> None:
+        athlete_id = str(payload.get("athlete_id") or "").strip()
+        if not athlete_id:
+            raise RuntimeAuthorizationError("athlete_id is required for Coach decision access")
+        from productization import coach_roster
+        athlete = coach_roster.get_owned_athlete(
+            tenant_id=ctx.tenant_id, coach_actor_id=ctx.actor_id, athlete_id=athlete_id
+        )
+        if athlete is None:
+            raise RuntimeAuthorizationError("athlete not found in Coach scope")
+
     def request_decision(self, ctx: RuntimeContext, resource_tenant_id: str,
                          payload: Mapping[str, Any]) -> Any:
         self._authorize(ctx, resource_tenant_id)
         if ctx.role != "coach":
             raise RuntimeAuthorizationError("only Coach may request a Core decision")
+        self._authorize_owned_athlete(ctx, payload)
         return self.core.request_decision(
             actor_id=ctx.actor_id, tenant_id=ctx.tenant_id, role=ctx.role,
             payload=dict(payload), execution_authorized=False
