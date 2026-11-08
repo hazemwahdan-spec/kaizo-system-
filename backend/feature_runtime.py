@@ -99,6 +99,18 @@ CONTRACTS: Dict[str, Dict[str, Any]] = {
     "FEAT-075": {"name":"Approved-data reporting export","required":["report_id","approved_record_ids","format"],"evidence":False,"status":"APPROVED"},
 }
 
+# Generic feature records trust caller-supplied actor_id, subject_id and
+# coach_final_authority. These Coach-relevant feature IDs must use a verified,
+# tenant/athlete-scoped route; until such a route exists, fail closed.
+LEGACY_UNSCOPED_COACH_FEATURES = frozenset({
+    "FEAT-029", "FEAT-030", "FEAT-031", "FEAT-032",
+    "FEAT-033", "FEAT-034", "FEAT-035", "FEAT-036",
+    "FEAT-037", "FEAT-038", "FEAT-039", "FEAT-040",
+    "FEAT-042", "FEAT-043", "FEAT-044", "FEAT-045",
+    "FEAT-047", "FEAT-048", "FEAT-049", "FEAT-050",
+    "FEAT-052", "FEAT-053", "FEAT-054", "FEAT-055",
+})
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -383,22 +395,49 @@ def _create(feature_id: str, req: FeatureRecordRequest) -> Dict[str, Any]:
 def _register(feature_id: str) -> None:
     slug=CONTRACTS[feature_id]["name"].lower().replace("/","-").replace(" ","-")
     slug="".join(c for c in slug if c.isalnum() or c=="-").strip("-")
-    def create(req: FeatureRecordRequest, _fid: str=feature_id):
-        return _create(_fid,req)
-    def get(record_id: str, _fid: str=feature_id):
-        record=_get(record_id)
-        if record is None or record["feature_id"] != _fid:
-            raise HTTPException(status_code=404, detail="feature record not found")
-        return record
-    def list_records(_fid: str=feature_id):
-        return {"feature_id":_fid,"feature":CONTRACTS[_fid]["name"],"records":_list(_fid)}
+
+    if feature_id in LEGACY_UNSCOPED_COACH_FEATURES:
+        def unavailable(_fid: str=feature_id):
+            raise HTTPException(
+                status_code=410,
+                detail=(
+                    f"{_fid} generic feature endpoint retired: caller-supplied actor, "
+                    "tenant, owner and Coach Final Authority fields are not trusted. "
+                    "Use a verified Coach-scoped route when available."
+                ),
+            )
+
+        def create(req: FeatureRecordRequest, _fid: str=feature_id):
+            unavailable(_fid)
+
+        def get(record_id: str, _fid: str=feature_id):
+            unavailable(_fid)
+
+        def list_records(_fid: str=feature_id):
+            unavailable(_fid)
+
+        summary=f"{CONTRACTS[feature_id]['name']} (retired: unscoped)"
+    else:
+        def create(req: FeatureRecordRequest, _fid: str=feature_id):
+            return _create(_fid,req)
+
+        def get(record_id: str, _fid: str=feature_id):
+            record=_get(record_id)
+            if record is None or record["feature_id"] != _fid:
+                raise HTTPException(status_code=404, detail="feature record not found")
+            return record
+
+        def list_records(_fid: str=feature_id):
+            return {"feature_id":_fid,"feature":CONTRACTS[_fid]["name"],"records":_list(_fid)}
+
+        summary=CONTRACTS[feature_id]["name"]
+
     router.add_api_route(f"/{feature_id.lower()}/{slug}",create,methods=["POST"],status_code=201,
-                         name=f"{feature_id}_create",summary=CONTRACTS[feature_id]["name"])
+                         name=f"{feature_id}_create",summary=summary)
     router.add_api_route(f"/{feature_id.lower()}/{slug}/{{record_id}}",get,methods=["GET"],
                          name=f"{feature_id}_get")
     router.add_api_route(f"/{feature_id.lower()}/{slug}",list_records,methods=["GET"],
                          name=f"{feature_id}_list")
-
 
 for _feature_id in CONTRACTS:
     _register(_feature_id)
