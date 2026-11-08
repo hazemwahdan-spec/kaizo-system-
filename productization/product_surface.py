@@ -40,6 +40,14 @@ class ProductSurface:
             result = {**result, "execution_authorized": False}
         return result
 
+    def adapt_decision(self, ctx: RuntimeContext, resource_tenant_id: str,
+                       payload: Mapping[str, Any]) -> Any:
+        self._authorize_mutation(ctx, resource_tenant_id, {"coach"})
+        result = self.runtime.adapt_decision(ctx=ctx, resource_tenant_id=resource_tenant_id, payload=payload)
+        if isinstance(result, dict):
+            result = {**result, "execution_authorized": False}
+        return result
+
     def record_intervention(self, ctx: RuntimeContext, resource_tenant_id: str,
                             payload: Mapping[str, Any]) -> Any:
         self._authorize_mutation(ctx, resource_tenant_id, {"coach"})
