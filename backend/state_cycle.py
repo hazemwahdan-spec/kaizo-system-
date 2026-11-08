@@ -96,7 +96,8 @@ def _persist_update(state: Dict[str, Any], history: Dict[str, Any],
                      source_event=EXCLUDED.source_event,case_id=EXCLUDED.case_id,
                      updated_at=EXCLUDED.updated_at
                    WHERE kaizo_digital_twin_state.tenant_id=EXCLUDED.tenant_id
-                     AND kaizo_digital_twin_state.coach_actor_id=EXCLUDED.coach_actor_id""",
+                     AND kaizo_digital_twin_state.coach_actor_id=EXCLUDED.coach_actor_id
+                     AND kaizo_digital_twin_state.version=EXCLUDED.version-1""",
                 (state["entity_id"],state["version"],json.dumps(state["state"]),
                  state["source_event"],state["case_id"],state["updated_at"],
                  principal.tenant_id,principal.actor_id))
