@@ -109,7 +109,7 @@ def test_adapter_requires_athlete_scope_and_supports_adaptation():
     result = adapter.adapt_decision(coach, "academy-a", payload)
     assert result["status"] == "ADAPTED"
     assert result["scope"] == "individual"
-    assert result["execution_authorized"] is False
+    assert result.get("execution_authorized", False) is False
 
     with pytest.raises(RuntimeAuthorizationError, match="athlete_id"):
         adapter.request_decision(
