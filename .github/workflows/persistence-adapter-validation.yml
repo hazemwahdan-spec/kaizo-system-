@@ -102,6 +102,8 @@ jobs:
         run: PYTHONPATH=. python test_feat_016_problem_statement.py
       - name: Run FEAT-017 problem library selection acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT017ProblemLibrarySelectionTests
+      - name: Run FEAT-018 cause/context framing acceptance tests
+        run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT018CauseContextFramingTests
       - name: Run FEAT-019 evidence-linked diagnosis acceptance tests
         run: PYTHONPATH=. python -m unittest test_feat_016_problem_statement.FEAT019EvidenceLinkedDiagnosisTests
       - name: Run FEAT-020 diagnosis confidence acceptance tests
