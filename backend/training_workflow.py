@@ -130,14 +130,22 @@ def _save(
                     (record_id,feature_id,athlete_id,decision_id,session_id,payload,
                      created_by,created_at,coach_final_authority,execution_authorized,
                      tenant_id,coach_actor_id)
-                    VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s)""",
+                    SELECT %s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s
+                    WHERE EXISTS (
+                        SELECT 1 FROM kaizo_coach_athlete_ownership
+                        WHERE athlete_id=%s AND tenant_id=%s AND coach_actor_id=%s
+                    )
+                    RETURNING record_id""",
                     (
                         record["record_id"], feature_id, athlete_id, decision_id,
                         session_id, json.dumps(payload), principal.actor_id,
                         record["created_at"], True, False,
                         principal.tenant_id, principal.actor_id,
+                        athlete_id, principal.tenant_id, principal.actor_id,
                     ),
                 )
+                if cur.fetchone() is None:
+                    raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
                 cur.execute(
                     """INSERT INTO kaizo_audit_logs
                     (timestamp,who,action,old_value,new_value,why,tenant_id)
