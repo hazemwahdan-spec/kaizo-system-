@@ -101,7 +101,7 @@ def test_coach_ui_fails_closed_for_unscoped_core_decision_and_digital_twin_actio
         assert route not in APP
     assert "Protected Coach workflow boundary" in APP
     assert "Legacy unscoped Core routes remain retired" in APP
-    assert "no unscoped request will be sent" in APP
+    assert "no unscoped request is sent" in APP
     assert 'id="coachWorkspace"' not in APP
     assert "coachGo(" not in APP
 
