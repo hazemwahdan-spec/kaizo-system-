@@ -355,7 +355,8 @@ async function loadCoachAthleteDecisionCycles(athleteId){
       ((c.training_plans||[]).length?(c.training_plans||[]).map(p=>'<p class="muted">'+escapeHtml(p.title||p.plan_id)+' · '+escapeHtml(p.status||"")+'</p>').join(""):'<p class="muted">No linked training plans.</p>')+'</article>').join("");
   }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;target.textContent="Decision history unavailable: "+String(e&&e.message?e.message:e)}
 }
-\nfunction coachDashboard(){return `
+
+function coachDashboard(){return `
 <div class="coach-dashboard">
   <div class="coach-dashboard-head"><div><h2>Coach Home</h2><p class="muted">Decision support and workflow navigation. Coach retains final authority; execution remains disabled unless Core authorizes it.</p></div><span class="coach-state">CORE-GOVERNED</span></div>
   <section class="coach-dashboard-summary" aria-live="polite">
