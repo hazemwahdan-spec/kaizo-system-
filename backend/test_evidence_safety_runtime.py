@@ -1,21 +1,45 @@
+"""Fail-closed tests for unscoped FEAT-057..060 evidence-safety routes."""
 import os
-os.environ["KAIZO_PERSISTENCE_MODE"]="memory"
+os.environ["KAIZO_IDENTITY_MODE"] = "production"
+os.environ.pop("KAIZO_ALLOW_UNSCOPED_LEGACY_ROUTES_FOR_TESTS", None)
+
 from fastapi.testclient import TestClient
-from main import app
-client=TestClient(app)
+import main
+import evidence_safety_runtime
 
-def test_057_060_cycle():
-    r=client.post("/api/v1/evidence-safety/feat-057/evidence-quality",json={"subject_id":"A1","evidence_level":"E3","quality_status":"VERIFIED","evidence_refs":["EV-1"],"assessed_by":"coach","coach_final_authority":True})
-    assert r.status_code==201 and r.json()["execution_authorized"] is False
-    r=client.post("/api/v1/evidence-safety/feat-058/provenance",json={"subject_id":"A1","provenance_refs":["SRC-1"],"disclosed_by":"coach","coach_final_authority":True})
-    assert r.status_code==201
-    r=client.post("/api/v1/evidence-safety/feat-059/block",json={"action_id":"ACT-1","block_reason":"insufficient safety evidence","diagnostic":{"required":"retest"},"evidence_refs":["EV-1"],"blocked_by":"coach","coach_final_authority":True})
-    assert r.status_code==201 and r.json()["status"]=="HOLD"
-    r=client.post("/api/v1/evidence-safety/feat-060/escalate",json={"subject_id":"A1","escalation_reason":"coach review required","review_state":"UNDER_REVIEW","escalated_by":"coach","evidence_refs":["EV-1"],"coach_final_authority":True})
-    assert r.status_code==201
+client = TestClient(main.app, raise_server_exceptions=False)
+FORGED_HEADERS = {
+    "X-KAIZO-Actor": "forged-coach",
+    "X-KAIZO-Role": "coach",
+    "X-KAIZO-Tenant": "forged-tenant",
+    "X-KAIZO-Resource-Owner": "forged-athlete",
+}
 
-def test_quality_gates():
-    r=client.post("/api/v1/evidence-safety/feat-057/evidence-quality",json={"subject_id":"A1","evidence_level":"E9","quality_status":"X","evidence_refs":["EV"],"assessed_by":"coach"})
-    assert r.status_code==400
-    r=client.post("/api/v1/evidence-safety/feat-059/block",json={"action_id":"ACT","block_reason":"x","diagnostic":{"x":1},"blocked_by":"coach","coach_final_authority":False})
-    assert r.status_code==409
+
+def test_evidence_safety_routes_fail_closed_without_verified_scope():
+    evidence_safety_runtime.MEMORY.clear()
+    cases = [
+        ("/api/v1/evidence-safety/feat-057/evidence-quality", {
+            "subject_id": "forged-athlete", "evidence_level": "E3",
+            "quality_status": "VERIFIED", "evidence_refs": ["REF-FORGED"],
+            "assessed_by": "forged-coach", "coach_final_authority": True,
+        }),
+        ("/api/v1/evidence-safety/feat-058/provenance", {
+            "subject_id": "forged-athlete", "provenance_refs": ["REF-FORGED"],
+            "disclosed_by": "forged-coach", "coach_final_authority": True,
+        }),
+        ("/api/v1/evidence-safety/feat-059/block", {
+            "action_id": "forged-action", "block_reason": "forged",
+            "diagnostic": {"athlete_id": "forged-athlete"}, "evidence_refs": ["REF-FORGED"],
+            "blocked_by": "forged-coach", "coach_final_authority": True,
+        }),
+        ("/api/v1/evidence-safety/feat-060/escalate", {
+            "subject_id": "forged-athlete", "escalation_reason": "forged",
+            "review_state": "OPEN", "escalated_by": "forged-coach",
+            "coach_final_authority": True,
+        }),
+    ]
+    for path, payload in cases:
+        response = client.post(path, json=payload, headers=FORGED_HEADERS)
+        assert response.status_code == 410, (path, response.status_code, response.text)
+    assert evidence_safety_runtime.MEMORY == []
