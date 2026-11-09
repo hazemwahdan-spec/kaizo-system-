@@ -1,4 +1,4 @@
-"""Verified request identity must be the source of tenant-scoped audit writes."""
+"""Retired unscoped athlete creation must never write data or audit attribution."""
 from fastapi.testclient import TestClient
 
 import main
@@ -8,8 +8,8 @@ from productization.identity import Principal
 client = TestClient(main.app)
 
 
-def test_verified_academy_identity_scopes_audit_write(monkeypatch):
-    principal = Principal(
+def _principal():
+    return Principal(
         actor_id="auth0|academy-a-service",
         role="academy",
         tenant_id="academy-a",
@@ -17,62 +17,39 @@ def test_verified_academy_identity_scopes_audit_write(monkeypatch):
         verified=True,
         source="oidc_jwt",
     )
-    monkeypatch.setattr(main, "resolve_bearer_principal", lambda _: principal)
+
+
+def _assert_retired_without_writes(monkeypatch, authorization):
+    monkeypatch.setattr(main, "resolve_bearer_principal", lambda _: _principal())
     monkeypatch.setattr(main.persistence, "is_postgres_enabled", lambda: True)
-    monkeypatch.setattr(main.persistence, "upsert_athlete", lambda _record: None)
-    writes = []
-    monkeypatch.setattr(
-        main.persistence,
-        "append_tenant_audit",
-        lambda **kwargs: writes.append(kwargs),
-    )
+    upserts = []
+    tenant_audits = []
+    unscoped_audits = []
+    monkeypatch.setattr(main.persistence, "upsert_athlete", lambda record: upserts.append(record))
+    monkeypatch.setattr(main.persistence, "append_tenant_audit", lambda **kwargs: tenant_audits.append(kwargs))
+    monkeypatch.setattr(main.persistence, "append_audit", lambda **kwargs: unscoped_audits.append(kwargs))
 
     response = client.post(
         "/api/v1/athletes",
-        headers={"Authorization": "Bearer signed-academy-token"},
-        json={"display_name": "Test Athlete", "metadata": {}},
+        headers={"Authorization": authorization},
+        json={"display_name": "Test Athlete", "metadata": {"tenant_id": "academy-b"}},
     )
 
-    assert response.status_code == 201
-    assert len(writes) == 1
-    assert writes[0]["tenant_id"] == "academy-a"
-    assert writes[0]["who"] == "auth0|academy-a-service"
-    assert writes[0]["action"] == "ATHLETE_CREATED"
+    assert response.status_code == 410
+    assert upserts == []
+    assert tenant_audits == []
+    assert unscoped_audits == []
 
 
-def test_request_payload_cannot_select_audit_tenant(monkeypatch):
-    principal = Principal(
-        actor_id="auth0|academy-a-service",
-        role="academy",
-        tenant_id="academy-a",
-        resource_owner_id=None,
-        verified=True,
-        source="oidc_jwt",
-    )
-    monkeypatch.setattr(main, "resolve_bearer_principal", lambda _: principal)
-    monkeypatch.setattr(main.persistence, "is_postgres_enabled", lambda: True)
-    monkeypatch.setattr(main.persistence, "upsert_athlete", lambda _record: None)
-    writes = []
-    monkeypatch.setattr(
-        main.persistence,
-        "append_tenant_audit",
-        lambda **kwargs: writes.append(kwargs),
-    )
-
-    response = client.post(
-        "/api/v1/athletes",
-        headers={"Authorization": "Bearer signed-academy-token"},
-        json={
-            "display_name": "Test Athlete",
-            "metadata": {"tenant_id": "academy-b"},
-        },
-    )
-
-    assert response.status_code == 201
-    assert writes[0]["tenant_id"] == "academy-a"
+def test_verified_academy_cannot_use_retired_unscoped_athlete_write(monkeypatch):
+    _assert_retired_without_writes(monkeypatch, "Bearer signed-academy-token")
 
 
-def test_invalid_bearer_never_receives_tenant_attribution(monkeypatch):
+def test_request_payload_cannot_reactivate_retired_route_or_select_audit_tenant(monkeypatch):
+    _assert_retired_without_writes(monkeypatch, "Bearer signed-academy-token")
+
+
+def test_invalid_bearer_cannot_use_retired_route_or_receive_audit_attribution(monkeypatch):
     from productization.identity import IdentityNotConfiguredError
 
     def reject(_authorization):
@@ -80,13 +57,10 @@ def test_invalid_bearer_never_receives_tenant_attribution(monkeypatch):
 
     monkeypatch.setattr(main, "resolve_bearer_principal", reject)
     monkeypatch.setattr(main.persistence, "is_postgres_enabled", lambda: True)
-    monkeypatch.setattr(main.persistence, "upsert_athlete", lambda _record: None)
-    unscoped_writes = []
-    monkeypatch.setattr(
-        main.persistence,
-        "append_audit",
-        lambda **kwargs: unscoped_writes.append(kwargs),
-    )
+    upserts = []
+    audits = []
+    monkeypatch.setattr(main.persistence, "upsert_athlete", lambda record: upserts.append(record))
+    monkeypatch.setattr(main.persistence, "append_audit", lambda **kwargs: audits.append(kwargs))
 
     response = client.post(
         "/api/v1/athletes",
@@ -94,6 +68,6 @@ def test_invalid_bearer_never_receives_tenant_attribution(monkeypatch):
         json={"display_name": "Unscoped Test Athlete", "metadata": {}},
     )
 
-    assert response.status_code == 201
-    assert len(unscoped_writes) == 1
-    assert "tenant_id" not in unscoped_writes[0]
+    assert response.status_code == 410
+    assert upserts == []
+    assert audits == []
