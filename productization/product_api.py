@@ -222,8 +222,9 @@ def intervention(
             tenant_id=principal.tenant_id, resource_owner_id=req.athlete_id,
             coach_approved=req.coach_approved,
         )
+        resource_tenant_id = req.resource_tenant_id or principal.tenant_id
         return get_surface().record_intervention(
-            context, req.resource_tenant_id,
+            context, resource_tenant_id,
             req.model_dump(exclude={"resource_tenant_id", "coach_approved"}),
         )
     except RuntimeAuthorizationError as exc:
