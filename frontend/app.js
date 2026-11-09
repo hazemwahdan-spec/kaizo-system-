@@ -188,7 +188,6 @@ async function createCoachDecisionCycle(event){
   const adaptationForm=document.getElementById("coachAdaptationForm");if(adaptationForm)adaptationForm.hidden=false;
   notice.textContent="Decision cycle saved. Durable ID: "+currentCoachDecisionCycleId;
   await loadCoachDecisionCycleReadback(athleteId,currentCoachDecisionCycleId);
-  if(form)form.reset();
  }catch(e){notice.textContent="Decision cycle was not saved: "+String(e&&e.message?e.message:e)}
 }
 async function loadCoachDecisionCycleReadback(athleteId,cycleId){
