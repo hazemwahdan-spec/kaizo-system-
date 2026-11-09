@@ -2,9 +2,11 @@ import os
 os.environ["KAIZO_PERSISTENCE_MODE"]="memory"
 
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
+import pytest
 import main
 from main import app
-from feature_runtime import CONTRACTS
+from feature_runtime import CONTRACTS, LEGACY_UNSCOPED_COACH_FEATURES, FeatureRecordRequest, _MEMORY, _validate
 import evidence_store
 import persistence
 
@@ -17,44 +19,43 @@ def test_all_missing_features_have_real_contracts():
         assert contract["name"]
         assert contract["required"]
 
-def test_feature_record_enforces_governance_and_required_fields():
-    r=client.post("/api/v1/features/feat-034/drill-prescription",json={
-        "subject_id":"athlete-1","actor_id":"coach-1","payload":{},
-        "coach_final_authority":True,"execution_authorized":False})
-    assert r.status_code==400
-    assert "missing_fields" in r.json()["detail"]
+def test_generic_coach_feature_routes_fail_closed_for_reads_and_writes():
+    _MEMORY.clear()
+    for feature_id in sorted(LEGACY_UNSCOPED_COACH_FEATURES):
+        contract = CONTRACTS[feature_id]
+        slug = contract["name"].lower().replace("/", "-").replace(" ", "-")
+        slug = "".join(ch for ch in slug if ch.isalnum() or ch == "-").strip("-")
+        path = f"/api/v1/features/{feature_id.lower()}/{slug}"
+        body = {
+            "subject_id": "athlete-1",
+            "actor_id": "forged-coach",
+            "payload": {"athlete_id": "athlete-1", "decision_id": "forged-decision"},
+            "coach_final_authority": True,
+            "execution_authorized": False,
+        }
+        assert client.post(path, json=body).status_code == 410, feature_id
+        assert client.get(path).status_code == 410, feature_id
+        assert client.get(path + "/legacy-record").status_code == 410, feature_id
+    assert _MEMORY == {}
 
-    r=client.post("/api/v1/features/feat-034/drill-prescription",json={
-        "subject_id":"athlete-1","actor_id":"coach-1",
-        "payload":{"drill_id":"D1","session_id":"S1","dosage":"3x5","rationale":"technical quality"},
-        "coach_final_authority":False,"execution_authorized":False})
-    assert r.status_code==409
-
-    r=client.post("/api/v1/features/feat-034/drill-prescription",json={
-        "subject_id":"athlete-1","actor_id":"coach-1",
-        "payload":{"drill_id":"D1","session_id":"S1","dosage":"3x5","rationale":"technical quality"},
-        "coach_final_authority":True,"execution_authorized":False})
-    assert r.status_code==201
-    record=r.json()
-    assert record["feature_id"]=="FEAT-034"
-    assert record["coach_final_authority"] is True
-    assert record["execution_authorized"] is False
-
-def test_evidence_required_features_hold_without_evidence():
-    r=client.post("/api/v1/features/feat-031/drill-library",json={
-        "subject_id":"drill-1","actor_id":"coach-1",
-        "payload":{
+def test_internal_feature_validation_still_requires_evidence():
+    req = FeatureRecordRequest(
+        subject_id="drill-1",
+        actor_id="coach-1",
+        payload={
             "drill_id":"D1","name":"uchi-komi","judo_area":"Nage-waza",
             "technical_skill":"Seoi-nage entry","problem_target":"late entry",
             "decision_target":"entry timing","age_suitability":"U11+",
             "skill_level":"intermediate","execution_pattern":"controlled repetitions",
             "kpi":"entry quality","safety_constraints":"coach supervised"
         },
-        "coach_final_authority":True,"execution_authorized":False})
-    assert r.status_code==400
-    detail=str(r.json()["detail"])
-    assert "evidence" in detail.lower()
-    assert "at least one evidence reference is required" in detail.lower()
+        coach_final_authority=True,
+        execution_authorized=False,
+    )
+    with pytest.raises(HTTPException) as exc:
+        _validate("FEAT-031", req)
+    assert exc.value.status_code == 400
+    assert "at least one evidence reference" in str(exc.value.detail)
 
 def test_feature_list_and_get():
     r=client.post("/api/v1/features/feat-061/academy-entity",json={
@@ -85,22 +86,24 @@ def test_canonical_domain_validation_is_enforced():
     persistence.upsert_evidence(evidence)
     main.EVIDENCE_RECORDS[evidence["evidence_id"]] = evidence
     evidence_store.EVIDENCE_RECORDS[evidence["evidence_id"]] = evidence
-    r=client.post("/api/v1/features/feat-029/progression-regression-rules",json={
-        "subject_id":"athlete-1","actor_id":"coach-1",
-        "payload":{"metric":"technical_quality","threshold":8,"action":"PROGRESS","adjustment":1,
-                   "rule_version":"1.0.0","approval_status":"APPROVED"},
-        "evidence_refs":["RULE-SOURCE-029"],"coach_final_authority":True,"execution_authorized":False})
-    assert r.status_code==201
+    rule_req = FeatureRecordRequest(
+        subject_id="athlete-1", actor_id="coach-1",
+        payload={"metric":"technical_quality","threshold":8,"action":"PROGRESS","adjustment":1,
+                 "rule_version":"1.0.0","approval_status":"APPROVED"},
+        evidence_refs=["RULE-SOURCE-029"], coach_final_authority=True,
+        execution_authorized=False)
+    assert _validate("FEAT-029", rule_req)["name"] == "Progression/regression rules"
 
-    r=client.post("/api/v1/features/feat-031/drill-library",json={
-        "subject_id":"drill-1","actor_id":"coach-1",
-        "payload":{"drill_id":"D1","name":"Uchi-komi","judo_area":"Nage-waza",
+    drill_req = FeatureRecordRequest(
+        subject_id="drill-1", actor_id="coach-1",
+        payload={"drill_id":"D1","name":"Uchi-komi","judo_area":"Nage-waza",
         "technical_skill":"Seoi-nage entry","problem_target":"late entry",
         "decision_target":"entry timing","age_suitability":"U11+","skill_level":"intermediate",
         "execution_pattern":"controlled repetitions","kpi":"entry quality",
         "safety_constraints":"coach supervised"},
-        "evidence_refs":["REF-015"],"coach_final_authority":True,"execution_authorized":False})
-    assert r.status_code==201
+        evidence_refs=["REF-015"], coach_final_authority=True,
+        execution_authorized=False)
+    assert _validate("FEAT-031", drill_req)["name"] == "Drill library"
 
 def test_semantic_validation_rejects_invalid_feature_shapes():
     bad = client.post("/api/v1/features/feat-069/competition-trend-analysis", json={
@@ -118,7 +121,16 @@ def test_semantic_validation_rejects_invalid_feature_shapes():
     assert "format" in str(bad.json()["detail"])
 
     bad = client.post("/api/v1/features/feat-039/progress-state-update", json={
-        "subject_id":"athlete-1","actor_id":"coach-1",
+        "subject_id":"athlete-1","actor_id":"forged-coach",
         "payload":{"athlete_id":"athlete-1","state":"GUESS","state_basis":"unsupported"},
         "evidence_refs":["REF-015"],"coach_final_authority":True,"execution_authorized":False})
-    assert bad.status_code == 400
+    assert bad.status_code == 410
+
+    invalid_progress = FeatureRecordRequest(
+        subject_id="athlete-1", actor_id="coach-1",
+        payload={"athlete_id":"athlete-1","state":"GUESS","state_basis":"unsupported"},
+        evidence_refs=["REF-015"], coach_final_authority=True,
+        execution_authorized=False)
+    with pytest.raises(HTTPException) as exc:
+        _validate("FEAT-039", invalid_progress)
+    assert exc.value.status_code == 400
