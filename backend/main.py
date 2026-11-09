@@ -15,7 +15,7 @@ from audit_authorization import require_tenant_audit_reader
 from productization.identity import IdentityNotConfiguredError, Principal, resolve_bearer_principal
 from evidence_store import EVIDENCE_RECORDS
 from evidence_authorization import GLOBAL_EVIDENCE_SUBJECT_TYPES, require_global_evidence_publisher
-from feature_runtime import router as feature_runtime_router
+from feature_runtime import router as feature_runtime_router, LEGACY_UNSCOPED_COACH_FEATURES
 from training_workflow import router as training_workflow_router
 from knowledge_runtime import router as knowledge_runtime_router
 from audit_trace_runtime import router as audit_trace_runtime_router
@@ -2076,8 +2076,15 @@ LEGACY_UNSCOPED_COACH_ROUTE_PREFIXES = (
 
 
 def _is_legacy_unscoped_coach_route(path: str) -> bool:
-    return any(path == prefix or path.startswith(prefix + "/")
-               for prefix in LEGACY_UNSCOPED_COACH_ROUTE_PREFIXES)
+    if any(path == prefix or path.startswith(prefix + "/")
+           for prefix in LEGACY_UNSCOPED_COACH_ROUTE_PREFIXES):
+        return True
+    # Generic feature envelopes for Coach-relevant IDs are retired as well;
+    # do not advertise them as supported APIs in OpenAPI.
+    return any(
+        path.startswith(f"/api/v1/features/{feature_id.lower()}/")
+        for feature_id in LEGACY_UNSCOPED_COACH_FEATURES
+    )
 
 
 @app.middleware("http")
