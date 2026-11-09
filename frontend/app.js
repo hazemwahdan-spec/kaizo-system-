@@ -8,6 +8,7 @@ const PRODUCT_API=API+"/product";
 const roleSelect=document.getElementById("roleSelect");
 roleSelect.addEventListener("change", renderProductRole);
 async function productCall(path, opts={}){ const token=await productAccessToken(); opts.headers={...(opts.headers||{}),"Authorization":"Bearer "+token}; const r=await fetch(PRODUCT_API+path,opts); const raw=await r.text(); let j; try{j=raw?JSON.parse(raw):null}catch(_){j={message:"Core returned a non-JSON response",response_excerpt:raw.slice(0,500)}} if(!r.ok) throw new Error("HTTP "+r.status+" "+r.statusText+": "+JSON.stringify(j)); if(j===null) throw new Error("Core returned an empty response for "+path); return j; }
+async function stateCycleCall(path, opts={}){ const token=await productAccessToken(); opts.headers={...(opts.headers||{}),"Authorization":"Bearer "+token}; const r=await fetch(API+path,opts); const raw=await r.text(); let j; try{j=raw?JSON.parse(raw):null}catch(_){j={message:"Core returned a non-JSON response",response_excerpt:raw.slice(0,500)}} if(!r.ok) throw new Error("HTTP "+r.status+" "+r.statusText+": "+JSON.stringify(j)); if(j===null) throw new Error("Core returned an empty response for "+path); return j; }
 async function kaizoLogin(){try{if(window.KAIZO_AUTH_READY)await window.KAIZO_AUTH_READY;if(!window.KAIZO_AUTH)throw new Error(window.KAIZO_AUTH_INIT_ERROR||"Auth0 SPA is not configured.");await window.KAIZO_AUTH.loginWithRedirect()}catch(e){const view=document.getElementById("roleView");view.textContent=String(e&&e.message?e.message:e)}}
 async function productAccessToken(){if(window.KAIZO_AUTH_READY)await window.KAIZO_AUTH_READY;const auth=window.KAIZO_AUTH;if(!auth||typeof auth.getAccessTokenSilently!=="function")throw new Error(window.KAIZO_AUTH_INIT_ERROR||"AUTHENTICATION_REQUIRED: verified Auth0 SPA session is not initialized. Role selection and X-KAIZO headers are not credentials.");const token=await auth.getAccessTokenSilently();if(!token)throw new Error("AUTHENTICATION_REQUIRED: no verified access token was issued.");return token}
 function actorForRole(role){return ({coach:"coach-demo",academy:"academy-demo",athlete:"ATH-001",parent:"parent-demo"})[role]}
@@ -169,10 +170,10 @@ async function loadCoachDigitalTwinState(athleteId){
  const notice=document.getElementById("coachDigitalTwinNotice"),readback=document.getElementById("coachDigitalTwinReadback"),history=document.getElementById("coachDigitalTwinHistory");
  if(!notice||!readback||!history)return;
  notice.textContent="Loading Digital Twin state in verified Coach scope…";readback.textContent="";history.textContent="";
- try{const state=await productCall("/state-cycle/feat-042/digital-twin-state/"+encodeURIComponent(athleteId));
+ try{const state=await stateCycleCall("/state-cycle/feat-042/digital-twin-state/"+encodeURIComponent(athleteId));
   if(selectedCoachAthleteId!==String(athleteId))return;readback.textContent=pretty(state);notice.textContent="Scoped Digital Twin state loaded · version "+state.version+". Execution remains disabled.";
  }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;notice.textContent=String(e&&e.message?e.message:e).includes("404")?"No Digital Twin state recorded yet.":"Digital Twin read unavailable: "+String(e&&e.message?e.message:e)}
- try{const data=await productCall("/state-cycle/feat-043/state-history/"+encodeURIComponent(athleteId));
+ try{const data=await stateCycleCall("/state-cycle/feat-043/state-history/"+encodeURIComponent(athleteId));
   if(selectedCoachAthleteId!==String(athleteId))return;const rows=Array.isArray(data.versions)?data.versions:[];
   history.innerHTML=rows.length?rows.map(x=>"<p><strong>Version "+escapeHtml(x.version)+"</strong> · "+escapeHtml(x.source_event||"")+" · "+escapeHtml(x.recorded_at||"")+"</p>").join(""):"<p class=\"muted\">No recorded state history.</p>";
  }catch(e){history.textContent="State history unavailable: "+String(e&&e.message?e.message:e)}
@@ -186,7 +187,7 @@ async function saveCoachDigitalTwinState(event){
  const caseId=document.getElementById("coachTwinCaseId").value.trim(),sourceEvent=document.getElementById("coachTwinSourceEvent").value.trim(),evidenceRefs=document.getElementById("coachTwinEvidenceRefs").value.split(",").map(x=>x.trim()).filter(Boolean);
  if(!caseId||!sourceEvent||!evidenceRefs.length){notice.textContent="Case, source event, and at least one evidence reference are required.";return}
  notice.textContent="Saving versioned state with Coach ownership and audit…";
- try{const result=await productCall("/state-cycle/feat-042/digital-twin-state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entity_id:athleteId,state,source_event:sourceEvent,case_id:caseId,evidence_refs:evidenceRefs,coach_final_authority:true})});
+ try{const result=await stateCycleCall("/state-cycle/feat-042/digital-twin-state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entity_id:athleteId,state,source_event:sourceEvent,case_id:caseId,evidence_refs:evidenceRefs,coach_final_authority:true})});
   if(selectedCoachAthleteId!==String(athleteId))return;notice.textContent="Digital Twin state saved · version "+result.state.version+". Coach Final Authority retained; execution disabled.";readback.textContent=pretty(result);await loadCoachDigitalTwinState(athleteId);
  }catch(e){notice.textContent="Digital Twin state was not saved: "+String(e&&e.message?e.message:e)}
 }
