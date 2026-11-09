@@ -122,3 +122,14 @@ def test_coach_ui_decision_cycle_and_adaptation_use_protected_scoped_api():
     assert 'function createCoachDecisionCycle(event)' in APP
     assert 'function adaptCoachDecisionCycle(event)' in APP
     assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+
+
+def test_coach_ui_connects_scoped_digital_twin_state_and_history():
+    assert 'productCall("/state-cycle/feat-042/digital-twin-state/"+encodeURIComponent(athleteId))' in APP
+    assert 'productCall("/state-cycle/feat-043/state-history/"+encodeURIComponent(athleteId))' in APP
+    assert 'productCall("/state-cycle/feat-042/digital-twin-state"' in APP
+    assert 'function saveCoachDigitalTwinState(event)' in APP
+    assert 'loadCoachDigitalTwinState(athleteId)' in APP
+    assert 'coachDigitalTwinSection' in APP
+    assert 'evidence_refs:evidenceRefs' in APP
+    assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
