@@ -116,6 +116,11 @@ def decision(
             decision_output=decision_output if isinstance(decision_output, dict)
                             else {"result": decision_output},
         )
+        if cycle is None:
+            raise HTTPException(
+                status_code=404,
+                detail="athlete ownership changed before decision-cycle persistence",
+            )
         if isinstance(decision_output, dict):
             return {**decision_output, "decision_cycle_id": cycle["decision_cycle_id"],
                     "decision_cycle_version": cycle["version"]}
@@ -184,7 +189,7 @@ def adaptation(
         cycle = coach_decision_cycles.record_adaptation(
             decision_cycle_id=req.decision_cycle_id,
             tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
-            athlete_id=req.athlete_id,
+            athlete_id=req.athlete_id, case_id=req.case_id,
             adaptation_input={**adaptation_input, "decision_cycle_id": req.decision_cycle_id},
             adaptation_output=adaptation_output if isinstance(adaptation_output, dict)
                               else {"result": adaptation_output},
