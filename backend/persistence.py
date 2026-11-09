@@ -401,6 +401,25 @@ ALTER TABLE kaizo_decision_state_links ADD COLUMN IF NOT EXISTS tenant_id TEXT;
 ALTER TABLE kaizo_decision_state_links ADD COLUMN IF NOT EXISTS coach_actor_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_kaizo_decision_state_links_decision
     ON kaizo_decision_state_links(tenant_id, coach_actor_id, decision_id, linked_at);
+
+-- Distinct durable business record; never alias FEAT-025 decision records.
+CREATE TABLE IF NOT EXISTS kaizo_coach_decision_cycles (
+    decision_cycle_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    decision_input JSONB NOT NULL,
+    decision_output JSONB NOT NULL,
+    adaptation_input JSONB,
+    adaptation_output JSONB,
+    status TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_decision_cycles_scope
+    ON kaizo_coach_decision_cycles(tenant_id, coach_actor_id, athlete_id, created_at DESC);
 """
 
 
