@@ -34,6 +34,8 @@ class RecordingCursor:
     def fetchone(self):
         if "FROM kaizo_athletes a" in self.last_query:
             return ("athlete-1", "Read-only athlete", "ACTIVE", {}, "created", "updated")
+        if "FROM kaizo_coach_athlete_ownership" in self.last_query:
+            return (1,)
         return None
 
     def fetchall(self):
@@ -97,3 +99,4 @@ def test_coach_read_paths_issue_select_only_and_never_initialize_schema(monkeypa
     all_queries = [query for connection in connections for query in connection.cursor_instance.queries]
     assert all_queries, "The regression must exercise database read paths"
     assert all(query.upper().startswith("SELECT") for query in all_queries)
+    assert any("FROM kaizo_coach_athlete_ownership" in query for query in all_queries)
