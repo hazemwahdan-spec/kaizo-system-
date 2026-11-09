@@ -5,7 +5,9 @@ on:
     branches: [fix/coach-retire-unscoped-main-api]
     paths:
       - "productization/coach_decision_cycles.py"
+      - "productization/identity.py"
       - "productization/product_api.py"
+      - "productization/test_identity.py"
       - "productization/test_product_api.py"
       - "backend/persistence.py"
       - ".github/workflows/coach-decision-cycle-closure.yml"
@@ -13,7 +15,9 @@ on:
     branches: [fix/coach-durable-decision-cycles-secure-base]
     paths:
       - "productization/coach_decision_cycles.py"
+      - "productization/identity.py"
       - "productization/product_api.py"
+      - "productization/test_identity.py"
       - "productization/test_product_api.py"
       - "backend/persistence.py"
       - ".github/workflows/coach-decision-cycle-closure.yml"
