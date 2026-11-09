@@ -141,8 +141,8 @@ def _verified_owned_coach_cycle(principal, athlete_id, decision_cycle_id, case_i
 class AdaptationRequest(BaseModel):
     resource_tenant_id: str
     athlete_id: str
-    decision_id: str | None = None
     decision_cycle_id: str
+    decision_id: str | None = None
     case_id: str
     operation: str
     common_core: Dict[str, Any]
