@@ -57,6 +57,7 @@ async function loadCoachDashboard(){
 
 let coachRosterRecords=[];
 let selectedCoachAthleteId=null;
+let currentCoachDecisionCycleId=null;
 
 function renderCoachRosterRows(){
  const list=document.getElementById("coachRosterList");
@@ -82,7 +83,7 @@ function returnCoachRoster(){
  if(search)search.focus();
 }
 function coachAthleteSection(sectionId){
- const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionWorkspaceSection","athleteActionHistorySection","athleteAuditReviewSection"];
+ const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionExecutionSection","athleteDecisionWorkspaceSection","athleteActionHistorySection","athleteAuditReviewSection"];
  if(!ids.includes(sectionId))return;
  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=id!==sectionId});
  document.querySelectorAll("[data-athlete-section]").forEach(button=>{
@@ -138,6 +139,7 @@ async function viewCoachAthlete(athleteId){
    '<button type="button" data-athlete-section="athleteLifecycleSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteLifecycleSection\')">Lifecycle</button>'+
    '<button type="button" data-athlete-section="athleteStatusHistorySection" aria-pressed="false" onclick="coachAthleteSection(\'athleteStatusHistorySection\')">Status history</button>'+
    '<button type="button" data-athlete-section="athleteDecisionCyclesSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionCyclesSection\')">Decision history</button>'+
+   '<button type="button" data-athlete-section="athleteDecisionExecutionSection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteDecisionExecutionSection\\')">Decision & adaptation</button>'+
    '<button type="button" data-athlete-section="athleteDecisionWorkspaceSection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteDecisionWorkspaceSection\\')">Decision workspace</button>'+
    '<button type="button" data-athlete-section="athleteActionHistorySection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteActionHistorySection\\')">Action history</button>'+
    '<button type="button" data-athlete-section="athleteAuditReviewSection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteAuditReviewSection\\')">Audit review</button></nav>'+
@@ -146,6 +148,7 @@ async function viewCoachAthlete(athleteId){
    (next.length?'<label for="athleteNextStatus">Change status</label><select id="athleteNextStatus">'+next.map(s=>'<option value="'+s+'">'+s+'</option>').join("")+'</select><label for="athleteStatusReason">Reason (required)</label><input id="athleteStatusReason" maxlength="500" required placeholder="Record why this status changes"><button type="button" onclick="changeCoachAthleteStatus(\''+escapeHtml(athleteId)+'\')">Save lifecycle change</button>':'<p class="muted">Archived is terminal. No further status transition is permitted.</p>')+'</section>'+
    '<section id="athleteStatusHistorySection" hidden><h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div></section>'+
    '<section id="athleteDecisionCyclesSection" hidden><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div></section>'+
+   '<section id="athleteDecisionExecutionSection" hidden><h4>Coach decision and adaptation</h4><p class="muted">This creates a durable, athlete-scoped decision cycle and records adaptation against its exact ID. Coach Final Authority remains active; execution is not authorized.</p><form id="coachDecisionCycleForm" class="coach-roster-form" onsubmit="createCoachDecisionCycle(event)"><label for="coachDecisionCaseId">Case reference</label><input id="coachDecisionCaseId" maxlength="120" required placeholder="e.g. U15-CASE-001"><label for="coachDecisionChoice">Coach decision</label><input id="coachDecisionChoice" maxlength="500" required placeholder="Describe the selected coaching decision"><label for="coachIntervention">Planned intervention</label><input id="coachIntervention" maxlength="500" required placeholder="Describe the intervention"><label for="coachResponseKpi">Response / KPI observation</label><input id="coachResponseKpi" maxlength="500" required placeholder="Record the observed response"><label for="coachRetest">Retest result</label><input id="coachRetest" maxlength="500" required placeholder="Record the retest result"><button type="submit">Save decision cycle</button></form><div id="coachDecisionCycleNotice" class="notice">Select an athlete and record the Coach decision.</div><pre id="coachDecisionCycleReadback" class="output"></pre><form id="coachAdaptationForm" class="coach-roster-form" hidden onsubmit="adaptCoachDecisionCycle(event)"><h5>Record adaptation for the saved cycle</h5><label for="coachAdaptationCommonCore">Common Core to preserve</label><input id="coachAdaptationCommonCore" maxlength="500" required placeholder="Principle that must remain unchanged"><label for="coachAdaptationBasis">Dynamic input / adaptation basis</label><input id="coachAdaptationBasis" maxlength="500" required placeholder="Current readiness or performance evidence"><label for="coachAdaptationChange">Individual adjustment</label><input id="coachAdaptationChange" maxlength="500" required placeholder="Specific adjustment"><button type="submit">Save adaptation</button></form></section>'+
    '<section id="athleteDecisionWorkspaceSection" hidden><h4>Decision-cycle workspace</h4><p class="muted">Read-only view of persisted assessments, attached evidence, diagnosis, Coach decisions, training and retest records.</p><div id="athleteDecisionWorkspaceNotice" class="notice">Loading persisted decision-cycle evidence…</div><div id="athleteDecisionWorkspaceContent"></div></section>'+
    '<section id="athleteActionHistorySection" hidden><h4>Coach action history</h4><p class="muted">Only tenant-scoped events attributable to this verified Coach are shown. FEAT-044 state links are related lineage; their actor is not verified.</p><div id="athleteActionHistoryNotice" class="notice">Loading recorded actions…</div><div id="athleteActionHistoryContent"></div></section>'+
    '<section id="athleteAuditReviewSection" hidden><h4>Coach-scoped audit review</h4><p class="muted">Search is restricted to this selected athlete and the verified Coach/tenant scope.</p><label for="coachAuditQuery">Search term</label><input id="coachAuditQuery" maxlength="200" placeholder="Enter an action, decision, or reason"><button type="button" onclick="loadCoachAthleteAuditReview()">Search verified audit</button><div id="athleteAuditReviewNotice" class="notice">Enter a search term to review this athlete’s verified audit events.</div><div id="athleteAuditReviewContent"></div></section>';
@@ -159,6 +162,65 @@ async function viewCoachAthlete(athleteId){
   if(panel)panel.innerHTML='<p class="notice">Athlete details are unavailable outside the verified Coach scope.</p><button class="secondary" type="button" onclick="returnCoachRoster()">Back to my roster</button>';
  }
 }
+async function createCoachDecisionCycle(event){
+ event.preventDefault();
+ const athleteId=selectedCoachAthleteId;
+ const notice=document.getElementById("coachDecisionCycleNotice");
+ const readback=document.getElementById("coachDecisionCycleReadback");
+ const form=document.getElementById("coachDecisionCycleForm");
+ if(!athleteId){notice.textContent="Select an athlete from your verified roster first.";return}
+ const caseId=document.getElementById("coachDecisionCaseId").value.trim();
+ const decision=document.getElementById("coachDecisionChoice").value.trim();
+ const intervention=document.getElementById("coachIntervention").value.trim();
+ const responseKpi=document.getElementById("coachResponseKpi").value.trim();
+ const retest=document.getElementById("coachRetest").value.trim();
+ if(!caseId||!decision||!intervention||!responseKpi||!retest){notice.textContent="Complete all decision-cycle fields.";return}
+ notice.textContent="Saving decision cycle through the verified Coach API…";readback.textContent="";
+ try{
+  const result=await productCall("/decision",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+   resource_tenant_id:undefined,athlete_id:athleteId,case_id:caseId,
+   decision:{coach_choice:decision},intervention:{planned_action:intervention},
+   response_kpi:{observation:responseKpi},retest:{observation:retest}
+  })});
+  currentCoachDecisionCycleId=result.decision_cycle_id;
+  if(!currentCoachDecisionCycleId)throw new Error("Core did not return a durable decision_cycle_id.");
+  const adaptationForm=document.getElementById("coachAdaptationForm");if(adaptationForm)adaptationForm.hidden=false;
+  notice.textContent="Decision cycle saved. Durable ID: "+currentCoachDecisionCycleId;
+  await loadCoachDecisionCycleReadback(athleteId,currentCoachDecisionCycleId);
+  if(form)form.reset();
+ }catch(e){notice.textContent="Decision cycle was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function loadCoachDecisionCycleReadback(athleteId,cycleId){
+ const target=document.getElementById("coachDecisionCycleReadback");
+ if(!target)return;
+ try{
+  const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-cycles/"+encodeURIComponent(cycleId));
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  target.textContent=pretty(data);
+ }catch(e){target.textContent="Durable read-back unavailable: "+String(e&&e.message?e.message:e)}
+}
+async function adaptCoachDecisionCycle(event){
+ event.preventDefault();
+ const athleteId=selectedCoachAthleteId,notice=document.getElementById("coachDecisionCycleNotice");
+ if(!athleteId||!currentCoachDecisionCycleId){notice.textContent="Create or load a durable decision cycle first.";return}
+ const caseId=document.getElementById("coachDecisionCaseId").value.trim();
+ const commonCore=document.getElementById("coachAdaptationCommonCore").value.trim();
+ const basis=document.getElementById("coachAdaptationBasis").value.trim();
+ const change=document.getElementById("coachAdaptationChange").value.trim();
+ if(!caseId||!commonCore||!basis||!change){notice.textContent="Complete all adaptation fields.";return}
+ notice.textContent="Saving adaptation against the exact durable decision cycle…";
+ try{
+  const result=await productCall("/adaptation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+   resource_tenant_id:undefined,athlete_id:athleteId,decision_cycle_id:currentCoachDecisionCycleId,
+   case_id:caseId,operation:"individual_adaptation",
+   common_core:{principle:commonCore},dynamic_inputs:{basis:basis},
+   individual_change:{adjustment:change}
+  })});
+  notice.textContent="Adaptation saved. Cycle version: "+result.decision_cycle_version+".";
+  await loadCoachDecisionCycleReadback(athleteId,currentCoachDecisionCycleId);
+ }catch(e){notice.textContent="Adaptation was not saved: "+String(e&&e.message?e.message:e)}
+}
+
 async function changeCoachAthleteStatus(athleteId){
  const panel=document.getElementById("coachAthleteLifecycle"),status=document.getElementById("athleteNextStatus")?.value,reason=document.getElementById("athleteStatusReason")?.value.trim();
  if(!status||!reason){panel.insertAdjacentText("afterbegin","A status and reason are required. ");return}
