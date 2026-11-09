@@ -1,4 +1,4 @@
-name: FEAT-066-070 Competition Runtime Integration
+name: FEAT-066-070 Competition Runtime Fail-Closed Boundary
 
 on:
   pull_request:
