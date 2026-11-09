@@ -184,7 +184,7 @@ def adaptation(
             "resource_tenant_id", "decision_id", "decision_cycle_id"
         })
         adaptation_input["decision_id"] = req.decision_cycle_id
-        resource_tenant_id = req.resource_tenant_id or principal.tenant_id
+        resource_tenant_id = _coach_resource_tenant(principal, req.resource_tenant_id)
         adaptation_output = get_surface().adapt_decision(
             context, resource_tenant_id, adaptation_input,
         )
