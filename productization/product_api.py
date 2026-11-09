@@ -66,7 +66,7 @@ def navigation(
 
 
 class DecisionRequest(BaseModel):
-    resource_tenant_id: str
+    resource_tenant_id: str | None = None
     athlete_id: str
     case_id: str
     decision: Dict[str, Any]
@@ -104,9 +104,10 @@ def decision(
             actor_id=principal.actor_id, role=principal.role,
             tenant_id=principal.tenant_id, resource_owner_id=req.athlete_id,
         )
+        resource_tenant_id = req.resource_tenant_id or principal.tenant_id
         decision_input = req.model_dump(exclude={"resource_tenant_id"})
         decision_output = get_surface().request_decision(
-            context, req.resource_tenant_id, decision_input,
+            context, resource_tenant_id, decision_input,
         )
         cycle = coach_decision_cycles.create_cycle(
             tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
@@ -139,7 +140,7 @@ def _verified_owned_coach_cycle(principal, athlete_id, decision_cycle_id, case_i
 
 
 class AdaptationRequest(BaseModel):
-    resource_tenant_id: str
+    resource_tenant_id: str | None = None
     athlete_id: str
     decision_cycle_id: str
     decision_id: str | None = None
@@ -176,8 +177,9 @@ def adaptation(
             "resource_tenant_id", "decision_id", "decision_cycle_id"
         })
         adaptation_input["decision_id"] = req.decision_cycle_id
+        resource_tenant_id = req.resource_tenant_id or principal.tenant_id
         adaptation_output = get_surface().adapt_decision(
-            context, req.resource_tenant_id, adaptation_input,
+            context, resource_tenant_id, adaptation_input,
         )
         cycle = coach_decision_cycles.record_adaptation(
             decision_cycle_id=req.decision_cycle_id,
