@@ -7,6 +7,7 @@ and DATABASE_URL. No credentials are stored in source control.
 
 import json
 import os
+from contextvars import ContextVar
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
 
@@ -448,9 +449,45 @@ def _database_url() -> str:
     return value
 
 
+_ACTIVE_CONNECTION: ContextVar[Any | None] = ContextVar("kaizo_active_persistence_connection", default=None)
+
+
+class _NestedConnectionProxy:
+    """Share an outer transaction while preventing inner helpers from committing it."""
+
+    def __init__(self, connection: Any):
+        self._connection = connection
+
+    def commit(self) -> None:
+        # The outer atomic_transaction owns commit/rollback.
+        return None
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._connection, name)
+
+
 @contextmanager
 def connection() -> Iterator[Any]:
+    active = _ACTIVE_CONNECTION.get()
+    if active is not None:
+        yield _NestedConnectionProxy(active)
+        return
     with psycopg.connect(_database_url()) as conn:
+        token = _ACTIVE_CONNECTION.set(conn)
+        try:
+            yield conn
+        finally:
+            _ACTIVE_CONNECTION.reset(token)
+
+
+@contextmanager
+def atomic_transaction() -> Iterator[Any]:
+    """Run nested persistence helpers and their audit writes in one DB transaction.
+
+    Inner connection() calls share this connection; their explicit commit() calls
+    are suppressed until this outer context exits successfully.
+    """
+    with connection() as conn:
         yield conn
 
 
