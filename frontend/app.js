@@ -124,6 +124,7 @@ async function viewCoachAthlete(athleteId){
   if(panel)panel.innerHTML="";return;
  }
  selectedCoachAthleteId=String(athleteId);
+ currentCoachDecisionCycleId=null;
  if(list)list.style.display="none";
  if(detail)detail.textContent="Loading athlete from your verified Coach scope…";
  if(panel)panel.innerHTML="";
@@ -178,7 +179,7 @@ async function createCoachDecisionCycle(event){
  notice.textContent="Saving decision cycle through the verified Coach API…";readback.textContent="";
  try{
   const result=await productCall("/decision",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-   resource_tenant_id:undefined,athlete_id:athleteId,case_id:caseId,
+   athlete_id:athleteId,case_id:caseId,
    decision:{coach_choice:decision},intervention:{planned_action:intervention},
    response_kpi:{observation:responseKpi},retest:{observation:retest}
   })});
@@ -211,7 +212,7 @@ async function adaptCoachDecisionCycle(event){
  notice.textContent="Saving adaptation against the exact durable decision cycle…";
  try{
   const result=await productCall("/adaptation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-   resource_tenant_id:undefined,athlete_id:athleteId,decision_cycle_id:currentCoachDecisionCycleId,
+   athlete_id:athleteId,decision_cycle_id:currentCoachDecisionCycleId,
    case_id:caseId,operation:"individual_adaptation",
    common_core:{principle:commonCore},dynamic_inputs:{basis:basis},
    individual_change:{adjustment:change}
@@ -374,8 +375,8 @@ async function loadCoachAthleteDecisionCycles(athleteId){
     <article class="coach-metric"><span class="muted">Scoped audit review</span><strong>Per athlete</strong><small>Select an owned athlete and use the Audit review tab to search verified Coach actions.</small></article>
   </div>
   <section id="coach-roster" class="coach-roster"><div class="coach-roster-head"><div><h3>My Athlete Roster</h3><p class="muted">Only athletes assigned to the authenticated coach in the authenticated tenant are shown.</p></div><button class="secondary" onclick="loadCoachRoster()">Refresh roster</button></div><form id="coachAthleteForm" class="coach-roster-form" onsubmit="createCoachAthlete(event)"><label for="newAthleteName">Athlete name</label><input id="newAthleteName" name="display_name" maxlength="120" required placeholder="Enter athlete name"><button type="submit">Add athlete to my roster</button></form><div class="coach-roster-form"><label for="athleteRosterSearch">Search my athletes</label><input id="athleteRosterSearch" type="search" maxlength="120" placeholder="Search by name or athlete ID" oninput="filterCoachRoster()"><button class="secondary" type="button" onclick="returnCoachRoster()">Back to roster</button></div><div id="coachRosterNotice" class="notice" role="status">Sign in with a verified Coach account to load your roster.</div><div id="coachRosterList" class="coach-roster-list"></div><pre id="coachAthleteDetail" class="output" aria-live="polite"></pre><div id="coachAthleteLifecycle" class="coach-roster" aria-live="polite"></div></section><section id="coach-groups" class="coach-roster"><div class="coach-roster-head"><div><h3>My Training Groups</h3><p class="muted">Groups and membership are restricted to your verified Coach and tenant scope.</p></div><button class="secondary" onclick="loadCoachGroups()">Refresh groups</button></div><form class="coach-roster-form" onsubmit="createCoachGroup(event)"><label for="newCoachGroupName">Group name</label><input id="newCoachGroupName" maxlength="100" required placeholder="e.g. U15 competition group"><button type="submit">Create group</button></form><div class="row"><label for="groupAthleteSelect">My athlete</label><select id="groupAthleteSelect"><option value="">Load your roster first</option></select></div><div id="coachGroupsNotice" class="notice" role="status">Sign in as Coach to load your groups.</div><div id="coachGroupsList"></div></section><section class="coach-legacy-actions notice" aria-live="polite">
-  <h3>Decision and Digital Twin writes are not connected</h3>
-  <p>Legacy Core endpoints do not yet enforce Coach, tenant, and owned-athlete scope. These actions are intentionally unavailable here; no unscoped request will be sent. Verified read-only profile, lifecycle, decision history, workspace, action history, and audit review remain available.</p>
+  <h3>Protected Coach workflow boundary</h3>
+  <p>Decision and adaptation are available in the protected Coach decision-cycle section above. Legacy unscoped Core routes remain retired. Digital Twin writes remain unavailable here until their protected Coach workflow is connected; no unscoped request will be sent.</p>
 </section>
 <p class="notice coach-honesty">Athlete navigation uses the verified Coach roster and existing scoped profile, lifecycle, status-history, decision-history, workspace, action-history, and audit-review records. Coach remains the final authority.</p>
 </div>` }
