@@ -74,8 +74,10 @@ jobs:
         run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
       - name: Verify nested persistence helpers share an atomic transaction
         run: PYTHONPATH=. pytest -q test_persistence_atomic_transaction.py
-      - name: Verify legacy unscoped Core APIs fail closed by default
+      - name: Verify legacy and newer unscoped Core APIs fail closed by default
         run: PYTHONPATH=. pytest -q test_legacy_coach_routes_fail_closed.py
+      - name: Verify generic Coach feature envelopes are retired
+        run: PYTHONPATH=. pytest -q test_feature_runtime.py
       - name: Verify durable Coach athlete ownership, decision cycles, and tenant audit
         run: PYTHONPATH=..:. pytest -q ../productization/test_coach_roster_postgres.py ../productization/test_coach_groups_postgres.py ../productization/test_coach_athlete_lifecycle_postgres.py ../productization/test_coach_athlete_decision_history_postgres.py ../productization/test_coach_decision_cycles_postgres.py
       - name: Verify FEAT-033..040 Coach workflow ownership and atomic audit
