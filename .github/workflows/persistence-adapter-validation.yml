@@ -74,8 +74,8 @@ jobs:
         run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
       - name: Verify legacy unscoped Core APIs fail closed by default
         run: PYTHONPATH=. pytest -q test_legacy_coach_routes_fail_closed.py
-      - name: Verify durable Coach athlete ownership and tenant audit
-        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_roster_postgres.py ../productization/test_coach_groups_postgres.py ../productization/test_coach_athlete_lifecycle_postgres.py ../productization/test_coach_athlete_decision_history_postgres.py
+      - name: Verify durable Coach athlete ownership, decision cycles, and tenant audit
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_roster_postgres.py ../productization/test_coach_groups_postgres.py ../productization/test_coach_athlete_lifecycle_postgres.py ../productization/test_coach_athlete_decision_history_postgres.py ../productization/test_coach_decision_cycles_postgres.py
       - name: Verify FEAT-033..040 Coach workflow ownership and atomic audit
         run: PYTHONPATH=..:. pytest -q ../productization/test_training_workflow_postgres.py
       - name: Verify FEAT-042..045 scoped Digital Twin state cycle
