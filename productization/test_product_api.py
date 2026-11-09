@@ -155,7 +155,7 @@ def test_product_adaptation_requires_owned_decision_cycle():
     )
     c = client()
     decision_payload = {
-        "resource_tenant_id": "T1", "athlete_id": athlete["athlete_id"],
+        "athlete_id": athlete["athlete_id"],
         "case_id": "CASE-ADAPT-API", "decision": {"choice": "adapt"},
         "intervention": {"drill": "seoi"}, "response_kpi": {"score": 1},
         "retest": {"score": 1},
@@ -165,7 +165,7 @@ def test_product_adaptation_requires_owned_decision_cycle():
     cycle_id = decision.json()["decision_cycle_id"]
 
     payload = {
-        "resource_tenant_id": "T1", "athlete_id": athlete["athlete_id"],
+        "athlete_id": athlete["athlete_id"],
         "decision_cycle_id": cycle_id, "case_id": "CASE-ADAPT-API",
         "operation": "individual_adaptation", "common_core": {"principle": "retain"},
         "dynamic_inputs": {"readiness": "medium"},
