@@ -10,6 +10,8 @@ on:
       - feat-027-session-structure-timing
       - fix/coach-training-workflow-ownership-atomic-audit
       - fix/coach-digital-twin-state-cycle-ownership
+      - fix/coach-retire-unscoped-feature-routes
+      - fix/coach-retire-unscoped-main-api
   pull_request:
     branches:
       - main
@@ -28,6 +30,8 @@ on:
       - fix/coach-ui-fail-closed-legacy-tools
       - fix/coach-training-workflow-ownership-atomic-audit
       - fix/coach-digital-twin-state-cycle-ownership
+      - fix/coach-retire-unscoped-feature-routes
+      - fix/coach-retire-unscoped-main-api
 
 jobs:
   validate-persistence-adapter:
@@ -51,6 +55,8 @@ jobs:
     env:
       KAIZO_PERSISTENCE_MODE: postgres
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kaizo_test
+      KAIZO_IDENTITY_MODE: development
+      KAIZO_ALLOW_UNSCOPED_LEGACY_ROUTES_FOR_TESTS: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -66,6 +72,8 @@ jobs:
         run: PYTHONPATH=. python tests/test_persistence_integration.py
       - name: Import application with PostgreSQL mode
         run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
+      - name: Verify legacy unscoped Core APIs fail closed by default
+        run: PYTHONPATH=. pytest -q test_legacy_coach_routes_fail_closed.py
       - name: Verify durable Coach athlete ownership and tenant audit
         run: PYTHONPATH=..:. pytest -q ../productization/test_coach_roster_postgres.py ../productization/test_coach_groups_postgres.py ../productization/test_coach_athlete_lifecycle_postgres.py ../productization/test_coach_athlete_decision_history_postgres.py
       - name: Verify FEAT-033..040 Coach workflow ownership and atomic audit
