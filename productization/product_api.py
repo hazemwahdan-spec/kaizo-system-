@@ -493,6 +493,27 @@ def coach_athlete_decision_cycles(
             "coach_final_authority": True, "execution_authorized": False}
 
 
+# Durable decision-cycle read-back; distinct from FEAT-025 decision records.
+@router.get("/coach/athletes/{athlete_id}/decision-cycles/{decision_cycle_id}")
+def coach_decision_cycle_read(
+    athlete_id: str,
+    decision_cycle_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    cycle = coach_decision_cycles.get_owned_cycle(
+        decision_cycle_id=decision_cycle_id, tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id, athlete_id=athlete_id,
+    )
+    if cycle is None:
+        raise HTTPException(status_code=404, detail="decision cycle not found in Coach athlete scope")
+    return {**cycle, "coach_final_authority": True, "execution_authorized": False}
+
+
 # FEAT-006: Coach home dashboard is a read-only aggregate of owned records.
 @router.get("/coach/dashboard")
 def coach_home_dashboard(
