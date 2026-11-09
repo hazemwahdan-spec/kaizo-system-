@@ -75,6 +75,13 @@ class DecisionRequest(BaseModel):
     retest: Dict[str, Any]
 
 
+def _coach_resource_tenant(principal, requested_tenant_id):
+    """Never let request data select a tenant outside the verified Coach identity."""
+    if requested_tenant_id is not None and requested_tenant_id != principal.tenant_id:
+        raise HTTPException(status_code=403, detail="resource tenant must match verified Coach tenant")
+    return principal.tenant_id
+
+
 def _verified_owned_coach_athlete(authorization, actor_id, role, tenant_id, owner, athlete_id):
     principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
     athlete = coach_roster.get_owned_athlete(
@@ -104,7 +111,7 @@ def decision(
             actor_id=principal.actor_id, role=principal.role,
             tenant_id=principal.tenant_id, resource_owner_id=req.athlete_id,
         )
-        resource_tenant_id = req.resource_tenant_id or principal.tenant_id
+        resource_tenant_id = _coach_resource_tenant(principal, req.resource_tenant_id)
         decision_input = req.model_dump(exclude={"resource_tenant_id"})
         decision_output = get_surface().request_decision(
             context, resource_tenant_id, decision_input,
@@ -222,8 +229,9 @@ def intervention(
             tenant_id=principal.tenant_id, resource_owner_id=req.athlete_id,
             coach_approved=req.coach_approved,
         )
+        resource_tenant_id = _coach_resource_tenant(principal, req.resource_tenant_id)
         return get_surface().record_intervention(
-            context, req.resource_tenant_id,
+            context, resource_tenant_id,
             req.model_dump(exclude={"resource_tenant_id", "coach_approved"}),
         )
     except RuntimeAuthorizationError as exc:
