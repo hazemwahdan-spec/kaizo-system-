@@ -171,6 +171,12 @@ def test_product_adaptation_requires_owned_decision_cycle():
         "dynamic_inputs": {"readiness": "medium"},
         "individual_change": {"load": "adjust"},
     }
+    forged_tenant = dict(payload, resource_tenant_id="T2")
+    rejected_tenant = c.post(
+        "/api/v1/product/adaptation", json=forged_tenant, headers=headers("coach")
+    )
+    assert rejected_tenant.status_code == 403
+
     response = c.post("/api/v1/product/adaptation", json=payload, headers=headers("coach"))
     assert response.status_code == 200
     assert response.json()["status"] == "ADAPTED"
@@ -240,6 +246,13 @@ def test_intervention_also_enforces_verified_coach_athlete_ownership():
         headers=headers("coach", actor="A2"),
     )
     assert denied.status_code == 404
+
+    forged_tenant = dict(payload, resource_tenant_id="T2")
+    rejected_tenant = client().post(
+        "/api/v1/product/intervention", json=forged_tenant,
+        headers=headers("coach", actor="A1"),
+    )
+    assert rejected_tenant.status_code == 403
 
     allowed = client().post(
         "/api/v1/product/intervention", json=payload,
