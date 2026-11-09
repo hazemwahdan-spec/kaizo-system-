@@ -1,15 +1,8 @@
 name: Phase 4 Live Runtime Smoke
 
+# This is an acceptance probe for an already-deployed candidate.
+# Do not run it on pull_request: the live host is intentionally not changed by CI.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - ".github/workflows/phase4-live-runtime-smoke.yml"
-  pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/phase4-live-runtime-smoke.yml"
   workflow_dispatch:
 
 permissions:
@@ -50,18 +43,58 @@ jobs:
           required = {
               "/api/v1/health",
               "/api/v1/evidence",
-              "/api/v1/problem-statements/{problem_id}/diagnosis",
-              "/api/v1/diagnoses/{diagnosis_id}/decision-candidates",
-              "/api/v1/decision-candidates/{candidate_id}/rationale",
-              "/api/v1/features/feat-029/progression-regression-rules",
-              "/api/v1/knowledge-runtime/feat-047/provenance",
+              "/api/v1/problem-library",
+              "/api/v1/product/coach/athletes",
+              "/api/v1/training-workflow/feat-037/retest",
+              "/api/v1/state-cycle/feat-042/digital-twin-state",
               "/api/v1/audit/logs",
           }
           missing = sorted(required - set(paths))
           if missing:
-              raise SystemExit(f"LIVE_OPENAPI_MISSING_PHASE4_PATHS: {missing}")
-          print(f"LIVE_OPENAPI_PASS: {len(paths)} paths; required Phase 4 paths present")
+              raise SystemExit(f"LIVE_OPENAPI_MISSING_PROTECTED_PATHS: {missing}")
+          retired_prefixes = (
+              "/api/v1/athletes",
+              "/api/v1/assessments",
+              "/api/v1/problem-statements",
+              "/api/v1/diagnoses",
+              "/api/v1/decision-candidates",
+              "/api/v1/training-plans",
+              "/api/v1/training-sessions",
+              "/api/v1/training-dosages",
+              "/api/v1/problem-library/selections",
+              "/api/v1/kpis",
+              "/api/v1/state-snapshots",
+              "/api/v1/digital-twin",
+              "/api/v1/decision/loop",
+              "/api/v1/decision/adapt",
+              "/api/v1/rules/evaluate",
+              "/api/v1/safety/evaluate",
+              "/api/v1/knowledge/ingest",
+          )
+          exposed = sorted(
+              path for path in paths
+              if any(path == prefix or path.startswith(prefix + "/")
+                     for prefix in retired_prefixes)
+          )
+          if exposed:
+              raise SystemExit(f"LIVE_LEGACY_ROUTES_STILL_EXPOSED_IN_OPENAPI: {exposed}")
+          print(f"LIVE_OPENAPI_PASS: {len(paths)} paths; protected Coach contract present; retired routes hidden")
           PY
+
+      - name: Verify legacy Core routes fail closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            "/api/v1/athletes/kaizo-live-security-probe" \
+            "/api/v1/decision/loop"; do
+            status="$(curl -sS --connect-timeout 10 --max-time 25 -X GET -o /dev/null -w "%{http_code}" "$BASE_URL$path" || true)"
+            if [[ "$status" != "410" ]]; then
+              echo "LIVE_LEGACY_ROUTE_RETIREMENT_FAILED: $path returned HTTP $status (expected 410)"
+              exit 1
+            fi
+            echo "LIVE_LEGACY_ROUTE_RETIREMENT_PASS: $path returned HTTP 410"
+          done
 
       - name: Verify audit logs fail closed without verified identity
         shell: bash
@@ -93,5 +126,6 @@ jobs:
           import json, sys
           with open(sys.argv[1], encoding="utf-8") as f:
               body = json.load(f)
+          assert body.get("status") == "Online", body
           print("LIVE_HEALTH_PASS:", json.dumps(body, sort_keys=True))
           PY
