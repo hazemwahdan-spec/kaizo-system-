@@ -62,6 +62,20 @@ FORGED_BODY = {
         ("POST", "/api/v1/rules/evaluate"),
         ("POST", "/api/v1/safety/evaluate"),
         ("POST", "/api/v1/knowledge/ingest"),
+        # These newer routers were included in Core without verified Coach,
+        # tenant or athlete scope and trust caller-supplied authority/actor IDs.
+        ("POST", "/api/v1/evidence-safety/feat-057/evidence-quality"),
+        ("POST", "/api/v1/evidence-safety/feat-058/provenance"),
+        ("POST", "/api/v1/evidence-safety/feat-059/block"),
+        ("POST", "/api/v1/evidence-safety/feat-060/escalate"),
+        ("POST", "/api/v1/academy/academies"),
+        ("GET", "/api/v1/academy/academies/legacy-academy/dashboard"),
+        ("POST", "/api/v1/competition/events"),
+        ("GET", "/api/v1/competition/trend/legacy-athlete"),
+        ("POST", "/api/v1/reporting/progress"),
+        ("POST", "/api/v1/reporting/coach-summary"),
+        ("POST", "/api/v1/reporting/export"),
+        ("GET", "/api/v1/reporting/export/legacy-report"),
     ],
 )
 def test_unscoped_legacy_core_routes_fail_closed(method: str, path: str):
@@ -88,3 +102,65 @@ def test_openapi_hides_retired_routes_and_keeps_protected_replacements():
     assert "/api/v1/product/coach/athletes" in paths
     assert "/api/v1/training-workflow/feat-037/retest" in paths
     assert "/api/v1/state-cycle/feat-042/digital-twin-state" in paths
+
+
+
+def test_unscoped_new_runtimes_do_not_mutate_memory_or_accept_forged_authority():
+    import academy_ops_runtime
+    import competition_runtime
+    import evidence_safety_runtime
+    import reporting_runtime
+
+    for mapping in (
+        academy_ops_runtime.ACADEMIES,
+        academy_ops_runtime.MEMBERSHIPS,
+        academy_ops_runtime.GROUPS,
+        academy_ops_runtime.ASSIGNMENTS,
+        competition_runtime.EVENTS,
+        competition_runtime.READINESS,
+        competition_runtime.PERFORMANCES,
+        competition_runtime.DECISIONS,
+        reporting_runtime.PROGRESS,
+        reporting_runtime.KPI_TRENDS,
+        reporting_runtime.COACH_SUMMARIES,
+        reporting_runtime.ACADEMY_DASHBOARDS,
+        reporting_runtime.EXPORTS,
+    ):
+        mapping.clear()
+    evidence_safety_runtime.MEMORY.clear()
+
+    cases = [
+        ("/api/v1/evidence-safety/feat-057/evidence-quality", {
+            "subject_id": "ATHLETE-FORGED", "evidence_level": "E3",
+            "quality_status": "VERIFIED", "evidence_refs": ["REF-FORGED"],
+            "assessed_by": "forged-coach", "coach_final_authority": True,
+        }),
+        ("/api/v1/academy/academies", {
+            "name": "Forged academy", "owner_id": "forged-owner",
+            "coach_final_authority": True,
+        }),
+        ("/api/v1/competition/events", {
+            "event_name": "Forged event", "date": "2026-11-09",
+            "context": {"athlete_id": "ATHLETE-FORGED"},
+            "created_by": "forged-coach", "coach_final_authority": True,
+        }),
+        ("/api/v1/reporting/progress", {
+            "athlete_id": "ATHLETE-FORGED", "period": "2026",
+            "progress": {"status": "IMPROVING"}, "recorded_by": "forged-coach",
+            "coach_final_authority": True,
+        }),
+    ]
+    for path, payload in cases:
+        response = client.post(path, json=payload, headers=FORGED_HEADERS)
+        assert response.status_code == 410, (path, response.status_code, response.text)
+
+    assert evidence_safety_runtime.MEMORY == []
+    assert all(not mapping for mapping in (
+        academy_ops_runtime.ACADEMIES, academy_ops_runtime.MEMBERSHIPS,
+        academy_ops_runtime.GROUPS, academy_ops_runtime.ASSIGNMENTS,
+        competition_runtime.EVENTS, competition_runtime.READINESS,
+        competition_runtime.PERFORMANCES, competition_runtime.DECISIONS,
+        reporting_runtime.PROGRESS, reporting_runtime.KPI_TRENDS,
+        reporting_runtime.COACH_SUMMARIES, reporting_runtime.ACADEMY_DASHBOARDS,
+        reporting_runtime.EXPORTS,
+    ))
