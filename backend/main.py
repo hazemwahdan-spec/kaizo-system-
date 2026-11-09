@@ -2065,6 +2065,13 @@ LEGACY_UNSCOPED_COACH_ROUTE_PREFIXES = (
     "/api/v1/rules/evaluate",
     "/api/v1/safety/evaluate",
     "/api/v1/knowledge/ingest",
+    # Newer feature routers below still accept caller-supplied actor/owner IDs
+    # and Coach Final Authority booleans without a verified tenant/athlete scope.
+    # Retire them until protected replacements and atomic tenant audit exist.
+    "/api/v1/evidence-safety",
+    "/api/v1/academy",
+    "/api/v1/competition",
+    "/api/v1/reporting",
 )
 
 
