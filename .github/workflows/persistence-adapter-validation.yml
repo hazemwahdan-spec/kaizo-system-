@@ -72,6 +72,8 @@ jobs:
         run: PYTHONPATH=. python tests/test_persistence_integration.py
       - name: Import application with PostgreSQL mode
         run: python -c "import main; print('KAIZO PostgreSQL import OK; persistence mode=', main.persistence.mode())"
+      - name: Verify nested persistence helpers share an atomic transaction
+        run: PYTHONPATH=. pytest -q test_persistence_atomic_transaction.py
       - name: Verify legacy unscoped Core APIs fail closed by default
         run: PYTHONPATH=. pytest -q test_legacy_coach_routes_fail_closed.py
       - name: Verify durable Coach athlete ownership, decision cycles, and tenant audit
