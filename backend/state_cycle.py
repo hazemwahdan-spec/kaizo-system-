@@ -58,6 +58,9 @@ def _get_state(athlete_id: str, principal: Any) -> Optional[Dict[str, Any]]:
     if persistence.is_postgres_enabled():
         with persistence.connection() as conn:
             with conn.cursor() as cur:
+                # Recheck and lock current ownership in the same transaction
+                # as the read so a concurrent transfer cannot expose stale data.
+                _scope_check(cur, athlete_id, principal)
                 cur.execute(
                     """SELECT entity_id,version,state,source_event,case_id,updated_at,
                               tenant_id,coach_actor_id
@@ -164,6 +167,7 @@ def _latest_link(decision_id: Optional[str], athlete_id: str, principal: Any):
     if persistence.is_postgres_enabled():
         with persistence.connection() as conn:
             with conn.cursor() as cur:
+                _scope_check(cur, athlete_id, principal)
                 cur.execute(
                     """SELECT link_id,decision_id,entity_id,state_version,state_ref,
                               linked_by,linked_at,coach_final_authority,execution_authorized
@@ -270,6 +274,7 @@ def get_state_history(entity_id: str,
     if persistence.is_postgres_enabled():
         with persistence.connection() as conn:
             with conn.cursor() as cur:
+                _scope_check(cur, entity_id, principal)
                 cur.execute(
                     """SELECT history_id,entity_id,version,state,source_event,case_id,
                               recorded_by,evidence_refs,recorded_at,coach_final_authority,
