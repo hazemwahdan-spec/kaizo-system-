@@ -140,7 +140,7 @@ async function viewCoachAthlete(athleteId){
    '<button type="button" data-athlete-section="athleteLifecycleSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteLifecycleSection\')">Lifecycle</button>'+
    '<button type="button" data-athlete-section="athleteStatusHistorySection" aria-pressed="false" onclick="coachAthleteSection(\'athleteStatusHistorySection\')">Status history</button>'+
    '<button type="button" data-athlete-section="athleteDecisionCyclesSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionCyclesSection\')">Decision history</button>'+
-   '<button type="button" data-athlete-section="athleteDecisionExecutionSection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteDecisionExecutionSection\\')">Decision & adaptation</button>'+
+   '<button type="button" data-athlete-section="athleteDecisionExecutionSection" aria-pressed="false" onclick="coachAthleteSection(&quot;athleteDecisionExecutionSection&quot;)">Decision & adaptation</button>'+
    '<button type="button" data-athlete-section="athleteDecisionWorkspaceSection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteDecisionWorkspaceSection\\')">Decision workspace</button>'+
    '<button type="button" data-athlete-section="athleteActionHistorySection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteActionHistorySection\\')">Action history</button>'+
    '<button type="button" data-athlete-section="athleteAuditReviewSection" aria-pressed="false" onclick="coachAthleteSection(\\'athleteAuditReviewSection\\')">Audit review</button></nav>'+
