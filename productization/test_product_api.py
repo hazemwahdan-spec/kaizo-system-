@@ -247,3 +247,52 @@ def test_intervention_also_enforces_verified_coach_athlete_ownership():
     )
     assert allowed.status_code == 200
     assert allowed.json()["athlete_id"] == athlete["athlete_id"]
+
+
+def test_intervention_derives_tenant_from_verified_oidc_principal(monkeypatch):
+    from productization import coach_roster, product_api
+    from productization.identity import Principal
+
+    monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
+    monkeypatch.setenv("KAIZO_PERSISTENCE_MODE", "memory")
+    coach_roster.reset_memory_state()
+    principal = Principal(
+        actor_id="auth0|coach-A",
+        role="coach",
+        tenant_id="TENANT-A",
+        resource_owner_id=None,
+        verified=True,
+        source="oidc_jwt",
+    )
+    monkeypatch.setattr(
+        product_api, "resolve_bearer_principal", lambda authorization: principal
+    )
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id="TENANT-A",
+        coach_actor_id=principal.actor_id,
+        display_name="OIDC intervention tenant scope",
+    )
+    payload = {
+        "athlete_id": athlete["athlete_id"],
+        "case_id": "CASE-OIDC-INTERVENTION",
+        "decision": {"choice": "retain"},
+        "intervention": {"drill": "seoi"},
+        "response_kpi": {"score": 1},
+        "retest": {"score": 1},
+        "coach_approved": True,
+    }
+    headers = {"Authorization": "Bearer verified-coach-token"}
+
+    allowed = client().post(
+        "/api/v1/product/intervention", json=payload, headers=headers
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["athlete_id"] == athlete["athlete_id"]
+    assert allowed.json()["coach_final_authority"] is True
+    assert allowed.json()["execution_authorized"] is False
+
+    forged_tenant = dict(payload, resource_tenant_id="TENANT-B")
+    denied = client().post(
+        "/api/v1/product/intervention", json=forged_tenant, headers=headers
+    )
+    assert denied.status_code == 403
