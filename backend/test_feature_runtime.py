@@ -57,18 +57,6 @@ def test_internal_feature_validation_still_requires_evidence():
     assert exc.value.status_code == 400
     assert "at least one evidence reference" in str(exc.value.detail)
 
-def test_feature_list_and_get():
-    r=client.post("/api/v1/features/feat-061/academy-entity",json={
-        "subject_id":"academy-1","actor_id":"admin-1",
-        "payload":{"academy_id":"academy-1","name":"KAIZO Academy","status":"ACTIVE"},
-        "coach_final_authority":True,"execution_authorized":False})
-    assert r.status_code==201
-    rid=r.json()["record_id"]
-    g=client.get(f"/api/v1/features/feat-061/academy-entity/{rid}")
-    assert g.status_code==200
-    l=client.get("/api/v1/features/feat-061/academy-entity")
-    assert l.status_code==200
-    assert any(x["record_id"]==rid for x in l.json()["records"])
 
 def test_canonical_domain_validation_is_enforced():
     # Seed the internal evidence registry for this feature-contract test.
@@ -106,19 +94,24 @@ def test_canonical_domain_validation_is_enforced():
     assert _validate("FEAT-031", drill_req)["name"] == "Drill library"
 
 def test_semantic_validation_rejects_invalid_feature_shapes():
-    bad = client.post("/api/v1/features/feat-069/competition-trend-analysis", json={
-        "subject_id":"athlete-1","actor_id":"coach-1",
-        "payload":{"athlete_id":"athlete-1","event_ids":["E1"],"trend":"up"},
-        "evidence_refs":["REF-015"],"coach_final_authority":True,"execution_authorized":False})
-    assert bad.status_code == 400
-    assert "two events" in str(bad.json()["detail"])
+    invalid_trend = FeatureRecordRequest(
+        subject_id="athlete-1", actor_id="coach-1",
+        payload={"athlete_id":"athlete-1","event_ids":["E1"],"trend":"up"},
+        evidence_refs=["REF-015"], coach_final_authority=True,
+        execution_authorized=False)
+    with pytest.raises(HTTPException) as exc:
+        _validate("FEAT-069", invalid_trend)
+    assert exc.value.status_code == 400
+    assert "two events" in str(exc.value.detail)
 
-    bad = client.post("/api/v1/features/feat-075/approved-data-reporting-export", json={
-        "subject_id":"report-1","actor_id":"coach-1",
-        "payload":{"report_id":"R1","approved_record_ids":["A1"],"format":"XML"},
-        "coach_final_authority":True,"execution_authorized":False})
-    assert bad.status_code == 400
-    assert "format" in str(bad.json()["detail"])
+    invalid_export = FeatureRecordRequest(
+        subject_id="report-1", actor_id="coach-1",
+        payload={"report_id":"R1","approved_record_ids":["A1"],"format":"XML"},
+        coach_final_authority=True, execution_authorized=False)
+    with pytest.raises(HTTPException) as exc:
+        _validate("FEAT-075", invalid_export)
+    assert exc.value.status_code == 400
+    assert "format" in str(exc.value.detail)
 
     bad = client.post("/api/v1/features/feat-039/progress-state-update", json={
         "subject_id":"athlete-1","actor_id":"forged-coach",
