@@ -146,38 +146,53 @@ def test_product_decision_requires_owned_athlete_and_rejects_case_only():
     assert response.status_code == 404
 
 
-def test_product_adaptation_requires_owned_athlete():
-    from productization import coach_roster
+def test_product_adaptation_requires_owned_decision_cycle():
+    from productization import coach_roster, coach_decision_cycles
     coach_roster.reset_memory_state()
+    coach_decision_cycles.reset_memory_state()
     athlete = coach_roster.create_owned_athlete(
         tenant_id="T1", coach_actor_id="A1", display_name="Adaptation athlete"
     )
-    import main
-    main.DECISION_RECORDS["decision-owned-1"] = {
-        "decision_id": "decision-owned-1", "athlete_id": athlete["athlete_id"]
-    }
-    payload = {
-        "resource_tenant_id": "T1",
+    c = client()
+    decision_payload = {
         "athlete_id": athlete["athlete_id"],
-        "decision_id": "decision-owned-1",
-        "case_id": "CASE-ADAPT-API",
-        "operation": "individual_adaptation",
-        "common_core": {"principle": "retain"},
+        "case_id": "CASE-ADAPT-API", "decision": {"choice": "adapt"},
+        "intervention": {"drill": "seoi"}, "response_kpi": {"score": 1},
+        "retest": {"score": 1},
+    }
+    decision = c.post("/api/v1/product/decision", json=decision_payload, headers=headers("coach"))
+    assert decision.status_code == 200
+    cycle_id = decision.json()["decision_cycle_id"]
+
+    payload = {
+        "athlete_id": athlete["athlete_id"],
+        "decision_cycle_id": cycle_id, "case_id": "CASE-ADAPT-API",
+        "operation": "individual_adaptation", "common_core": {"principle": "retain"},
         "dynamic_inputs": {"readiness": "medium"},
         "individual_change": {"load": "adjust"},
     }
-    response = client().post("/api/v1/product/adaptation", json=payload, headers=headers("coach"))
+    response = c.post("/api/v1/product/adaptation", json=payload, headers=headers("coach"))
     assert response.status_code == 200
     assert response.json()["status"] == "ADAPTED"
+    assert response.json()["decision_cycle_id"] == cycle_id
+    assert response.json()["decision_cycle_version"] == 2
 
-    payload["decision_id"] = "decision-owned-by-another-coach"
-    response = client().post("/api/v1/product/adaptation", json=payload, headers=headers("coach"))
-    assert response.status_code == 404
+    read_back = c.get(
+        f"/api/v1/product/coach/athletes/{athlete['athlete_id']}/decision-cycles/{cycle_id}",
+        headers=headers("coach"),
+    )
+    assert read_back.status_code == 200
+    assert read_back.json()["adaptation_output"]["status"] == "ADAPTED"
+    assert read_back.json()["version"] == 2
 
-    payload["athlete_id"] = "another-coachs-athlete"
-    payload["decision_id"] = "decision-owned-1"
-    response = client().post("/api/v1/product/adaptation", json=payload, headers=headers("coach"))
-    assert response.status_code == 404
+    forged = dict(payload, decision_cycle_id="cycle-owned-by-another-coach")
+    assert c.post("/api/v1/product/adaptation", json=forged, headers=headers("coach")).status_code == 404
+    assert c.get(
+        f"/api/v1/product/coach/athletes/{athlete['athlete_id']}/decision-cycles/{cycle_id}",
+        headers=headers("coach", actor="A2"),
+    ).status_code == 404
+    wrong_case = dict(payload, case_id="CASE-FORGED")
+    assert c.post("/api/v1/product/adaptation", json=wrong_case, headers=headers("coach")).status_code == 409
 
 
 def test_legacy_decision_endpoints_are_retired():

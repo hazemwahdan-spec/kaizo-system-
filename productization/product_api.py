@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability
+from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -66,7 +66,7 @@ def navigation(
 
 
 class DecisionRequest(BaseModel):
-    resource_tenant_id: str
+    resource_tenant_id: str | None = None
     athlete_id: str
     case_id: str
     decision: Dict[str, Any]
@@ -104,44 +104,46 @@ def decision(
             actor_id=principal.actor_id, role=principal.role,
             tenant_id=principal.tenant_id, resource_owner_id=req.athlete_id,
         )
-        return get_surface().request_decision(
-            context, req.resource_tenant_id,
-            req.model_dump(exclude={"resource_tenant_id"}),
+        resource_tenant_id = req.resource_tenant_id or principal.tenant_id
+        decision_input = req.model_dump(exclude={"resource_tenant_id"})
+        decision_output = get_surface().request_decision(
+            context, resource_tenant_id, decision_input,
         )
+        cycle = coach_decision_cycles.create_cycle(
+            tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+            athlete_id=req.athlete_id, case_id=req.case_id,
+            decision_input=decision_input,
+            decision_output=decision_output if isinstance(decision_output, dict)
+                            else {"result": decision_output},
+        )
+        if isinstance(decision_output, dict):
+            return {**decision_output, "decision_cycle_id": cycle["decision_cycle_id"],
+                    "decision_cycle_version": cycle["version"]}
+        return {"result": decision_output, "decision_cycle_id": cycle["decision_cycle_id"],
+                "decision_cycle_version": cycle["version"]}
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
 
-def _verified_owned_coach_decision(principal, athlete_id, decision_id):
-    if not str(decision_id or "").strip():
-        raise HTTPException(status_code=422, detail="decision_id is required for adaptation")
-    import persistence
-    if persistence.is_postgres_enabled():
-        with persistence.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT 1
-                       FROM kaizo_decision_records d
-                       JOIN kaizo_coach_athlete_ownership o
-                         ON o.athlete_id=d.athlete_id
-                       WHERE d.decision_id=%s AND d.athlete_id=%s
-                         AND o.tenant_id=%s AND o.coach_actor_id=%s""",
-                    (decision_id, athlete_id, principal.tenant_id, principal.actor_id),
-                )
-                found = cur.fetchone() is not None
-    else:
-        import sys
-        core = sys.modules.get("main")
-        record = getattr(core, "DECISION_RECORDS", {}).get(decision_id) if core else None
-        found = bool(record and record.get("athlete_id") == athlete_id)
-    if not found:
-        raise HTTPException(status_code=404, detail="decision not found in Coach athlete scope")
+def _verified_owned_coach_cycle(principal, athlete_id, decision_cycle_id, case_id):
+    if not str(decision_cycle_id or "").strip():
+        raise HTTPException(status_code=422, detail="decision_cycle_id is required for adaptation")
+    cycle = coach_decision_cycles.get_owned_cycle(
+        decision_cycle_id=decision_cycle_id, tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id, athlete_id=athlete_id,
+    )
+    if cycle is None:
+        raise HTTPException(status_code=404, detail="decision cycle not found in Coach athlete scope")
+    if cycle["case_id"] != case_id:
+        raise HTTPException(status_code=409, detail="case_id does not match the persisted decision cycle")
+    return cycle
 
 
 class AdaptationRequest(BaseModel):
-    resource_tenant_id: str
+    resource_tenant_id: str | None = None
     athlete_id: str
-    decision_id: str
+    decision_cycle_id: str
+    decision_id: str | None = None
     case_id: str
     operation: str
     common_core: Dict[str, Any]
@@ -163,16 +165,37 @@ def adaptation(
     principal = _verified_owned_coach_athlete(
         authorization, actor_id, role, tenant_id, owner, req.athlete_id
     )
-    _verified_owned_coach_decision(principal, req.athlete_id, req.decision_id)
+    cycle = _verified_owned_coach_cycle(
+        principal, req.athlete_id, req.decision_cycle_id, req.case_id
+    )
     try:
         context = RuntimeContext(
             actor_id=principal.actor_id, role=principal.role,
             tenant_id=principal.tenant_id, resource_owner_id=req.athlete_id,
         )
-        return get_surface().adapt_decision(
-            context, req.resource_tenant_id,
-            req.model_dump(exclude={"resource_tenant_id"}),
+        adaptation_input = req.model_dump(exclude={
+            "resource_tenant_id", "decision_id", "decision_cycle_id"
+        })
+        adaptation_input["decision_id"] = req.decision_cycle_id
+        resource_tenant_id = req.resource_tenant_id or principal.tenant_id
+        adaptation_output = get_surface().adapt_decision(
+            context, resource_tenant_id, adaptation_input,
         )
+        cycle = coach_decision_cycles.record_adaptation(
+            decision_cycle_id=req.decision_cycle_id,
+            tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+            athlete_id=req.athlete_id,
+            adaptation_input={**adaptation_input, "decision_cycle_id": req.decision_cycle_id},
+            adaptation_output=adaptation_output if isinstance(adaptation_output, dict)
+                              else {"result": adaptation_output},
+        )
+        if cycle is None:
+            raise HTTPException(status_code=404, detail="decision cycle not found in Coach athlete scope")
+        if isinstance(adaptation_output, dict):
+            return {**adaptation_output, "decision_cycle_id": cycle["decision_cycle_id"],
+                    "decision_cycle_version": cycle["version"]}
+        return {"result": adaptation_output, "decision_cycle_id": cycle["decision_cycle_id"],
+                "decision_cycle_version": cycle["version"]}
     except RuntimeAuthorizationError as exc:
         deny(exc)
 
@@ -470,6 +493,27 @@ def coach_athlete_decision_cycles(
             "history_source": "existing_persisted_decision_and_training_records",
             "historical_backfill_performed": False,
             "coach_final_authority": True, "execution_authorized": False}
+
+
+# Durable decision-cycle read-back; distinct from FEAT-025 decision records.
+@router.get("/coach/athletes/{athlete_id}/decision-cycles/{decision_cycle_id}")
+def coach_decision_cycle_read(
+    athlete_id: str,
+    decision_cycle_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    cycle = coach_decision_cycles.get_owned_cycle(
+        decision_cycle_id=decision_cycle_id, tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id, athlete_id=athlete_id,
+    )
+    if cycle is None:
+        raise HTTPException(status_code=404, detail="decision cycle not found in Coach athlete scope")
+    return {**cycle, "coach_final_authority": True, "execution_authorized": False}
 
 
 # FEAT-006: Coach home dashboard is a read-only aggregate of owned records.

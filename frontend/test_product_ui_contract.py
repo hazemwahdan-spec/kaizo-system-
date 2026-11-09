@@ -99,7 +99,8 @@ def test_coach_ui_fails_closed_for_unscoped_core_decision_and_digital_twin_actio
         "/audit/logs",
     ):
         assert route not in APP
-    assert "Decision and Digital Twin writes are not connected" in APP
+    assert "Protected Coach workflow boundary" in APP
+    assert "Legacy unscoped Core routes remain retired" in APP
     assert "no unscoped request will be sent" in APP
     assert 'id="coachWorkspace"' not in APP
     assert "coachGo(" not in APP
@@ -111,3 +112,13 @@ def test_coach_audit_review_uses_selected_owned_athlete_and_product_bearer():
     assert "athleteAuditReviewSection" in APP
     assert "productAccessToken()" in APP
     assert 'fetch(API+"/audit/logs"' not in APP
+
+
+def test_coach_ui_decision_cycle_and_adaptation_use_protected_scoped_api():
+    assert 'productCall("/decision",{method:"POST"' in APP
+    assert 'productCall("/adaptation",{method:"POST"' in APP
+    assert 'decision_cycle_id:currentCoachDecisionCycleId' in APP
+    assert '"/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-cycles/"+encodeURIComponent(cycleId)' in APP
+    assert 'function createCoachDecisionCycle(event)' in APP
+    assert 'function adaptCoachDecisionCycle(event)' in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
