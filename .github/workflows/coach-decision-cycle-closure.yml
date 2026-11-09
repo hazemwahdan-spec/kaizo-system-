@@ -39,3 +39,7 @@ jobs:
         run: python -m compileall -q productization backend
       - name: Validate Coach decision, adaptation, ownership and read-back
         run: python -m pytest -q productization/test_product_api.py productization/test_identity.py productization/test_product_api_security_regression.py
+      - name: Validate Coach UI JavaScript syntax
+        run: node --check frontend/app.js
+      - name: Validate Coach UI contract
+        run: python -m pytest -q frontend/test_product_ui_contract.py
