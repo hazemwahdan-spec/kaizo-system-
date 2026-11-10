@@ -243,6 +243,11 @@ def test_evidence_attachment_and_snapshot_preserve_dependency_lineage(monkeypatc
 def test_anonymous_invalid_and_duplicate_requests_fail_without_execution(monkeypatch):
     c, ha, _, _, a, _, _ = _setup(monkeypatch)
     path = f"/api/v1/product/coach/athletes/{a['athlete_id']}/assessments"
+    valid = c.post(
+        path, headers=ha,
+        json={"template_id": "AUDIT-BASELINE", "measurements": {"score": 5}},
+    )
+    assert valid.status_code == 201, valid.text
     assert c.post(
         path, json={"template_id": "U15", "measurements": {"score": 1}}
     ).status_code == 401
