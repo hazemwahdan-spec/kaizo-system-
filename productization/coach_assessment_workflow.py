@@ -269,20 +269,15 @@ def create_kpi_definition(*, tenant_id: str, coach_actor_id: str, kpi_id: str,
         with persistence.atomic_transaction() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT 1 FROM kaizo_coach_kpi_definitions
-                       WHERE tenant_id=%s AND coach_actor_id=%s AND kpi_id=%s
-                       FOR UPDATE""",
-                    (tenant_id, coach_actor_id, kpi_id),
-                )
-                if cur.fetchone():
-                    raise CoachWorkflowConflict("KPI definition already exists in this Coach scope")
-                cur.execute(
                     """INSERT INTO kaizo_coach_kpi_definitions
                        (tenant_id,coach_actor_id,kpi_id,name,metric_name,unit,target,direction,status,created_at,updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'ACTIVE',%s,%s)""",
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'ACTIVE',%s,%s)
+                       ON CONFLICT (tenant_id,coach_actor_id,kpi_id) DO NOTHING""",
                     (tenant_id, coach_actor_id, kpi_id, name, metric_name, unit,
                      target, direction, now, now),
                 )
+                if cur.rowcount != 1:
+                    raise CoachWorkflowConflict("KPI definition already exists in this Coach scope")
                 _audit(
                     tenant_id=tenant_id, coach_actor_id=coach_actor_id,
                     action="COACH_KPI_DEFINED", old_value=None, new_value=record,
