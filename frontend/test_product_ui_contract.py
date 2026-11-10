@@ -178,3 +178,22 @@ def test_coach_assessment_ui_is_scoped_to_selected_roster_athlete():
     assert "kpi_capture_ids:captureIds" in APP
     assert "loadCoachAssessmentData(athleteId)" in APP
     assert "selectCoachAssessment(this.value)" in APP
+
+
+def test_coach_problem_analysis_ui_uses_protected_bearer_workflows():
+    for function in (
+        "loadCoachProblemAnalysis",
+        "createCoachProblemStatement",
+        "createCoachCauseContext",
+        "createCoachDiagnosis",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    assert "athleteProblemAnalysisSection" in APP
+    assert 'productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/problem-statements"' in APP
+    assert '"/cause-context"' in APP
+    assert '"/diagnoses"' in APP
+    assert "evidence_ids:evidenceIds" in APP
+    assert "currentCoachAssessmentId" in APP
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
