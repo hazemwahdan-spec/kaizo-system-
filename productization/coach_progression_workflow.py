@@ -283,7 +283,7 @@ def list_progression_rules(*, tenant_id: str, coach_actor_id: str,
                     """SELECT r.rule_id,r.tenant_id,r.coach_actor_id,r.plan_id,r.athlete_id,
                               r.assessment_id,r.metric,r.operator,r.threshold,r.action,r.adjustment,
                               r.rule_version,r.approval_status,r.evidence_ids,r.created_by,
-                              r.approved_by,r.approved_at,r.created_at,r.updated_at
+                              r.approved_by,r.approved_at,r.created_at,r.updated_at,r.name
                        FROM kaizo_coach_progression_rules r
                        JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=r.athlete_id
                        WHERE r.plan_id=%s AND r.athlete_id=%s AND r.tenant_id=%s
