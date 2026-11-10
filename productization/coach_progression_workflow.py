@@ -138,7 +138,7 @@ def _rule_from_row(row) -> dict[str, Any]:
         "action": row[9], "adjustment": row[10], "rule_version": row[11],
         "approval_status": row[12], "evidence_ids": row[13],
         "created_by": row[14], "approved_by": row[15], "approved_at": row[16],
-        "created_at": row[17], "updated_at": row[18],
+        "created_at": row[17], "updated_at": row[18], "name": row[19],
         "coach_final_authority": True, "execution_authorized": False,
     }
 
@@ -148,7 +148,7 @@ def _rule_sql(cur: Any, *, tenant_id: str, coach_actor_id: str,
     sql = """SELECT r.rule_id,r.tenant_id,r.coach_actor_id,r.plan_id,r.athlete_id,
                     r.assessment_id,r.metric,r.operator,r.threshold,r.action,r.adjustment,
                     r.rule_version,r.approval_status,r.evidence_ids,r.created_by,
-                    r.approved_by,r.approved_at,r.created_at,r.updated_at
+                    r.approved_by,r.approved_at,r.created_at,r.updated_at,r.name
              FROM kaizo_coach_progression_rules r
              JOIN kaizo_training_plans t ON t.plan_id=r.plan_id AND t.athlete_id=r.athlete_id
              JOIN kaizo_decision_records d ON d.decision_id=t.decision_id AND d.athlete_id=t.athlete_id
@@ -233,13 +233,13 @@ def create_progression_rule(
                     """INSERT INTO kaizo_coach_progression_rules
                        (rule_id,tenant_id,coach_actor_id,plan_id,athlete_id,assessment_id,
                         metric,operator,threshold,action,adjustment,rule_version,approval_status,
-                        evidence_ids,created_by,approved_by,approved_at,created_at,updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s)""",
+                        evidence_ids,created_by,approved_by,approved_at,created_at,updated_at,name)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s)""",
                     (rule_id, tenant_id, coach_actor_id, plan_id, athlete_id,
                      decision["assessment_id"], values["metric"], values["operator"],
                      values["threshold"], values["action"], values["adjustment"],
                      values["rule_version"], "DRAFT", json.dumps(evidence_ids),
-                     coach_actor_id, None, None, now, now),
+                     coach_actor_id, None, None, now, now, values["name"]),
                 )
             _audit(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
                    action="COACH_PROGRESSION_RULE_CREATED", record=record,
@@ -321,8 +321,7 @@ def approve_progression_rule(*, tenant_id: str, coach_actor_id: str,
                 _validate_evidence_sql(cur, rule["evidence_ids"], athlete_id=athlete_id,
                                        problem_id=decision["problem_id"],
                                        assessment_id=rule["assessment_id"])
-                candidate = {**rule, "name": rule.get("name") or rule["metric"],
-                             "approval_status": "APPROVED"}
+                candidate = {**rule, "approval_status": "APPROVED"}
                 validate_rule(_domain_rule(candidate))
                 cur.execute(
                     """UPDATE kaizo_coach_progression_rules
@@ -347,8 +346,7 @@ def approve_progression_rule(*, tenant_id: str, coach_actor_id: str,
         _validate_evidence_memory(rule["evidence_ids"], athlete_id=athlete_id,
                                   problem_id=context[1]["problem_id"],
                                   assessment_id=rule["assessment_id"])
-        candidate = {**rule, "name": rule.get("name") or rule["metric"],
-                     "approval_status": "APPROVED"}
+        candidate = {**rule, "approval_status": "APPROVED"}
         validate_rule(_domain_rule(candidate))
         rule.update({"approval_status": "APPROVED", "approved_by": coach_actor_id,
                      "approved_at": now, "updated_at": now})
@@ -380,7 +378,7 @@ def evaluate_progression_rule(*, tenant_id: str, coach_actor_id: str,
                 _validate_evidence_sql(cur, rule["evidence_ids"], athlete_id=athlete_id,
                                        problem_id=context[1]["problem_id"],
                                        assessment_id=rule["assessment_id"])
-                domain = _domain_rule({**rule, "name": rule["metric"]})
+                domain = _domain_rule(rule)
                 result = domain.evaluate(float(observed_value))
                 record = {
                     "evaluation_id": str(uuid.uuid4()), "rule_id": rule_id,
@@ -622,7 +620,6 @@ def create_drill(
     if persistence.is_postgres_enabled():
         with persistence.atomic_transaction() as conn:
             with conn.cursor() as cur:
-                decision_context = None
                 # Assessment ownership is the authority for the source evidence and authored drill.
                 cur.execute(
                     """SELECT a.assessment_id FROM kaizo_assessments a
@@ -657,11 +654,6 @@ def create_drill(
                    action="COACH_DRILL_CREATED", record=record,
                    timestamp=now, why="Coach-authored evidence-aware drill created as DRAFT; publication requires explicit Coach review.")
     else:
-        if coach_diagnostic_workflow._memory_problem(
-            tenant_id=tenant_id, coach_actor_id=coach_actor_id,
-            athlete_id=athlete_id, problem_id="__not_used__",
-        ) is not None:
-            pass
         from . import coach_assessment_workflow
         if coach_assessment_workflow.get_assessment(
             tenant_id=tenant_id, coach_actor_id=coach_actor_id,
