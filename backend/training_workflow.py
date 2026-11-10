@@ -13,7 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 import persistence
-from productization import coach_roster, coach_progression_workflow
+from productization import coach_roster, coach_progression_workflow, coach_decision_workflow
 from productization.product_api import verified_coach_scope
 
 router = APIRouter(prefix="/api/v1/training-workflow", tags=["training-workflow"])
@@ -205,6 +205,24 @@ def _validate_initial_decision_drill(req: "DecisionDrillRequest", principal: Any
         raise HTTPException(status_code=409, detail="decision_id is not a recorded decision for this athlete")
     if decision.get("coach_id") != principal.actor_id or decision.get("status") != "RECORDED":
         raise HTTPException(status_code=409, detail="decision_id is not an authoritative recorded decision by this Coach")
+    # Accept only records emitted by the protected FEAT-021..025 workflow.
+    # Legacy Core decision endpoints use a different audit action and are not
+    # sufficient proof of verified Coach authorship.
+    if persistence.is_postgres_enabled():
+        source_audit = persistence.list_tenant_audit_logs(tenant_id=principal.tenant_id)
+    else:
+        source_audit = coach_decision_workflow._MEMORY_AUDIT
+    trusted_source = any(
+        item.get("action") == "COACH_DECISION_RECORD_RECORDED"
+        and item.get("who") == principal.actor_id
+        and item.get("tenant_id") == principal.tenant_id
+        and isinstance(item.get("new_value"), dict)
+        and item["new_value"].get("decision_id") == req.decision_id
+        and item["new_value"].get("athlete_id") == req.athlete_id
+        for item in source_audit
+    )
+    if not trusted_source:
+        raise HTTPException(status_code=409, detail="decision_id lacks the protected Coach decision audit event for this verified scope")
     problem_id = str(decision.get("problem_id") or "").strip()
     if not problem_id:
         raise HTTPException(status_code=409, detail="recorded decision has no authoritative problem_id")
