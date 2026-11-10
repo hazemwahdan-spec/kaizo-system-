@@ -499,8 +499,7 @@ def create_training_dosage(
 def list_training_dosages(*, tenant_id: str, coach_actor_id: str,
                           athlete_id: str, session_id: str) -> list[dict[str, Any]] | None:
     if persistence.is_postgres_enabled():
-        persistence._ensure_training_dosages_table()
-        with persistence.connection() as conn:
+                with persistence.connection() as conn:
             with conn.cursor() as cur:
                 if _session_sql(cur, tenant_id=tenant_id, coach_actor_id=coach_actor_id,
                                 athlete_id=athlete_id, session_id=session_id) is None:
