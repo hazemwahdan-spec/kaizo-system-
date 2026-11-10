@@ -56,35 +56,8 @@ def _coach_for_athlete(
 
 
 def _ensure_schema() -> None:
-    """Provision only this feature's additive schema; never backfill legacy scope."""
-    if not persistence.is_postgres_enabled():
-        return
-    with persistence.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS kaizo_training_workflow_records (
-                    record_id TEXT PRIMARY KEY,
-                    feature_id TEXT NOT NULL,
-                    athlete_id TEXT NOT NULL,
-                    decision_id TEXT,
-                    session_id TEXT,
-                    payload JSONB NOT NULL,
-                    created_by TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    coach_final_authority BOOLEAN NOT NULL,
-                    execution_authorized BOOLEAN NOT NULL DEFAULT FALSE,
-                    tenant_id TEXT,
-                    coach_actor_id TEXT
-                )
-            """)
-            cur.execute("ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS tenant_id TEXT")
-            cur.execute("ALTER TABLE kaizo_training_workflow_records ADD COLUMN IF NOT EXISTS coach_actor_id TEXT")
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_kaizo_training_workflow_scope
-                ON kaizo_training_workflow_records
-                    (feature_id, tenant_id, coach_actor_id, athlete_id, created_at)
-            """)
-        conn.commit()
+    """Compatibility no-op; persistence.initialize() owns all feature DDL."""
+    return None
 
 
 def _save(
@@ -120,45 +93,45 @@ def _save(
     }
 
     if persistence.is_postgres_enabled():
-        _ensure_schema()
-        # One connection and one transaction: either both the workflow record
-        # and its tenant-scoped audit event commit, or neither does.
-        with persistence.connection() as conn:
+        # Schema is provisioned by persistence.initialize(); requests never run DDL.
+        # Lock the authoritative ownership row in the same transaction as both
+        # the workflow record and its tenant-scoped audit event. A concurrent
+        # ownership removal/transfer must wait until this write commits.
+        with persistence.atomic_transaction() as conn:
             with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1 FROM kaizo_coach_athlete_ownership
+                       WHERE athlete_id=%s AND tenant_id=%s AND coach_actor_id=%s
+                       FOR UPDATE""",
+                    (athlete_id, principal.tenant_id, principal.actor_id),
+                )
+                if cur.fetchone() is None:
+                    raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
                 cur.execute(
                     """INSERT INTO kaizo_training_workflow_records
                     (record_id,feature_id,athlete_id,decision_id,session_id,payload,
                      created_by,created_at,coach_final_authority,execution_authorized,
                      tenant_id,coach_actor_id)
-                    SELECT %s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s
-                    WHERE EXISTS (
-                        SELECT 1 FROM kaizo_coach_athlete_ownership
-                        WHERE athlete_id=%s AND tenant_id=%s AND coach_actor_id=%s
-                    )
-                    RETURNING record_id""",
+                    VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s)""",
                     (
                         record["record_id"], feature_id, athlete_id, decision_id,
                         session_id, json.dumps(payload), principal.actor_id,
                         record["created_at"], True, False,
                         principal.tenant_id, principal.actor_id,
-                        athlete_id, principal.tenant_id, principal.actor_id,
                     ),
                 )
-                if cur.fetchone() is None:
-                    raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
-                cur.execute(
-                    """INSERT INTO kaizo_audit_logs
-                    (timestamp,who,action,old_value,new_value,why,tenant_id)
-                    VALUES (%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s)""",
-                    (
-                        audit["timestamp"], audit["who"], audit["action"],
-                        json.dumps(audit["old_value"]), json.dumps(audit["new_value"]),
-                        audit["why"], audit["tenant_id"],
-                    ),
-                )
-            conn.commit()
+            persistence.append_tenant_audit(
+                tenant_id=audit["tenant_id"],
+                timestamp=audit["timestamp"],
+                who=audit["who"],
+                action=audit["action"],
+                old_value=audit["old_value"],
+                new_value=audit["new_value"],
+                why=audit["why"],
+            )
     else:
         # Explicitly development/test-only adapter. Production OIDC is refused
+        # above unless durable PostgreSQL is active. Production OIDC is refused
         # above unless durable PostgreSQL is active.
         _MEMORY_RECORDS.append(record)
         _MEMORY_AUDIT.append(audit)
@@ -178,13 +151,17 @@ def _list(feature_id: str, athlete_id: str, tenant_id: str, coach_actor_id: str)
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT record_id,feature_id,athlete_id,decision_id,session_id,
-                          payload,created_by,created_at,coach_final_authority,
-                          execution_authorized,tenant_id,coach_actor_id
-                   FROM kaizo_training_workflow_records
-                   WHERE feature_id=%s AND athlete_id=%s
-                     AND tenant_id=%s AND coach_actor_id=%s
-                   ORDER BY created_at,record_id""",
+                """SELECT r.record_id,r.feature_id,r.athlete_id,r.decision_id,r.session_id,
+                          r.payload,r.created_by,r.created_at,r.coach_final_authority,
+                          r.execution_authorized,r.tenant_id,r.coach_actor_id
+                   FROM kaizo_training_workflow_records r
+                   JOIN kaizo_coach_athlete_ownership o
+                     ON o.athlete_id=r.athlete_id
+                    AND o.tenant_id=r.tenant_id
+                    AND o.coach_actor_id=r.coach_actor_id
+                   WHERE r.feature_id=%s AND r.athlete_id=%s
+                     AND r.tenant_id=%s AND r.coach_actor_id=%s
+                   ORDER BY r.created_at,r.record_id""",
                 (feature_id, athlete_id, tenant_id, coach_actor_id),
             )
             rows = cur.fetchall()
