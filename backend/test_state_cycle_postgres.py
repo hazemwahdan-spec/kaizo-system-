@@ -166,6 +166,67 @@ def test_decision_state_link_requires_same_owned_decision_cycle_and_case():
     assert other_tenant_response.status_code == 404
 
 
+def test_decision_link_audit_failure_rolls_back_link():
+    tenant, coach, athlete, headers, payload = _fixture()
+    created = client.post(
+        "/api/v1/state-cycle/feat-042/digital-twin-state",
+        json=payload, headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    cycle = coach_decision_cycles.create_cycle(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete,
+        case_id=payload["case_id"], decision_input={"intent":"retest"},
+        decision_output={"coach_choice":"review"},
+    )
+    assert cycle is not None
+
+    trigger = "kaizo_test_reject_decision_state_link_audit"
+    function = "kaizo_test_reject_decision_state_link_audit_fn"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"DROP TRIGGER IF EXISTS {trigger} ON kaizo_audit_logs")
+            cur.execute(f"DROP FUNCTION IF EXISTS {function}()")
+            cur.execute(f"""
+                CREATE FUNCTION {function}() RETURNS trigger AS $
+                BEGIN
+                    IF NEW.action='FEAT-044_DECISION_STATE_LINKED' THEN
+                        RAISE EXCEPTION 'intentional decision-link audit failure';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $ LANGUAGE plpgsql
+            """)
+            cur.execute(
+                f"CREATE TRIGGER {trigger} BEFORE INSERT ON kaizo_audit_logs "
+                f"FOR EACH ROW EXECUTE FUNCTION {function}()"
+            )
+        conn.commit()
+
+    try:
+        response = client.post(
+            "/api/v1/state-cycle/feat-044/decision-state-link",
+            json={"decision_id":cycle["decision_cycle_id"],"entity_id":athlete,
+                  "state_version":1,"state_ref":f"{athlete}:v1"},
+            headers=headers,
+        )
+        assert response.status_code == 500, response.text
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT count(*) FROM kaizo_decision_state_links
+                       WHERE decision_id=%s AND entity_id=%s AND tenant_id=%s
+                         AND coach_actor_id=%s""",
+                    (cycle["decision_cycle_id"], athlete, tenant, coach),
+                )
+                assert cur.fetchone()[0] == 0
+    finally:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"DROP TRIGGER IF EXISTS {trigger} ON kaizo_audit_logs")
+                cur.execute(f"DROP FUNCTION IF EXISTS {function}()")
+            conn.commit()
+
+
 def test_state_reads_recheck_current_ownership_inside_read_transaction(monkeypatch):
     tenant, coach, athlete, headers, payload = _fixture()
     created = client.post(
