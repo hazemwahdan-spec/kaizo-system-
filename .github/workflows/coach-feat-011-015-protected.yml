@@ -5,8 +5,14 @@ on:
     paths:
       - "productization/coach_assessment_workflow.py"
       - "productization/coach_problem_workflow.py"
+      - "productization/coach_diagnostic_workflow.py"
+      - "productization/test_coach_diagnostic_workflow_api.py"
+      - "productization/test_coach_diagnostic_workflow_postgres.py"
       - "productization/test_coach_problem_workflow_api.py"
       - "productization/test_coach_problem_workflow_postgres.py"
+      - "productization/coach_diagnostic_workflow.py"
+      - "productization/test_coach_diagnostic_workflow_api.py"
+      - "productization/test_coach_diagnostic_workflow_postgres.py"
       - "productization/product_api.py"
       - "productization/test_coach_assessment_workflow_api.py"
       - "productization/test_coach_assessment_workflow_postgres.py"
@@ -70,7 +76,11 @@ jobs:
         run: |
           python -m pytest -q productization/test_coach_problem_workflow_api.py
           python -m pytest -q productization/test_coach_problem_workflow_postgres.py
-      - name: Verify OpenAPI exposes protected FEAT-011..015 routes only
+      - name: Verify protected FEAT-018..020 Coach diagnostic APIs
+        run: |
+          python -m pytest -q productization/test_coach_diagnostic_workflow_api.py
+          python -m pytest -q productization/test_coach_diagnostic_workflow_postgres.py
+      - name: Verify OpenAPI exposes protected FEAT-011..020 routes only
         run: |
           python - <<'PY'
           from main import app
@@ -87,6 +97,8 @@ jobs:
               "/api/v1/product/coach/athletes/{athlete_id}/state-snapshots/{snapshot_id}",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}",
+              "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}/cause-context",
+              "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}/diagnoses",
           }
           missing = sorted(required - paths)
           if missing:
