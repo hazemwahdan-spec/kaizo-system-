@@ -89,6 +89,7 @@ def test_candidate_generation_is_scoped_idempotent_and_audited(monkeypatch):
     assert body["coach_review_required"] is True
     assert body["execution_authorized"] is False
     assert all(x["status"] == "PENDING_COACH_REVIEW" for x in body["candidates"])
+    first = body["candidates"]
     repeated = client.post(path, headers=headers["coach-a"])
     assert repeated.status_code == 201
     assert repeated.json()["status"] == "CANDIDATES_ALREADY_EXIST"
