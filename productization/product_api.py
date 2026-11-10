@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow
+from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow, coach_problem_workflow
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -952,3 +952,83 @@ def get_coach_state_snapshot(
         athlete_id=athlete_id, snapshot_id=snapshot_id,
     )
     return _coach_governed(result)
+
+
+# FEAT-016: protected structured problem statements.
+class CoachProblemStatementRequest(BaseModel):
+    assessment_id: str
+    statement: str
+    problem_type: str
+    impact: str | None = None
+    context: Dict[str, Any] = {}
+    structured_fields: Dict[str, Any] = {}
+
+
+@router.post("/coach/athletes/{athlete_id}/problem-statements", status_code=201)
+def create_coach_problem_statement(
+    athlete_id: str,
+    req: CoachProblemStatementRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _verified_owned_coach_athlete(
+        authorization, actor_id, role, tenant_id, owner, athlete_id
+    )
+    try:
+        record = coach_problem_workflow.create_problem_statement(
+            tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+            athlete_id=athlete_id, assessment_id=req.assessment_id,
+            statement=req.statement, problem_type=req.problem_type,
+            impact=req.impact, context=req.context,
+            structured_fields=req.structured_fields,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail="athlete or assessment not found in Coach scope")
+    return {**record, "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.get("/coach/athletes/{athlete_id}/problem-statements")
+def list_coach_problem_statements(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = coach_problem_workflow.list_problem_statements(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+    )
+    if records is None:
+        raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+    return {"total": len(records), "problem_statements": records,
+            "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.get("/coach/athletes/{athlete_id}/problem-statements/{problem_id}")
+def get_coach_problem_statement(
+    athlete_id: str,
+    problem_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = coach_problem_workflow.get_problem_statement(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, problem_id=problem_id,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="problem statement not found in Coach scope")
+    return {**record, "coach_final_authority": True, "execution_authorized": False}
