@@ -197,3 +197,29 @@ def test_coach_problem_analysis_ui_uses_protected_bearer_workflows():
     assert "X-KAIZO-Actor" not in APP
     assert "X-KAIZO-Tenant" not in APP
     assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+
+
+def test_coach_decision_workflow_ui_uses_protected_candidate_review_and_decision_routes():
+    for function in (
+        "loadCoachDecisionWorkflow",
+        "generateCoachDecisionCandidates",
+        "recordCoachDecisionRationale",
+        "compareCoachDecisionCandidates",
+        "reviewCoachDecisionCandidate",
+        "recordCoachDecision",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    for route in (
+        "/decision-candidates",
+        "/rationales",
+        "/decision-comparisons",
+        "/coach-review",
+        "/decision-record",
+    ):
+        assert route in APP
+    assert "currentCoachDiagnosisId" in APP
+    assert "currentCoachCandidateId" in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "No training execution was authorized." in APP
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
