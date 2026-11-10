@@ -14,6 +14,7 @@ os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
 
 import persistence
 import training_workflow
+from productization import coach_decision_workflow
 from types import SimpleNamespace
 from productization import coach_roster
 from training_workflow import router, reset_memory_state
@@ -192,6 +193,10 @@ def test_feat033_resolves_authoritative_decision_published_drill_and_same_scope_
     decision = {"decision_id":"D1","athlete_id":ATHLETE_ID,"coach_id":"coach-1",
                 "status":"RECORDED","problem_id":"P1"}
     monkeypatch.setitem(sys.modules, "main", SimpleNamespace(DECISION_RECORDS={"D1":decision}))
+    monkeypatch.setattr(coach_decision_workflow, "_MEMORY_AUDIT", [{
+        "who":"coach-1","action":"COACH_DECISION_RECORD_RECORDED","tenant_id":"tenant-1",
+        "new_value":decision,
+    }])
     monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_drills",
         lambda **kwargs: [{"drill_id":"DR1","status":"PUBLISHED","coach_review":True,
                            "approved_by":"coach-1"}])
@@ -223,9 +228,13 @@ def test_feat033_rejects_foreign_decision_unreviewed_drill_and_missing_problem_l
         _VALIDATE_INITIAL_SOURCES(req, principal)
     assert denied.value.status_code == 409
 
-    monkeypatch.setitem(sys.modules, "main", SimpleNamespace(DECISION_RECORDS={
-        "D1":{"decision_id":"D1","athlete_id":ATHLETE_ID,"coach_id":"coach-1",
-              "status":"RECORDED","problem_id":"P1"}}))
+    trusted_decision = {"decision_id":"D1","athlete_id":ATHLETE_ID,"coach_id":"coach-1",
+                        "status":"RECORDED","problem_id":"P1"}
+    monkeypatch.setitem(sys.modules, "main", SimpleNamespace(DECISION_RECORDS={"D1":trusted_decision}))
+    monkeypatch.setattr(coach_decision_workflow, "_MEMORY_AUDIT", [{
+        "who":"coach-1","action":"COACH_DECISION_RECORD_RECORDED","tenant_id":"tenant-1",
+        "new_value":trusted_decision,
+    }])
     monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_drills",
         lambda **kwargs: [{"drill_id":"DR1","status":"DRAFT","coach_review":False,
                            "approved_by":None}])
