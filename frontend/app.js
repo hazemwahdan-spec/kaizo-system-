@@ -615,9 +615,19 @@ async function loadCoachProblemDetails(athleteId,problemId){
    productCall(root+"/cause-context"),productCall(root+"/diagnoses")
   ]);
   if(selectedCoachAthleteId!==String(athleteId)||currentCoachProblemId!==String(problemId))return;
+  const previousDiagnosisId=currentCoachDiagnosisId;
   currentCoachDiagnosisId=(diagnoses.diagnoses||[]).length?(diagnoses.diagnoses||[])[(diagnoses.diagnoses||[]).length-1].diagnosis_id:null;
+  if(currentCoachDiagnosisId!==previousDiagnosisId)currentCoachCandidateId=null;
   output.textContent=pretty({cause_context:cause.framings||[],diagnoses:diagnoses.diagnoses||[]});
   if(currentCoachDiagnosisId)await loadCoachDecisionWorkflow(athleteId,currentCoachDiagnosisId);
+  else{
+   const candidateSelect=document.getElementById("coachCandidateSelect");
+   if(candidateSelect)candidateSelect.innerHTML='<option value="">Create an evidence-linked diagnosis first</option>';
+   const decisionOutput=document.getElementById("coachDecisionWorkflowOutput");
+   if(decisionOutput)decisionOutput.textContent="";
+   const decisionNotice=document.getElementById("coachDecisionNotice");
+   if(decisionNotice)decisionNotice.textContent="No evidence-linked diagnosis is available. Decision candidates remain blocked.";
+  }
   if(notice)notice.textContent="Scoped problem, cause/context, and diagnosis records loaded. Evidence references remain traceable.";
  }catch(e){output.textContent="Problem detail read-back unavailable: "+String(e&&e.message?e.message:e)}
 }
