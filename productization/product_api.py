@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow, coach_problem_workflow, coach_diagnostic_workflow, coach_decision_workflow, coach_training_workflow
+from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow, coach_problem_workflow, coach_diagnostic_workflow, coach_decision_workflow, coach_training_workflow, coach_problem_library_workflow
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -1592,3 +1592,105 @@ def get_coach_training_dosage(
         athlete_id=athlete_id, session_id=session_id, dosage_id=dosage_id,
     )
     return _coach_governed(result)
+
+
+# FEAT-017: shared problem-library read is provenance-gated; selection is Coach/tenant/athlete/assessment scoped.
+class CoachProblemLibrarySelectionRequest(BaseModel):
+    library_item_id: str
+
+
+def _coach_problem_library_result(call, *args, **kwargs):
+    try:
+        result = call(*args, **kwargs)
+    except coach_problem_library_workflow.CoachProblemLibraryNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except coach_problem_library_workflow.CoachProblemLibraryConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="problem library or assessment selection not found in verified Coach scope")
+    return result
+
+
+@router.get("/coach/problem-library")
+def list_coach_problem_library(
+    query: str | None = None,
+    limit: int = 50,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    items = _coach_problem_library_result(
+        coach_problem_library_workflow.list_approved_problem_library,
+        query=query, limit=limit,
+    )
+    return {"total": len(items), "items": items,
+            "publication_gate": "APPROVED_AND_VERIFIED_WITH_PROVENANCE",
+            "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.post("/coach/athletes/{athlete_id}/assessments/{assessment_id}/problem-library-selections", status_code=201)
+def select_coach_problem_library_item(
+    athlete_id: str,
+    assessment_id: str,
+    req: CoachProblemLibrarySelectionRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_problem_library_result(
+        coach_problem_library_workflow.select_problem_library_item,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, assessment_id=assessment_id,
+        library_item_id=req.library_item_id,
+    )
+    return _coach_governed(record)
+
+
+@router.get("/coach/athletes/{athlete_id}/assessments/{assessment_id}/problem-library-selections")
+def list_coach_problem_library_selections(
+    athlete_id: str,
+    assessment_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_problem_library_result(
+        coach_problem_library_workflow.list_problem_library_selections,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, assessment_id=assessment_id,
+    )
+    return {"athlete_id": athlete_id, "assessment_id": assessment_id,
+            "selections": records, "coach_final_authority": True,
+            "execution_authorized": False}
+
+
+@router.get("/coach/athletes/{athlete_id}/assessments/{assessment_id}/problem-library-selections/{selection_id}")
+def get_coach_problem_library_selection(
+    athlete_id: str,
+    assessment_id: str,
+    selection_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_problem_library_result(
+        coach_problem_library_workflow.get_problem_library_selection,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, assessment_id=assessment_id,
+        selection_id=selection_id,
+    )
+    return _coach_governed(record)
