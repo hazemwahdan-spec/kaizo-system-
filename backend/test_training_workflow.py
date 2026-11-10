@@ -13,8 +13,12 @@ os.environ["KAIZO_IDENTITY_MODE"] = "development"
 os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
 
 import persistence
+import training_workflow
+from types import SimpleNamespace
 from productization import coach_roster
 from training_workflow import router, reset_memory_state
+
+_VALIDATE_INITIAL_SOURCES = training_workflow._validate_initial_decision_drill
 
 app = FastAPI()
 app.include_router(router)
@@ -35,6 +39,14 @@ OTHER_COACH_HEADERS = {
 def setup_function():
     reset_memory_state()
     coach_roster.reset_memory_state()
+    # The main workflow tests isolate the later FEAT-034..040 chain; the
+    # dedicated source-validation tests exercise the real resolver below.
+    training_workflow._validate_initial_decision_drill = lambda req, principal: {
+        "decision": {"decision_id": req.decision_id, "athlete_id": req.athlete_id,
+                     "coach_id": principal.actor_id, "status": "RECORDED", "problem_id": "P1"},
+        "problem_id": "P1", "drill": {"drill_id": req.drill_id},
+        "problem_drill_link": {"link_id": "L1", "drill_id": req.drill_id},
+    }
     global ATHLETE_ID
     athlete = coach_roster.create_owned_athlete(
         tenant_id="tenant-1", coach_actor_id="coach-1",
@@ -173,3 +185,59 @@ def test_openapi_publishes_all_feat_033_to_040_routes_and_lineage_fields():
     schemas = schema["components"]["schemas"]
     for model, fields in required.items():
         assert fields.issubset(set(schemas[model]["required"]))
+
+
+def test_feat033_resolves_authoritative_decision_published_drill_and_same_scope_problem_link(monkeypatch):
+    monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: False)
+    decision = {"decision_id":"D1","athlete_id":ATHLETE_ID,"coach_id":"coach-1",
+                "status":"RECORDED","problem_id":"P1"}
+    monkeypatch.setitem(sys.modules, "main", SimpleNamespace(DECISION_RECORDS={"D1":decision}))
+    monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_drills",
+        lambda **kwargs: [{"drill_id":"DR1","status":"PUBLISHED","coach_review":True,
+                           "approved_by":"coach-1"}])
+    monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_problem_drill_links",
+        lambda **kwargs: [{"link_id":"L1","problem_id":"P1","drill_id":"DR1",
+                           "athlete_id":ATHLETE_ID,"tenant_id":"tenant-1",
+                           "coach_actor_id":"coach-1"}])
+    req = training_workflow.DecisionDrillRequest(
+        athlete_id=ATHLETE_ID,decision_id="D1",drill_id="DR1",
+        rationale="Targets entry timing",evidence_refs=["REF-015"])
+    principal = SimpleNamespace(actor_id="coach-1",tenant_id="tenant-1")
+    result = _VALIDATE_INITIAL_SOURCES(req, principal)
+    assert result["problem_id"] == "P1"
+    assert result["problem_drill_link"]["link_id"] == "L1"
+
+
+def test_feat033_rejects_foreign_decision_unreviewed_drill_and_missing_problem_link(monkeypatch):
+    monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: False)
+    principal = SimpleNamespace(actor_id="coach-1",tenant_id="tenant-1")
+    req = training_workflow.DecisionDrillRequest(
+        athlete_id=ATHLETE_ID,decision_id="D1",drill_id="DR1",
+        rationale="Targets entry timing",evidence_refs=["REF-015"])
+    monkeypatch.setitem(sys.modules, "main", SimpleNamespace(DECISION_RECORDS={
+        "D1":{"decision_id":"D1","athlete_id":ATHLETE_ID,"coach_id":"coach-2",
+              "status":"RECORDED","problem_id":"P1"}}))
+    import pytest
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as denied:
+        _VALIDATE_INITIAL_SOURCES(req, principal)
+    assert denied.value.status_code == 409
+
+    monkeypatch.setitem(sys.modules, "main", SimpleNamespace(DECISION_RECORDS={
+        "D1":{"decision_id":"D1","athlete_id":ATHLETE_ID,"coach_id":"coach-1",
+              "status":"RECORDED","problem_id":"P1"}}))
+    monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_drills",
+        lambda **kwargs: [{"drill_id":"DR1","status":"DRAFT","coach_review":False,
+                           "approved_by":None}])
+    with pytest.raises(HTTPException) as denied_drill:
+        _VALIDATE_INITIAL_SOURCES(req, principal)
+    assert denied_drill.value.status_code == 409
+
+    monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_drills",
+        lambda **kwargs: [{"drill_id":"DR1","status":"PUBLISHED","coach_review":True,
+                           "approved_by":"coach-1"}])
+    monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_problem_drill_links",
+        lambda **kwargs: [])
+    with pytest.raises(HTTPException) as denied_link:
+        _VALIDATE_INITIAL_SOURCES(req, principal)
+    assert denied_link.value.status_code == 409
