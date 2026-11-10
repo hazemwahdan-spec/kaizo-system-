@@ -8,7 +8,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 import persistence
-from productization import coach_roster
+from productization import coach_decision_cycles, coach_roster
 from productization.product_api import verified_coach_scope
 
 router = APIRouter(prefix="/api/v1/state-cycle", tags=["state-cycle"])
@@ -133,34 +133,74 @@ def _persist_update(state: Dict[str, Any], history: Dict[str, Any],
 
 def _save_link(record: Dict[str, Any], principal: Any) -> None:
     if not persistence.is_postgres_enabled():
+        cycle = coach_decision_cycles.get_owned_cycle(
+            decision_cycle_id=record["decision_id"],
+            tenant_id=principal.tenant_id,
+            coach_actor_id=principal.actor_id,
+            athlete_id=record["entity_id"],
+        )
+        if cycle is None:
+            raise HTTPException(404, detail="decision cycle not found in Coach athlete scope")
+        if cycle["case_id"] != record["case_id"]:
+            raise HTTPException(409, detail="decision cycle case_id does not match Digital Twin state")
         _MEMORY_LINKS.append(record)
         return
-    with persistence.connection() as conn:
+
+    # The ownership, exact Digital Twin version, and decision cycle are all
+    # revalidated and locked in one transaction before the link and audit commit.
+    with persistence.atomic_transaction() as conn:
         with conn.cursor() as cur:
-            _scope_check(cur,record["entity_id"],principal)
             cur.execute(
-                """SELECT 1 FROM kaizo_digital_twin_state
-                   WHERE entity_id=%s AND version=%s AND tenant_id=%s AND coach_actor_id=%s
-                   FOR KEY SHARE""",
-                (record["entity_id"],record["state_version"],principal.tenant_id,principal.actor_id))
+                """SELECT 1 FROM kaizo_coach_athlete_ownership
+                   WHERE athlete_id=%s AND tenant_id=%s AND coach_actor_id=%s
+                   FOR UPDATE""",
+                (record["entity_id"], principal.tenant_id, principal.actor_id),
+            )
             if cur.fetchone() is None:
-                raise HTTPException(404,detail="scoped Digital Twin state version not found")
+                raise HTTPException(404, detail="athlete not found in Coach scope")
+            cur.execute(
+                """SELECT case_id FROM kaizo_digital_twin_state
+                   WHERE entity_id=%s AND version=%s AND tenant_id=%s AND coach_actor_id=%s
+                   FOR UPDATE""",
+                (record["entity_id"], record["state_version"],
+                 principal.tenant_id, principal.actor_id),
+            )
+            state_row = cur.fetchone()
+            if state_row is None:
+                raise HTTPException(404, detail="scoped Digital Twin state version not found")
+            cur.execute(
+                """SELECT case_id FROM kaizo_coach_decision_cycles
+                   WHERE decision_cycle_id=%s AND tenant_id=%s
+                     AND coach_actor_id=%s AND athlete_id=%s
+                   FOR SHARE""",
+                (record["decision_id"], principal.tenant_id,
+                 principal.actor_id, record["entity_id"]),
+            )
+            cycle_row = cur.fetchone()
+            if cycle_row is None:
+                raise HTTPException(404, detail="decision cycle not found in Coach athlete scope")
+            if state_row[0] != record["case_id"] or cycle_row[0] != state_row[0]:
+                raise HTTPException(
+                    409, detail="decision cycle case_id does not match Digital Twin state"
+                )
             cur.execute(
                 """INSERT INTO kaizo_decision_state_links
                    (link_id,decision_id,entity_id,state_version,state_ref,linked_by,linked_at,
                     coach_final_authority,execution_authorized,tenant_id,coach_actor_id)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,TRUE,FALSE,%s,%s)""",
-                (record["link_id"],record["decision_id"],record["entity_id"],
-                 record["state_version"],record["state_ref"],principal.actor_id,
-                 record["linked_at"],principal.tenant_id,principal.actor_id))
-            cur.execute(
-                """INSERT INTO kaizo_audit_logs
-                   (timestamp,who,action,old_value,new_value,why,tenant_id)
-                   VALUES (%s,%s,'FEAT-044_DECISION_STATE_LINKED',NULL,%s::jsonb,%s,%s)""",
-                (record["linked_at"],principal.actor_id,json.dumps(record),
-                 "Decision linked to an owned, versioned Digital Twin state.",
-                 principal.tenant_id))
-        conn.commit()
+                (record["link_id"], record["decision_id"], record["entity_id"],
+                 record["state_version"], record["state_ref"], principal.actor_id,
+                 record["linked_at"], principal.tenant_id, principal.actor_id),
+            )
+        persistence.append_tenant_audit(
+            tenant_id=principal.tenant_id,
+            timestamp=record["linked_at"],
+            who=principal.actor_id,
+            action="FEAT-044_DECISION_STATE_LINKED",
+            old_value=None,
+            new_value=record,
+            why="Owned decision cycle linked to the matching versioned Digital Twin state atomically.",
+        )
 
 
 def _latest_link(decision_id: Optional[str], athlete_id: str, principal: Any):
@@ -169,21 +209,44 @@ def _latest_link(decision_id: Optional[str], athlete_id: str, principal: Any):
             with conn.cursor() as cur:
                 _scope_check(cur, athlete_id, principal)
                 cur.execute(
-                    """SELECT link_id,decision_id,entity_id,state_version,state_ref,
-                              linked_by,linked_at,coach_final_authority,execution_authorized
-                       FROM kaizo_decision_state_links
-                       WHERE entity_id=%s AND tenant_id=%s AND coach_actor_id=%s
-                         AND (%s IS NULL OR decision_id=%s)
-                       ORDER BY linked_at DESC LIMIT 1""",
+                    """SELECT l.link_id,l.decision_id,l.entity_id,l.state_version,l.state_ref,
+                              l.linked_by,l.linked_at,l.coach_final_authority,l.execution_authorized
+                       FROM kaizo_decision_state_links l
+                       JOIN kaizo_coach_decision_cycles c
+                         ON c.decision_cycle_id=l.decision_id
+                        AND c.tenant_id=l.tenant_id
+                        AND c.coach_actor_id=l.coach_actor_id
+                        AND c.athlete_id=l.entity_id
+                       JOIN kaizo_digital_twin_history h
+                         ON h.entity_id=l.entity_id
+                        AND h.version=l.state_version
+                        AND h.tenant_id=l.tenant_id
+                        AND h.coach_actor_id=l.coach_actor_id
+                        AND h.case_id=c.case_id
+                       WHERE l.entity_id=%s AND l.tenant_id=%s AND l.coach_actor_id=%s
+                         AND (%s IS NULL OR l.decision_id=%s)
+                       ORDER BY l.linked_at DESC LIMIT 1""",
                     (athlete_id,principal.tenant_id,principal.actor_id,decision_id,decision_id))
                 r=cur.fetchone()
         if r is None: return None
         return {"link_id":r[0],"decision_id":r[1],"entity_id":r[2],"state_version":r[3],
                 "state_ref":r[4],"linked_by":r[5],"linked_at":r[6],
                 "coach_final_authority":r[7],"execution_authorized":r[8]}
-    items=[x for x in _MEMORY_LINKS if x["entity_id"]==athlete_id
-           and x["tenant_id"]==principal.tenant_id and x["coach_actor_id"]==principal.actor_id
-           and (decision_id is None or x["decision_id"]==decision_id)]
+    items=[]
+    for item in _MEMORY_LINKS:
+        if (item["entity_id"] != athlete_id
+            or item["tenant_id"] != principal.tenant_id
+            or item["coach_actor_id"] != principal.actor_id
+            or (decision_id is not None and item["decision_id"] != decision_id)):
+            continue
+        cycle = coach_decision_cycles.get_owned_cycle(
+            decision_cycle_id=item["decision_id"],
+            tenant_id=principal.tenant_id,
+            coach_actor_id=principal.actor_id,
+            athlete_id=athlete_id,
+        )
+        if cycle is not None and cycle["case_id"] == item.get("case_id"):
+            items.append(item)
     return items[-1] if items else None
 
 
@@ -198,7 +261,7 @@ class DigitalTwinUpdateRequest(BaseModel):
 
 
 class StateLinkRequest(BaseModel):
-    decision_id: str
+    decision_id: str = Field(description="Durable decision_cycle_id returned by /decision; must belong to this Coach, tenant, athlete, and case.")
     entity_id: str
     state_version: int
     state_ref: str
@@ -313,7 +376,7 @@ def link_decision_to_state(req: StateLinkRequest,
     if req.state_ref != expected: raise HTTPException(400,detail={"expected_state_ref":expected})
     now=_now()
     record={"link_id":str(uuid4()),"decision_id":req.decision_id,"entity_id":req.entity_id,
-            "state_version":req.state_version,"state_ref":req.state_ref,
+            "state_version":req.state_version,"state_ref":req.state_ref,"case_id":state["case_id"],
             "linked_by":principal.actor_id,"linked_at":now,"tenant_id":principal.tenant_id,
             "coach_actor_id":principal.actor_id,"coach_final_authority":True,
             "execution_authorized":False}
