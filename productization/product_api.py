@@ -1032,3 +1032,114 @@ def get_coach_problem_statement(
     if record is None:
         raise HTTPException(status_code=404, detail="problem statement not found in Coach scope")
     return {**record, "coach_final_authority": True, "execution_authorized": False}
+
+
+# FEAT-018–020: protected cause/context and evidence-linked diagnosis.
+class CoachCauseContextRequest(BaseModel):
+    cause: str
+    context: Dict[str, Any] = {}
+    contributing_factors: List[str] = []
+
+
+class CoachEvidenceLinkedDiagnosisRequest(BaseModel):
+    evidence_ids: List[str]
+    diagnosis: str
+    confidence: str | None = None
+    resolution_state: str = "UNRESOLVED"
+
+
+def _coach_diagnostic_result(call, *args, **kwargs):
+    try:
+        result = call(*args, **kwargs)
+    except coach_diagnostic_workflow.CoachDiagnosticNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except coach_diagnostic_workflow.CoachDiagnosticConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="problem not found in verified Coach athlete scope")
+    return result
+
+
+@router.post("/coach/athletes/{athlete_id}/problem-statements/{problem_id}/cause-context", status_code=201)
+def create_coach_cause_context(
+    athlete_id: str,
+    problem_id: str,
+    req: CoachCauseContextRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_diagnostic_result(
+        coach_diagnostic_workflow.create_cause_context_framing,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, problem_id=problem_id, cause=req.cause,
+        context=req.context, contributing_factors=req.contributing_factors,
+    )
+    return _coach_governed(record)
+
+
+@router.get("/coach/athletes/{athlete_id}/problem-statements/{problem_id}/cause-context")
+def list_coach_cause_context(
+    athlete_id: str,
+    problem_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_diagnostic_result(
+        coach_diagnostic_workflow.list_cause_context_framings,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, problem_id=problem_id,
+    )
+    return {"problem_id": problem_id, "framings": records,
+            "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.post("/coach/athletes/{athlete_id}/problem-statements/{problem_id}/diagnoses", status_code=201)
+def create_coach_evidence_linked_diagnosis(
+    athlete_id: str,
+    problem_id: str,
+    req: CoachEvidenceLinkedDiagnosisRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_diagnostic_result(
+        coach_diagnostic_workflow.create_evidence_linked_diagnosis,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, problem_id=problem_id,
+        evidence_ids=req.evidence_ids, diagnosis=req.diagnosis,
+        confidence=req.confidence, resolution_state=req.resolution_state,
+    )
+    return _coach_governed(record)
+
+
+@router.get("/coach/athletes/{athlete_id}/problem-statements/{problem_id}/diagnoses")
+def list_coach_evidence_linked_diagnoses(
+    athlete_id: str,
+    problem_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_diagnostic_result(
+        coach_diagnostic_workflow.list_evidence_linked_diagnoses,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, problem_id=problem_id,
+    )
+    return {"problem_id": problem_id, "diagnoses": records,
+            "coach_final_authority": True, "execution_authorized": False}
