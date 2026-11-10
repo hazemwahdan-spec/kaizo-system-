@@ -751,8 +751,8 @@ def list_drills(*, tenant_id: str, coach_actor_id: str,
             with conn.cursor() as cur:
                 status_filter = "" if include_drafts else "AND status='PUBLISHED' AND coach_review=TRUE"
                 cur.execute(
-                    f"""SELECT drill_id,source_assessment_id,payload,status,coach_review,
-                               created_by,approved_by,approved_at,created_at,updated_at
+                    f"""SELECT drill_id,tenant_id,coach_actor_id,source_assessment_id,payload,
+                               status,coach_review,created_by,approved_by,approved_at,created_at,updated_at
                         FROM kaizo_coach_drill_library
                         WHERE tenant_id=%s AND coach_actor_id=%s {status_filter}
                         ORDER BY created_at,drill_id""",
@@ -760,10 +760,11 @@ def list_drills(*, tenant_id: str, coach_actor_id: str,
                 )
                 rows = cur.fetchall()
         return [{
-            "drill_id": x[0], "source_assessment_id": x[1], "payload": x[2],
-            "status": x[3], "coach_review": x[4], "created_by": x[5],
-            "approved_by": x[6], "approved_at": x[7], "created_at": x[8],
-            "updated_at": x[9], "coach_final_authority": True,
+            "drill_id": x[0], "tenant_id": x[1], "coach_actor_id": x[2],
+            "source_assessment_id": x[3], "payload": x[4],
+            "status": x[5], "coach_review": x[6], "created_by": x[7],
+            "approved_by": x[8], "approved_at": x[9], "created_at": x[10],
+            "updated_at": x[11], "coach_final_authority": True,
             "execution_authorized": False,
         } for x in rows]
     return sorted([
@@ -800,9 +801,10 @@ def _problem_context_memory(*, tenant_id: str, coach_actor_id: str,
 
 def _link_from_row(row) -> dict[str, Any]:
     return {
-        "link_id": row[0], "problem_id": row[1], "drill_id": row[2],
-        "athlete_id": row[3], "assessment_id": row[4], "rationale": row[5],
-        "evidence_ids": row[6], "created_by": row[7], "created_at": row[8],
+        "link_id": row[0], "tenant_id": row[1], "coach_actor_id": row[2],
+        "problem_id": row[3], "drill_id": row[4], "athlete_id": row[5],
+        "assessment_id": row[6], "rationale": row[7], "evidence_ids": row[8],
+        "created_by": row[9], "created_at": row[10],
         "coach_final_authority": True, "execution_authorized": False,
     }
 
@@ -896,8 +898,8 @@ def list_problem_drill_links(*, tenant_id: str, coach_actor_id: str,
                                         athlete_id=athlete_id, problem_id=problem_id) is None:
                     return None
                 cur.execute(
-                    """SELECT l.link_id,l.problem_id,l.drill_id,l.athlete_id,l.assessment_id,
-                              l.rationale,l.evidence_ids,l.created_by,l.created_at
+                    """SELECT l.link_id,l.tenant_id,l.coach_actor_id,l.problem_id,l.drill_id,
+                              l.athlete_id,l.assessment_id,l.rationale,l.evidence_ids,l.created_by,l.created_at
                        FROM kaizo_coach_problem_drill_links l
                        JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=l.athlete_id
                        WHERE l.problem_id=%s AND l.athlete_id=%s
