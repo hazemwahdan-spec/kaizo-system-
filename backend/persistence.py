@@ -463,6 +463,8 @@ CREATE TABLE IF NOT EXISTS kaizo_coach_progression_rules (
 );
 CREATE INDEX IF NOT EXISTS idx_coach_progression_rules_scope
     ON kaizo_coach_progression_rules(tenant_id, coach_actor_id, athlete_id, plan_id, created_at);
+ALTER TABLE kaizo_coach_progression_rules
+    ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS kaizo_coach_progression_evaluations (
     evaluation_id TEXT PRIMARY KEY,
