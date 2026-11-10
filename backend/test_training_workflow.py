@@ -147,3 +147,29 @@ def test_invalid_training_values_and_coach_final_authority_still_fail_closed():
 def test_workflow_rejects_missing_predecessor():
     path, payload = cases(ATHLETE_ID)[1]
     assert client.post(path, json=payload, headers=COACH_HEADERS).status_code == 409
+
+
+def test_openapi_publishes_all_feat_033_to_040_routes_and_lineage_fields():
+    schema = client.get("/openapi.json").json()
+    expected = {
+        "/api/v1/training-workflow/feat-033/decision-drill",
+        "/api/v1/training-workflow/feat-034/drill-prescription",
+        "/api/v1/training-workflow/feat-035/execution-cues",
+        "/api/v1/training-workflow/feat-036/training-response",
+        "/api/v1/training-workflow/feat-037/retest",
+        "/api/v1/training-workflow/feat-038/before-after",
+        "/api/v1/training-workflow/feat-039/progress-state",
+        "/api/v1/training-workflow/feat-040/next-decision-trigger",
+        "/api/v1/training-workflow/athletes/{athlete_id}",
+    }
+    assert expected.issubset(set(schema["paths"]))
+    required = {
+        "ResponseRequest": {"drill_id", "prescription_record_id", "execution_cue_record_id"},
+        "RetestRequest": {"response_record_id"},
+        "ComparisonRequest": {"response_record_id", "retest_record_id"},
+        "ProgressRequest": {"comparison_record_id"},
+        "NextDecisionRequest": {"progress_record_id"},
+    }
+    schemas = schema["components"]["schemas"]
+    for model, fields in required.items():
+        assert fields.issubset(set(schemas[model]["required"]))
