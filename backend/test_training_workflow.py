@@ -203,7 +203,7 @@ def test_feat033_resolves_authoritative_decision_published_drill_and_same_scope_
     monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_problem_drill_links",
         lambda **kwargs: [{"link_id":"L1","problem_id":"P1","drill_id":"DR1",
                            "athlete_id":ATHLETE_ID,"tenant_id":"tenant-1",
-                           "coach_actor_id":"coach-1"}])
+                           "coach_actor_id":"coach-1","evidence_ids":["REF-015"]}])
     req = training_workflow.DecisionDrillRequest(
         athlete_id=ATHLETE_ID,decision_id="D1",drill_id="DR1",
         rationale="Targets entry timing",evidence_refs=["REF-015"])
