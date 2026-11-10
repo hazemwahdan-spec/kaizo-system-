@@ -1,4 +1,4 @@
-name: Coach FEAT-011-028 Protected Workflow
+name: Coach FEAT-011-028 Protected Workflow (including FEAT-017)
 
 on:
   pull_request:
@@ -8,6 +8,9 @@ on:
       - "productization/coach_diagnostic_workflow.py"
       - "productization/coach_decision_workflow.py"
       - "productization/coach_training_workflow.py"
+      - "productization/coach_problem_library_workflow.py"
+      - "productization/test_coach_problem_library_workflow_api.py"
+      - "productization/test_coach_problem_library_workflow_postgres.py"
       - "productization/test_coach_training_workflow_api.py"
       - "productization/test_coach_training_workflow_postgres.py"
       - "productization/test_coach_decision_workflow_api.py"
@@ -79,6 +82,10 @@ jobs:
         run: |
           python -m pytest -q productization/test_coach_problem_workflow_api.py
           python -m pytest -q productization/test_coach_problem_workflow_postgres.py
+      - name: Verify protected FEAT-017 provenance-gated problem library APIs
+        run: |
+          python -m pytest -q productization/test_coach_problem_library_workflow_api.py
+          python -m pytest -q productization/test_coach_problem_library_workflow_postgres.py
       - name: Verify protected FEAT-018..020 Coach diagnostic APIs
         run: |
           python -m pytest -q productization/test_coach_diagnostic_workflow_api.py
@@ -108,6 +115,9 @@ jobs:
               "/api/v1/product/coach/athletes/{athlete_id}/state-snapshots/{snapshot_id}",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}",
+              "/api/v1/product/coach/problem-library",
+              "/api/v1/product/coach/athletes/{athlete_id}/assessments/{assessment_id}/problem-library-selections",
+              "/api/v1/product/coach/athletes/{athlete_id}/assessments/{assessment_id}/problem-library-selections/{selection_id}",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}/cause-context",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}/diagnoses",
               "/api/v1/product/coach/athletes/{athlete_id}/diagnoses/{diagnosis_id}/decision-candidates",
