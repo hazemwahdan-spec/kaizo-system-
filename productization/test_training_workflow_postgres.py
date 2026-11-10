@@ -136,6 +136,54 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert record["created_by"] == coach
     assert record["tenant_id"] == tenant
     assert record["coach_actor_id"] == coach
+    assert record["payload"]["problem_id"]
+    assert record["payload"]["problem_drill_link_id"]
+
+    athlete_id = athlete["athlete_id"]
+    session_id = "SESSION-" + uuid4().hex
+    def post(feature, suffix, body):
+        result = client.post(f"/api/v1/training-workflow/feat-{feature}/{suffix}",
+                             json={"athlete_id":athlete_id, **body}, headers=headers)
+        assert result.status_code == 201, (feature, result.text)
+        saved = result.json()
+        assert saved["decision_id"] == decision_id
+        assert saved["session_id"] == session_id
+        assert saved["tenant_id"] == tenant and saved["coach_actor_id"] == coach
+        assert saved["execution_authorized"] is False
+        return saved
+
+    prescription = post("034","drill-prescription",{
+        "decision_id":decision_id,"session_id":session_id,"drill_id":drill_id,
+        "objective":"Improve entry timing","dosage":{"sets":3,"reps":5}})
+    cues = post("035","execution-cues",{
+        "session_id":session_id,"drill_id":drill_id,
+        "cues":["Elbow close"],"checklist":["Posture stable"]})
+    training_response = post("036","training-response",{
+        "session_id":session_id,"drill_id":drill_id,
+        "prescription_record_id":prescription["record_id"],
+        "execution_cue_record_id":cues["record_id"],
+        "response":{"quality":"GOOD"},"kpi_values":{"entry_success":4}})
+    bad_retest = client.post("/api/v1/training-workflow/feat-037/retest",headers=headers,json={
+        "athlete_id":athlete_id,"session_id":session_id,
+        "response_record_id":training_response["record_id"],
+        "baseline_reference":training_response["record_id"],
+        "retest_values":{"different_kpi":6},"evidence_refs":["REF-POSTGRES"]})
+    assert bad_retest.status_code == 409, bad_retest.text
+    retest = post("037","retest",{
+        "session_id":session_id,"response_record_id":training_response["record_id"],
+        "baseline_reference":training_response["record_id"],
+        "retest_values":{"entry_success":6},"evidence_refs":["REF-POSTGRES"]})
+    comparison = post("038","before-after",{
+        "response_record_id":training_response["record_id"],"retest_record_id":retest["record_id"],
+        "baseline":{"entry_success":4},"current":{"entry_success":6},
+        "comparison_method":"same_kpi_absolute_change"})
+    progress = post("039","progress-state",{
+        "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"}})
+    trigger = post("040","next-decision-trigger",{
+        "session_id":session_id,"progress_record_id":progress["record_id"],
+        "trigger_type":"RETEST_COMPLETE","trigger_reason":"Coach reviewed progress",
+        "required_evidence":[comparison["record_id"]]})
+    assert trigger["record_id"]
 
     own_read = client.get(
         f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
