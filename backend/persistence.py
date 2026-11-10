@@ -1782,7 +1782,6 @@ def upsert_training_dosage(dosage: Dict[str, Any]) -> None:
 def get_training_dosage(dosage_id: str) -> Optional[Dict[str, Any]]:
     if not is_postgres_enabled():
         return None
-    _ensure_training_dosages_table()
     with connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
