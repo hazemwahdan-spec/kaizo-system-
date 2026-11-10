@@ -1728,8 +1728,8 @@ class CoachDrillRequest(BaseModel):
     age_suitability: str
     skill_level: str
     execution_pattern: str
-    coach_cues: List[str] = []
-    common_errors: List[str] = []
+    coach_cues: List[str] | None = None
+    common_errors: List[str] | None = None
     correction: str = ""
     dosage: str = ""
     intensity: str = ""
@@ -1923,7 +1923,7 @@ def create_coach_drill(
         "technical_skill": req.technical_skill, "problem_target": req.problem_target,
         "decision_target": req.decision_target, "age_suitability": req.age_suitability,
         "skill_level": req.skill_level, "execution_pattern": req.execution_pattern,
-        "coach_cues": req.coach_cues, "common_errors": req.common_errors,
+        "coach_cues": req.coach_cues or [], "common_errors": req.common_errors or [],
         "correction": req.correction, "dosage": req.dosage, "intensity": req.intensity,
         "rest": req.rest, "partner_requirement": req.partner_requirement,
         "equipment": req.equipment, "safety_constraints": req.safety_constraints,
