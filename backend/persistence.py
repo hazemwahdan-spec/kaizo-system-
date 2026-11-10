@@ -58,6 +58,23 @@ CREATE TABLE IF NOT EXISTS kaizo_kpi_definitions (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_coach_kpi_definitions (
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    kpi_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    target DOUBLE PRECISION,
+    direction TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, coach_actor_id, kpi_id)
+);
+CREATE INDEX IF NOT EXISTS idx_coach_kpi_scope
+    ON kaizo_coach_kpi_definitions (tenant_id, coach_actor_id, kpi_id);
+
 CREATE TABLE IF NOT EXISTS kaizo_kpi_captures (
     capture_id TEXT PRIMARY KEY,
     athlete_id TEXT NOT NULL,
