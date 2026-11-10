@@ -85,6 +85,8 @@ jobs:
               "/api/v1/product/coach/athletes/{athlete_id}/assessments/{assessment_id}/evidence",
               "/api/v1/product/coach/athletes/{athlete_id}/state-snapshots",
               "/api/v1/product/coach/athletes/{athlete_id}/state-snapshots/{snapshot_id}",
+              "/api/v1/product/coach/athletes/{athlete_id}/problem-statements",
+              "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}",
           }
           missing = sorted(required - paths)
           if missing:
