@@ -1,4 +1,4 @@
-name: Coach FEAT-011-015 Protected Workflow
+name: Coach FEAT-011-020 Protected Workflow
 
 on:
   pull_request:
