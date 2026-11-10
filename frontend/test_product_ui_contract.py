@@ -223,3 +223,29 @@ def test_coach_decision_workflow_ui_uses_protected_candidate_review_and_decision
     assert "No training execution was authorized." in APP
     assert "X-KAIZO-Actor" not in APP
     assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_training_plan_session_and_dosage_ui_uses_protected_draft_routes():
+    for function in (
+        "loadCoachTrainingWorkflow",
+        "createCoachTrainingPlan",
+        "createCoachTrainingSession",
+        "createCoachTrainingDosage",
+        "selectCoachTrainingPlan",
+        "selectCoachTrainingSession",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    for route in (
+        "/training-plans",
+        "/training-sessions/",
+        "/dosage",
+    ):
+        assert route in APP
+    assert "currentCoachDecisionId" in APP
+    assert "currentCoachPlanId" in APP
+    assert "currentCoachSessionId" in APP
+    assert "No training execution was authorized." in APP
+    assert "No execution was triggered." in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
