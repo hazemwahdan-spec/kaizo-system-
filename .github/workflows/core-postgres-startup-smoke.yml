@@ -71,13 +71,47 @@ jobs:
           fi
           cat /tmp/kaizo-health.json
           grep -Eq '"status"[[:space:]]*:[[:space:]]*"Online"' /tmp/kaizo-health.json
+          curl --fail --silent http://127.0.0.1:8080/api/v1/ready -o /tmp/kaizo-ready.json
+          cat /tmp/kaizo-ready.json
+          grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"' /tmp/kaizo-ready.json
 
       - name: Verify database remains queryable after app startup
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1 AS db_ready_after_startup;"
+
+      - name: Verify Core liveness survives unavailable database
+        run: |
+          kill "$(cat /tmp/kaizo-core.pid)" 2>/dev/null || true
+          nohup env DATABASE_URL=postgresql://kaizo:invalid@127.0.0.1:1/unavailable \
+            python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8081 \
+            > /tmp/kaizo-core-no-db.log 2>&1 &
+          echo $! > /tmp/kaizo-core-no-db.pid
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8081/api/v1/health -o /tmp/kaizo-liveness.json; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$(cat /tmp/kaizo-core-no-db.pid)" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/kaizo-core-no-db.log
+            exit 1
+          fi
+          grep -Eq '"status"[[:space:]]*:[[:space:]]*"Online"' /tmp/kaizo-liveness.json
+          status=$(curl --silent --output /tmp/kaizo-not-ready.json --write-out '%{http_code}' \
+            http://127.0.0.1:8081/api/v1/ready)
+          test "$status" = "503"
+          grep -Eq '"status"[[:space:]]*:[[:space:]]*"not_ready"' /tmp/kaizo-not-ready.json
 
       - name: Stop Core Engine
         if: always()
         run: |
           if [ -f /tmp/kaizo-core.pid ]; then
             kill "$(cat /tmp/kaizo-core.pid)" 2>/dev/null || true
+          fi
+          if [ -f /tmp/kaizo-core-no-db.pid ]; then
+            kill "$(cat /tmp/kaizo-core-no-db.pid)" 2>/dev/null || true
           fi
