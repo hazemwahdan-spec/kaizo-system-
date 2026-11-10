@@ -162,7 +162,7 @@ def _create_owned_scope(label: str):
     }
 
 
-def _complete_workflow(ids, athlete_id, headers):
+def _complete_workflow(ids, athlete_id, headers, *, retest_values=None, expected_retest_status=201):
     decision = ids["decision_id"]
     session = ids["session_id"]
     drill = ids["drill_id"]
@@ -212,10 +212,12 @@ def _complete_workflow(ids, athlete_id, headers):
         json={"athlete_id": athlete_id, "session_id": session,
               "response_record_id": results["036"].json()["record_id"],
               "baseline_reference": ids["assessment_id"],
-              "retest_values": {"entry_success": 6}, "evidence_refs": [evidence]},
+              "retest_values": retest_values or {"entry_success": 6}, "evidence_refs": [evidence]},
         headers=headers,
     )
-    assert results["037"].status_code == 201, results["037"].text
+    assert results["037"].status_code == expected_retest_status, results["037"].text
+    if expected_retest_status != 201:
+        return results["037"]
 
     results["038"] = client.post(
         "/api/v1/training-workflow/feat-038/before-after",
@@ -409,6 +411,36 @@ def test_cross_scope_decision_and_session_references_are_rejected():
     )
     assert foreign_retest.status_code == 404
 
+
+
+
+def test_retest_rejects_kpi_metric_drift_from_response_or_baseline():
+    assert persistence.is_postgres_enabled()
+    persistence.initialize()
+    tenant, coach, athlete_id, headers = _create_owned_scope("FEAT-037 KPI continuity")
+    ids = _seed_lineage(tenant, coach, athlete_id)
+
+    rejected = _complete_workflow(
+        ids, athlete_id, headers,
+        retest_values={"grip_strength": 6},
+        expected_retest_status=409,
+    )
+    assert "retest metrics" in rejected.json()["detail"]
+
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM kaizo_training_workflow_records "
+                "WHERE athlete_id=%s AND tenant_id=%s AND coach_actor_id=%s AND feature_id='FEAT-037'",
+                (athlete_id, tenant, coach),
+            )
+            assert cur.fetchone()[0] == 0
+            cur.execute(
+                "SELECT count(*) FROM kaizo_audit_logs "
+                "WHERE tenant_id=%s AND who=%s AND action='FEAT-037_RECORDED'",
+                (tenant, coach),
+            )
+            assert cur.fetchone()[0] == 0
 
 def test_audit_failure_rolls_back_workflow_record():
     assert persistence.is_postgres_enabled()
