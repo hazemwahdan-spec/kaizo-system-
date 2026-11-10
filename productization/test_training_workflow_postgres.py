@@ -262,7 +262,7 @@ def test_audit_failure_rolls_back_workflow_record():
         "decision_id": decision_id,
         "drill_id": drill_id,
         "rationale": "Audit failure must roll back record",
-        "evidence_refs": ["REF-ROLLBACK"],
+        "evidence_refs": ["REF-POSTGRES"],
     }
     trigger = "kaizo_test_reject_workflow_audit"
     function = "kaizo_test_reject_workflow_audit_fn"
