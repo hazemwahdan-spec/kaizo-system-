@@ -221,3 +221,56 @@ def test_postgres_audit_failure_rolls_back_progression_and_drill_writes(monkeypa
             else:
                 cur.execute("SELECT COUNT(*) FROM kaizo_coach_problem_drill_links WHERE problem_id=%s", (problem_id,))
             assert cur.fetchone()[0] == 0
+
+@pytest.mark.parametrize("operation", ["rule_approval", "rule_evaluation", "drill_approval"])
+def test_postgres_audit_failure_rolls_back_progression_state_transitions(monkeypatch, operation):
+    """Approval/evaluation writes must roll back when their paired audit insert fails."""
+    scope = _scope()
+    tenant, coach, athlete_id, assessment_id, problem_id, evidence, plan, session = scope
+
+    if operation in {"rule_approval", "rule_evaluation"}:
+        rule = _rule(scope)
+        if operation == "rule_evaluation":
+            coach_progression_workflow.approve_progression_rule(
+                tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+                rule_id=rule["rule_id"])
+
+    if operation == "drill_approval":
+        drill = _drill(scope)
+
+    def fail_audit(**kwargs):
+        raise RuntimeError("injected audit failure")
+
+    monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+
+    with pytest.raises(RuntimeError, match="injected audit failure"):
+        if operation == "rule_approval":
+            coach_progression_workflow.approve_progression_rule(
+                tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+                rule_id=rule["rule_id"])
+        elif operation == "rule_evaluation":
+            coach_progression_workflow.evaluate_progression_rule(
+                tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+                rule_id=rule["rule_id"], observed_value=9)
+        else:
+            coach_progression_workflow.approve_drill(
+                tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+                drill_id=drill["drill_id"])
+
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            if operation == "rule_approval":
+                cur.execute(
+                    "SELECT approval_status,approved_by,approved_at FROM kaizo_coach_progression_rules WHERE rule_id=%s",
+                    (rule["rule_id"],))
+                assert cur.fetchone() == ("DRAFT", None, None)
+            elif operation == "rule_evaluation":
+                cur.execute(
+                    "SELECT COUNT(*) FROM kaizo_coach_progression_evaluations WHERE rule_id=%s",
+                    (rule["rule_id"],))
+                assert cur.fetchone()[0] == 0
+            else:
+                cur.execute(
+                    "SELECT status,coach_review,approved_by,approved_at FROM kaizo_coach_drill_library WHERE drill_id=%s",
+                    (drill["drill_id"],))
+                assert cur.fetchone() == ("DRAFT", False, None, None)
