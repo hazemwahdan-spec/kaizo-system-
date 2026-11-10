@@ -79,9 +79,18 @@ def _session(scope, plan):
         ])
 
 
-def test_postgres_plan_session_and_dosage_persist_with_owned_lineage():
+def test_postgres_plan_session_and_dosage_persist_with_owned_lineage(monkeypatch):
     scope = _scope()
     tenant, coach, athlete_id, decision = scope
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.kaizo_training_dosages')")
+            assert cur.fetchone()[0] is not None
+
+    def unexpected_request_ddl():
+        raise AssertionError("training dosage schema DDL must run only during persistence.initialize()")
+
+    monkeypatch.setattr(persistence, "_ensure_training_dosages_table", unexpected_request_ddl)
     plan = _plan(scope)
     assert plan["status"] == "DRAFT"
     assert plan["created_by"] == coach
@@ -118,6 +127,8 @@ def test_postgres_plan_session_and_dosage_persist_with_owned_lineage():
     assert coach_training_workflow.get_training_dosage(
         tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
         session_id=session["session_id"], dosage_id=dosage["dosage_id"]) == dosage
+    assert persistence.get_training_dosage(dosage["dosage_id"])["dosage_id"] == dosage["dosage_id"]
+    assert persistence.list_training_dosages(session["session_id"])[0]["dosage_id"] == dosage["dosage_id"]
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
