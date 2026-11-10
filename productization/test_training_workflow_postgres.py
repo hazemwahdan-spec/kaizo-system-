@@ -178,7 +178,7 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "baseline":{"entry_success":4},"current":{"entry_success":6},
         "comparison_method":"same_kpi_absolute_change"})
     progress = post("039","progress-state",{
-        "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"}})
+        "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"},"evidence_refs":["REF-POSTGRES"]})
     trigger = post("040","next-decision-trigger",{
         "session_id":session_id,"progress_record_id":progress["record_id"],
         "trigger_type":"RETEST_COMPLETE","trigger_reason":"Coach reviewed progress",
