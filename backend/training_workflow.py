@@ -131,7 +131,6 @@ def _save(
             )
     else:
         # Explicitly development/test-only adapter. Production OIDC is refused
-        # above unless durable PostgreSQL is active. Production OIDC is refused
         # above unless durable PostgreSQL is active.
         _MEMORY_RECORDS.append(record)
         _MEMORY_AUDIT.append(audit)
