@@ -65,7 +65,7 @@ jobs:
             exit 1
           fi
           cat /tmp/kaizo-health.json
-          grep -q '"status":"Online"' /tmp/kaizo-health.json
+          grep -Eq '"status"[[:space:]]*:[[:space:]]*"Online"' /tmp/kaizo-health.json
 
       - name: Verify database remains queryable after app startup
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1 AS db_ready_after_startup;"
