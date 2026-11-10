@@ -249,3 +249,20 @@ def test_coach_training_plan_session_and_dosage_ui_uses_protected_draft_routes()
     assert "execution_authorized:true" not in APP.replace(" ", "").lower()
     assert "X-KAIZO-Actor" not in APP
     assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_problem_library_ui_uses_provenance_gated_scoped_selection():
+    for function in (
+        "loadCoachProblemLibrary",
+        "selectCoachProblemLibraryItem",
+        "createCoachProblemLibrarySelection",
+        "loadCoachProblemLibrarySelections",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    assert "/coach/problem-library" in APP
+    assert "/problem-library-selections" in APP
+    assert "currentCoachAssessmentId" in APP
+    assert "provenance-bearing APPROVED and VERIFIED" in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
