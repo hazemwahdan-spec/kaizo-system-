@@ -142,3 +142,39 @@ def test_coach_digital_twin_uses_state_cycle_router_not_product_prefix():
     assert "stateCycleCall(\"/state-cycle/feat-043/state-history/\"" in APP
     assert "stateCycleCall(\"/state-cycle/feat-042/digital-twin-state\"" in APP
     assert "productCall(\"/state-cycle/" not in APP
+
+
+def test_coach_assessment_and_kpi_ui_uses_protected_bearer_product_api():
+    for function in (
+        "loadCoachAssessmentData",
+        "createCoachAssessment",
+        "createCoachKpiDefinition",
+        "createCoachKpiCapture",
+        "attachCoachAssessmentEvidence",
+        "createCoachStateSnapshot",
+    ):
+        assert f"function {function}(" in APP
+    for route in (
+        "/coach/athletes/",
+        "/assessments",
+        "/coach/kpi-definitions",
+        "/kpi-captures",
+        "/state-snapshots",
+    ):
+        assert route in APP
+    assert 'productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/assessments"' in APP
+    assert 'productCall("/coach/kpi-definitions"' in APP
+    assert 'Authorization":"Bearer "+token' in APP
+    assert "recorded_by:" not in APP
+    assert "captured_by:" not in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+
+
+def test_coach_assessment_ui_is_scoped_to_selected_roster_athlete():
+    assert "athleteAssessmentSection" in APP
+    assert "selectedCoachAthleteId" in APP
+    assert "currentCoachAssessmentId" in APP
+    assert "assessment_id:currentCoachAssessmentId" in APP
+    assert "kpi_capture_ids:captureIds" in APP
+    assert "loadCoachAssessmentData(athleteId)" in APP
+    assert "selectCoachAssessment(this.value)" in APP
