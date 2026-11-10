@@ -414,6 +414,25 @@ def _baseline_measurements_memory(*, baseline_reference: str, athlete_id: str,
     raise HTTPException(status_code=404, detail="baseline reference is not linked to this athlete and decision assessment")
 
 
+def _validate_retest_metric_continuity(*, response_payload: Dict[str, Any],
+                                       retest_values: Dict[str, Any],
+                                       baseline_measurements: Dict[str, Any]) -> None:
+    """Require a retest to measure the same KPIs observed in the linked response and baseline."""
+    response_metrics = set((response_payload.get("kpi_values") or {}).keys())
+    retest_metrics = set((retest_values or {}).keys())
+    baseline_metrics = set((baseline_measurements or {}).keys())
+    if not response_metrics or retest_metrics != response_metrics:
+        raise HTTPException(
+            status_code=409,
+            detail="retest metrics must exactly match the linked training response KPIs",
+        )
+    if not response_metrics.issubset(baseline_metrics):
+        raise HTTPException(
+            status_code=409,
+            detail="retest metrics must exist in the linked baseline assessment",
+        )
+
+
 def _validate_lineage_sql(cur: Any, *, feature_id: str, athlete_id: str,
                           principal: Any, payload: Dict[str, Any],
                           decision_id: str | None, session_id: str | None) -> tuple[str, str | None]:
@@ -491,8 +510,15 @@ def _validate_lineage_sql(cur: Any, *, feature_id: str, athlete_id: str,
                 raise HTTPException(status_code=409, detail="response-to-retest lineage is inconsistent")
             _validate_drill_sql(cur, drill_id=prescription["payload"]["drill_id"],
                                 athlete_id=athlete_id, decision=decision, principal=principal)
-            _baseline_measurements_sql(cur, baseline_reference=payload["baseline_reference"],
-                                       athlete_id=athlete_id, decision=decision)
+            baseline = _baseline_measurements_sql(
+                cur, baseline_reference=payload["baseline_reference"],
+                athlete_id=athlete_id, decision=decision,
+            )
+            _validate_retest_metric_continuity(
+                response_payload=response["payload"],
+                retest_values=payload.get("retest_values", {}),
+                baseline_measurements=baseline,
+            )
             _validate_evidence_sql(cur, payload.get("evidence_refs", []),
                                    athlete_id=athlete_id, decision=decision)
         return decision["decision_id"], session["session_id"]
@@ -620,8 +646,15 @@ def _validate_lineage_memory(*, feature_id: str, athlete_id: str,
                 raise HTTPException(status_code=409, detail="response-to-retest lineage is inconsistent")
             _validate_drill_memory(drill_id=prescription["payload"]["drill_id"],
                                    athlete_id=athlete_id, decision=decision, principal=principal)
-            _baseline_measurements_memory(baseline_reference=payload["baseline_reference"],
-                                          athlete_id=athlete_id, decision=decision)
+            baseline = _baseline_measurements_memory(
+                baseline_reference=payload["baseline_reference"],
+                athlete_id=athlete_id, decision=decision,
+            )
+            _validate_retest_metric_continuity(
+                response_payload=response["payload"],
+                retest_values=payload.get("retest_values", {}),
+                baseline_measurements=baseline,
+            )
             _validate_evidence_memory(payload.get("evidence_refs", []),
                                       athlete_id=athlete_id, decision=decision)
         return decision["decision_id"], session["session_id"]
