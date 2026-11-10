@@ -181,6 +181,22 @@ def _evidence_memory(*, evidence_id: str, athlete_id: str,
         raise CoachDecisionConflict(f"E0 evidence cannot support a decision: {evidence_id}")
 
 
+def _revalidate_diagnosis_evidence_sql(cur: Any, diagnosis: dict[str, Any], athlete_id: str) -> None:
+    for evidence_id in diagnosis.get("evidence_ids") or []:
+        _evidence_sql(
+            cur, evidence_id=evidence_id, athlete_id=athlete_id,
+            problem_id=diagnosis["problem_id"], assessment_id=diagnosis["assessment_id"],
+        )
+
+
+def _revalidate_diagnosis_evidence_memory(diagnosis: dict[str, Any], athlete_id: str) -> None:
+    for evidence_id in diagnosis.get("evidence_ids") or []:
+        _evidence_memory(
+            evidence_id=evidence_id, athlete_id=athlete_id,
+            problem_id=diagnosis["problem_id"], assessment_id=diagnosis["assessment_id"],
+        )
+
+
 def generate_decision_candidates(
     *, tenant_id: str, coach_actor_id: str, athlete_id: str, diagnosis_id: str,
 ) -> dict[str, Any] | None:
@@ -299,6 +315,7 @@ def list_decision_candidates(*, tenant_id: str, coach_actor_id: str,
                               c.candidate_type,c.title,c.rationale,c.source_diagnosis,c.status,c.generated_by,c.created_at
                        FROM kaizo_decision_candidates c
                        JOIN kaizo_evidence_linked_diagnoses d ON d.diagnosis_id=c.diagnosis_id
+                       JOIN kaizo_problem_statements p ON p.problem_id=c.problem_id AND p.athlete_id=c.athlete_id
                        JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=c.athlete_id
                        WHERE c.diagnosis_id=%s AND c.athlete_id=%s
                          AND o.tenant_id=%s AND o.coach_actor_id=%s
@@ -443,6 +460,7 @@ def compare_decision_alternatives(
                 )
                 if diagnosis is None:
                     return None
+                _revalidate_diagnosis_evidence_sql(cur, diagnosis, athlete_id)
                 alternatives = []
                 for candidate_id in ids:
                     candidate = _candidate_sql(
@@ -477,6 +495,7 @@ def compare_decision_alternatives(
                                       athlete_id=athlete_id, diagnosis_id=diagnosis_id)
         if diagnosis is None:
             return None
+        _revalidate_diagnosis_evidence_memory(diagnosis, athlete_id)
         alternatives = []
         for candidate_id in ids:
             candidate = _memory_candidate(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
@@ -554,6 +573,13 @@ def review_decision_candidate(
                 )
                 if candidate is None:
                     return None
+                diagnosis = _diagnosis_sql(
+                    cur, tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+                    athlete_id=athlete_id, diagnosis_id=candidate["diagnosis_id"], lock=True,
+                )
+                if diagnosis is None:
+                    return None
+                _revalidate_diagnosis_evidence_sql(cur, diagnosis, athlete_id)
                 record = {
                     "review_id": str(uuid.uuid4()), "candidate_id": candidate_id,
                     "diagnosis_id": candidate["diagnosis_id"], "problem_id": candidate["problem_id"],
@@ -581,6 +607,13 @@ def review_decision_candidate(
                                       athlete_id=athlete_id, candidate_id=candidate_id)
         if candidate is None:
             return None
+        diagnosis = _memory_diagnosis(
+            tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+            athlete_id=athlete_id, diagnosis_id=candidate["diagnosis_id"],
+        )
+        if diagnosis is None:
+            return None
+        _revalidate_diagnosis_evidence_memory(diagnosis, athlete_id)
         record = {
             "review_id": str(uuid.uuid4()), "candidate_id": candidate_id,
             "diagnosis_id": candidate["diagnosis_id"], "problem_id": candidate["problem_id"],
@@ -649,6 +682,13 @@ def record_coach_decision(
                 )
                 if candidate is None:
                     return None
+                diagnosis = _diagnosis_sql(
+                    cur, tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+                    athlete_id=athlete_id, diagnosis_id=candidate["diagnosis_id"], lock=True,
+                )
+                if diagnosis is None:
+                    return None
+                _revalidate_diagnosis_evidence_sql(cur, diagnosis, athlete_id)
                 cur.execute(
                     """SELECT action FROM kaizo_coach_decision_reviews
                        WHERE candidate_id=%s ORDER BY reviewed_at DESC,review_id DESC LIMIT 1""",
@@ -686,6 +726,13 @@ def record_coach_decision(
                                       athlete_id=athlete_id, candidate_id=candidate_id)
         if candidate is None:
             return None
+        diagnosis = _memory_diagnosis(
+            tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+            athlete_id=athlete_id, diagnosis_id=candidate["diagnosis_id"],
+        )
+        if diagnosis is None:
+            return None
+        _revalidate_diagnosis_evidence_memory(diagnosis, athlete_id)
         reviews = sorted([x for x in _MEMORY_REVIEWS.values() if x["candidate_id"] == candidate_id],
                          key=lambda x: (x["reviewed_at"], x["review_id"]))
         if not reviews:
