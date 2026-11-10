@@ -598,7 +598,7 @@ def connection() -> Iterator[Any]:
     if active is not None:
         yield _NestedConnectionProxy(active)
         return
-    with psycopg.connect(_database_url()) as conn:
+    with psycopg.connect(_database_url(), connect_timeout=5) as conn:
         token = _ACTIVE_CONNECTION.set(conn)
         try:
             yield conn
@@ -615,6 +615,18 @@ def atomic_transaction() -> Iterator[Any]:
     """
     with connection() as conn:
         yield conn
+
+
+def check_connection() -> None:
+    """Verify database connectivity using a read-only transaction."""
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SET TRANSACTION READ ONLY")
+            cur.execute("SELECT 1")
+            if cur.fetchone()[0] != 1:
+                raise RuntimeError("PostgreSQL readiness probe returned an unexpected result")
 
 
 def initialize() -> None:
