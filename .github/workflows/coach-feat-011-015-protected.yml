@@ -1,0 +1,92 @@
+name: Coach FEAT-011-015 Protected Workflow
+
+on:
+  pull_request:
+    paths:
+      - "productization/coach_assessment_workflow.py"
+      - "productization/product_api.py"
+      - "productization/test_coach_assessment_workflow_api.py"
+      - "productization/test_coach_assessment_workflow_postgres.py"
+      - ".github/workflows/coach-feat-011-015-protected.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protected-assessment-kpi-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kaizo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kaizo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KAIZO_IDENTITY_MODE: oidc
+      KAIZO_PERSISTENCE_MODE: postgres
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kaizo_test
+      PYTHONPATH: backend:.
+    steps:
+      - name: Checkout reviewed branch
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install isolated test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "fastapi==0.115.6" "pydantic==2.10.4" "httpx==0.28.1" "pytest>=8,<9" "PyJWT[crypto]>=2.10,<3" "psycopg[binary]==3.2.3"
+      - name: Compile protected Coach workflow
+        run: python -m compileall -q productization backend
+      - name: Verify Bearer identity, ownership, and UI-facing API contract
+        run: python -m pytest -q productization/test_coach_assessment_workflow_api.py
+      - name: Verify PostgreSQL persistence, ownership, and atomic audit rollback
+        run: python -m pytest -q productization/test_coach_assessment_workflow_postgres.py
+      - name: Verify OpenAPI exposes protected FEAT-011..015 routes only
+        run: |
+          python - <<'PY'
+          from main import app
+          paths = set(app.openapi()["paths"])
+          required = {
+              "/api/v1/product/coach/athletes/{athlete_id}/assessments",
+              "/api/v1/product/coach/athletes/{athlete_id}/assessments/{assessment_id}",
+              "/api/v1/product/coach/kpi-definitions",
+              "/api/v1/product/coach/kpi-definitions/{kpi_id}",
+              "/api/v1/product/coach/athletes/{athlete_id}/kpi-captures",
+              "/api/v1/product/coach/athletes/{athlete_id}/kpi-captures/{capture_id}",
+              "/api/v1/product/coach/athletes/{athlete_id}/assessments/{assessment_id}/evidence",
+              "/api/v1/product/coach/athletes/{athlete_id}/state-snapshots",
+              "/api/v1/product/coach/athletes/{athlete_id}/state-snapshots/{snapshot_id}",
+          }
+          missing = sorted(required - paths)
+          if missing:
+              raise SystemExit(f"PROTECTED_COACH_OPENAPI_PATHS_MISSING: {missing}")
+          retired = (
+              "/api/v1/assessments",
+              "/api/v1/problem-statements",
+              "/api/v1/diagnoses",
+              "/api/v1/decision-candidates",
+              "/api/v1/training-plans",
+              "/api/v1/training-sessions",
+              "/api/v1/kpis",
+              "/api/v1/state-snapshots",
+          )
+          exposed = sorted(
+              path for path in paths
+              if any(path == prefix or path.startswith(prefix + "/") for prefix in retired)
+          )
+          if exposed:
+              raise SystemExit(f"UNSCOPED_LEGACY_OPENAPI_PATHS_EXPOSED: {exposed}")
+          print(f"PROTECTED_COACH_OPENAPI_PASS: {len(required)} routes present; legacy routes hidden")
+          PY
