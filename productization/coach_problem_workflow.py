@@ -16,6 +16,7 @@ from . import coach_roster, coach_assessment_workflow
 
 
 _MEMORY: dict[str, dict[str, Any]] = {}
+_MEMORY_AUDIT: list[dict[str, Any]] = []
 
 
 def _now() -> str:
@@ -101,6 +102,9 @@ def create_problem_statement(
         if assessment is None:
             raise LookupError("assessment not found in owned athlete scope")
         _MEMORY[record["problem_id"]] = record
+        _MEMORY_AUDIT.append({"tenant_id": tenant_id, "who": coach_actor_id,
+                              "action": "COACH_PROBLEM_STATEMENT_CREATED",
+                              "new_value": record, "timestamp": now})
     return record
 
 
