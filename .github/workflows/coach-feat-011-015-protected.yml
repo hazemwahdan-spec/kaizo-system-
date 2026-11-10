@@ -105,7 +105,7 @@ jobs:
         run: |
           python -m pytest -q productization/test_coach_training_workflow_api.py
           python -m pytest -q productization/test_coach_training_workflow_postgres.py
-      - name: Verify OpenAPI exposes protected FEAT-011..028 routes only
+      - name: Verify OpenAPI exposes protected FEAT-011..032 routes only
         run: |
           python - <<'PY'
           from main import app
