@@ -12,6 +12,7 @@ on:
       - fix/coach-digital-twin-state-cycle-ownership
       - fix/coach-retire-unscoped-feature-routes
       - fix/coach-retire-unscoped-main-api
+      - fix/coach-feat-033-040-lineage-20261110
   pull_request:
     branches:
       - main
@@ -22,6 +23,8 @@ on:
       - feat/coach-athlete-decision-history
       - feat/coach-protected-feat-029-032-20261110
       - fix/coach-feat-033-040-ownership-lock-20261110
+      - fix/coach-feat-033-040-lineage-20261110
+      - fix/coach-retest-kpi-lineage-20261110
       - feat/coach-home-dashboard
       - feat/coach-today-priority-queue
       - feat/coach-athlete-workflow-navigation
