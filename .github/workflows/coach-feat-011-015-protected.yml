@@ -1,4 +1,4 @@
-name: Coach FEAT-011-020 Protected Workflow
+name: Coach FEAT-011-025 Protected Workflow
 
 on:
   pull_request:
@@ -6,6 +6,9 @@ on:
       - "productization/coach_assessment_workflow.py"
       - "productization/coach_problem_workflow.py"
       - "productization/coach_diagnostic_workflow.py"
+      - "productization/coach_decision_workflow.py"
+      - "productization/test_coach_decision_workflow_api.py"
+      - "productization/test_coach_decision_workflow_postgres.py"
       - "productization/test_coach_diagnostic_workflow_api.py"
       - "productization/test_coach_diagnostic_workflow_postgres.py"
       - "productization/test_coach_problem_workflow_api.py"
@@ -77,7 +80,11 @@ jobs:
         run: |
           python -m pytest -q productization/test_coach_diagnostic_workflow_api.py
           python -m pytest -q productization/test_coach_diagnostic_workflow_postgres.py
-      - name: Verify OpenAPI exposes protected FEAT-011..020 routes only
+      - name: Verify protected FEAT-021..025 candidate, rationale, comparison, review and decision APIs
+        run: |
+          python -m pytest -q productization/test_coach_decision_workflow_api.py
+          python -m pytest -q productization/test_coach_decision_workflow_postgres.py
+      - name: Verify OpenAPI exposes protected FEAT-011..025 routes only
         run: |
           python - <<'PY'
           from main import app
@@ -96,6 +103,11 @@ jobs:
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}/cause-context",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}/diagnoses",
+              "/api/v1/product/coach/athletes/{athlete_id}/diagnoses/{diagnosis_id}/decision-candidates",
+              "/api/v1/product/coach/athletes/{athlete_id}/decision-candidates/{candidate_id}/rationales",
+              "/api/v1/product/coach/athletes/{athlete_id}/diagnoses/{diagnosis_id}/decision-comparisons",
+              "/api/v1/product/coach/athletes/{athlete_id}/decision-candidates/{candidate_id}/coach-review",
+              "/api/v1/product/coach/athletes/{athlete_id}/decision-candidates/{candidate_id}/decision-record",
           }
           missing = sorted(required - paths)
           if missing:
