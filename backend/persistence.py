@@ -438,6 +438,95 @@ CREATE TABLE IF NOT EXISTS kaizo_coach_decision_cycles (
 );
 CREATE INDEX IF NOT EXISTS idx_coach_decision_cycles_scope
     ON kaizo_coach_decision_cycles(tenant_id, coach_actor_id, athlete_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_progression_rules (
+    rule_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    operator TEXT NOT NULL,
+    threshold DOUBLE PRECISION NOT NULL,
+    action TEXT NOT NULL,
+    adjustment DOUBLE PRECISION NOT NULL,
+    rule_version TEXT NOT NULL,
+    approval_status TEXT NOT NULL,
+    evidence_ids JSONB NOT NULL,
+    created_by TEXT NOT NULL,
+    approved_by TEXT,
+    approved_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_progression_rules_scope
+    ON kaizo_coach_progression_rules(tenant_id, coach_actor_id, athlete_id, plan_id, created_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_progression_evaluations (
+    evaluation_id TEXT PRIMARY KEY,
+    rule_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    observed_value DOUBLE PRECISION NOT NULL,
+    matched BOOLEAN NOT NULL,
+    recommended_action TEXT NOT NULL,
+    adjustment DOUBLE PRECISION NOT NULL,
+    evaluated_by TEXT NOT NULL,
+    evaluated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_progression_evaluations_scope
+    ON kaizo_coach_progression_evaluations(tenant_id, coach_actor_id, athlete_id, rule_id, evaluated_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_session_constraints (
+    constraint_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    content TEXT NOT NULL,
+    priority INTEGER NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_session_constraints_scope
+    ON kaizo_coach_session_constraints(tenant_id, coach_actor_id, athlete_id, session_id, created_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_drill_library (
+    drill_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    source_assessment_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    status TEXT NOT NULL,
+    coach_review BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by TEXT NOT NULL,
+    approved_by TEXT,
+    approved_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_drill_library_scope
+    ON kaizo_coach_drill_library(tenant_id, coach_actor_id, status, created_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_problem_drill_links (
+    link_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    problem_id TEXT NOT NULL,
+    drill_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    evidence_ids JSONB NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_problem_drill_links_scope
+    ON kaizo_coach_problem_drill_links(tenant_id, coach_actor_id, athlete_id, problem_id, created_at);
 """
 
 
