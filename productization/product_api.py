@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow, coach_problem_workflow, coach_diagnostic_workflow, coach_decision_workflow
+from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow, coach_problem_workflow, coach_diagnostic_workflow, coach_decision_workflow, coach_training_workflow
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -1380,3 +1380,215 @@ def list_coach_decision_records(
     )
     return {"candidate_id": candidate_id, "decisions": records,
             "coach_final_authority": True, "execution_authorized": False}
+
+
+# FEAT-026–028: draft training plan, session structure and dosage proposals.
+class CoachTrainingPlanRequest(BaseModel):
+    decision_id: str
+    title: str
+    objective: str
+    constraints: Dict[str, Any] | None = None
+
+
+class CoachTrainingSessionRequest(BaseModel):
+    title: str
+    duration_minutes: int
+    blocks: List[Dict[str, Any]]
+
+
+class CoachTrainingDosageRequest(BaseModel):
+    block_name: str
+    sets: int
+    reps: int
+    rest_seconds: int = 0
+    dosage_notes: str | None = None
+
+
+def _coach_training_result(call, *args, **kwargs):
+    try:
+        result = call(*args, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="training resource not found in verified Coach athlete scope")
+    return result
+
+
+@router.post("/coach/athletes/{athlete_id}/training-plans", status_code=201)
+def create_coach_training_plan(
+    athlete_id: str,
+    req: CoachTrainingPlanRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = _coach_training_result(
+        coach_training_workflow.create_training_plan,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, decision_id=req.decision_id,
+        title=req.title, objective=req.objective, constraints=req.constraints,
+    )
+    return _coach_governed(result)
+
+
+@router.get("/coach/athletes/{athlete_id}/training-plans")
+def list_coach_training_plans(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_training_result(
+        coach_training_workflow.list_training_plans,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+    )
+    return {"athlete_id": athlete_id, "training_plans": records,
+            "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.get("/coach/athletes/{athlete_id}/training-plans/{plan_id}")
+def get_coach_training_plan(
+    athlete_id: str,
+    plan_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = _coach_training_result(
+        coach_training_workflow.get_training_plan,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, plan_id=plan_id,
+    )
+    return _coach_governed(result)
+
+
+@router.post("/coach/athletes/{athlete_id}/training-plans/{plan_id}/sessions", status_code=201)
+def create_coach_training_session(
+    athlete_id: str,
+    plan_id: str,
+    req: CoachTrainingSessionRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = _coach_training_result(
+        coach_training_workflow.create_training_session,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, plan_id=plan_id, title=req.title,
+        duration_minutes=req.duration_minutes, blocks=req.blocks,
+    )
+    return _coach_governed(result)
+
+
+@router.get("/coach/athletes/{athlete_id}/training-plans/{plan_id}/sessions")
+def list_coach_training_sessions(
+    athlete_id: str,
+    plan_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_training_result(
+        coach_training_workflow.list_training_sessions,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, plan_id=plan_id,
+    )
+    return {"plan_id": plan_id, "sessions": records,
+            "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.get("/coach/athletes/{athlete_id}/training-sessions/{session_id}")
+def get_coach_training_session(
+    athlete_id: str,
+    session_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = _coach_training_result(
+        coach_training_workflow.get_training_session,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, session_id=session_id,
+    )
+    return _coach_governed(result)
+
+
+@router.post("/coach/athletes/{athlete_id}/training-sessions/{session_id}/dosage", status_code=201)
+def create_coach_training_dosage(
+    athlete_id: str,
+    session_id: str,
+    req: CoachTrainingDosageRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = _coach_training_result(
+        coach_training_workflow.create_training_dosage,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, session_id=session_id,
+        block_name=req.block_name, sets=req.sets, reps=req.reps,
+        rest_seconds=req.rest_seconds, dosage_notes=req.dosage_notes,
+    )
+    return _coach_governed(result)
+
+
+@router.get("/coach/athletes/{athlete_id}/training-sessions/{session_id}/dosage")
+def list_coach_training_dosages(
+    athlete_id: str,
+    session_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_training_result(
+        coach_training_workflow.list_training_dosages,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, session_id=session_id,
+    )
+    return {"session_id": session_id, "dosages": records,
+            "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.get("/coach/athletes/{athlete_id}/training-sessions/{session_id}/dosage/{dosage_id}")
+def get_coach_training_dosage(
+    athlete_id: str,
+    session_id: str,
+    dosage_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    result = _coach_training_result(
+        coach_training_workflow.get_training_dosage,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, session_id=session_id, dosage_id=dosage_id,
+    )
+    return _coach_governed(result)
