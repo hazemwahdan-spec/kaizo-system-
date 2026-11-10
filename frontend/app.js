@@ -59,6 +59,9 @@ async function loadCoachDashboard(){
 let coachRosterRecords=[];
 let selectedCoachAthleteId=null;
 let currentCoachDecisionCycleId=null;
+let currentCoachAssessmentId=null;
+let currentCoachKpiId=null;
+let currentCoachKpiCaptureId=null;
 
 function renderCoachRosterRows(){
  const list=document.getElementById("coachRosterList");
@@ -84,7 +87,7 @@ function returnCoachRoster(){
  if(search)search.focus();
 }
 function coachAthleteSection(sectionId){
- const ids=["athleteProfileSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionExecutionSection","coachDigitalTwinSection","athleteDecisionWorkspaceSection","athleteActionHistorySection","athleteAuditReviewSection"];
+ const ids=["athleteProfileSection","athleteAssessmentSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionExecutionSection","coachDigitalTwinSection","athleteDecisionWorkspaceSection","athleteActionHistorySection","athleteAuditReviewSection"];
  if(!ids.includes(sectionId))return;
  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=id!==sectionId});
  document.querySelectorAll("[data-athlete-section]").forEach(button=>{
@@ -138,6 +141,7 @@ async function viewCoachAthlete(athleteId){
   panel.innerHTML='<div class="coach-athlete-navigation"><div><p class="muted">My roster / Athlete profile</p><h3>'+escapeHtml(athlete?.display_name||result.display_name||athleteId)+'</h3></div><button class="secondary" type="button" onclick="returnCoachRoster()">Back to my roster</button></div>'+
    '<nav class="coach-athlete-tabs" aria-label="Athlete workflow sections">'+
    '<button type="button" data-athlete-section="athleteProfileSection" aria-pressed="true" onclick="coachAthleteSection(\'athleteProfileSection\')">Profile</button>'+
+   '<button type="button" data-athlete-section="athleteAssessmentSection" aria-pressed="false" onclick="coachAthleteSection(&quot;athleteAssessmentSection&quot;)">Assessment & KPIs</button>'+
    '<button type="button" data-athlete-section="athleteLifecycleSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteLifecycleSection\')">Lifecycle</button>'+
    '<button type="button" data-athlete-section="athleteStatusHistorySection" aria-pressed="false" onclick="coachAthleteSection(\'athleteStatusHistorySection\')">Status history</button>'+
    '<button type="button" data-athlete-section="athleteDecisionCyclesSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionCyclesSection\')">Decision history</button>'+
@@ -146,6 +150,7 @@ async function viewCoachAthlete(athleteId){
    '<button type="button" data-athlete-section="athleteActionHistorySection" aria-pressed="false" onclick="coachAthleteSection(&quot;athleteActionHistorySection&quot;)">Action history</button>'+
    '<button type="button" data-athlete-section="athleteAuditReviewSection" aria-pressed="false" onclick="coachAthleteSection(&quot;athleteAuditReviewSection&quot;)">Audit review</button></nav>'+
    '<section id="athleteProfileSection"><h4>Verified athlete profile</h4><pre class="output">'+escapeHtml(pretty(result))+'</pre></section>'+
+   '<section id="athleteAssessmentSection" hidden><h4>Assessment, KPI, evidence & state baseline (FEAT-011–015)</h4><p class="muted">All operations use the selected athlete and the protected Coach Product API. The server verifies Bearer identity, tenant, athlete ownership, dependency lineage, and audit. No execution is authorized.</p><div id="coachAssessmentNotice" class="notice">Loading owned assessments…</div><div class="coach-roster-form"><label for="coachAssessmentSelect">Owned assessment</label><select id="coachAssessmentSelect" onchange="selectCoachAssessment(this.value)"><option value="">Select an assessment</option></select><div id="coachAssessmentList"></div></div><form id="coachAssessmentForm" class="coach-roster-form" onsubmit="createCoachAssessment(event)"><h5>Record assessment measurements</h5><label for="coachAssessmentTemplateId">Assessment template</label><input id="coachAssessmentTemplateId" maxlength="120" required placeholder="e.g. U15-GRIP-BASELINE"><label for="coachAssessmentMeasurements">Measurements (JSON object)</label><textarea id="coachAssessmentMeasurements" rows="4" required>{\"grip_strength_kg\":18.5,\"entry_quality\":7}</textarea><button type="submit">Save assessment</button></form><form id="coachKpiDefinitionForm" class="coach-roster-form" onsubmit="createCoachKpiDefinition(event)"><h5>Define Coach-scoped KPI</h5><label for="coachKpiDefinitionId">KPI ID</label><input id="coachKpiDefinitionId" maxlength="120" required placeholder="e.g. GRIP-STRENGTH"><label for="coachKpiDefinitionName">Name</label><input id="coachKpiDefinitionName" maxlength="120" required placeholder="Grip strength"><label for="coachKpiMetricName">Metric name</label><input id="coachKpiMetricName" maxlength="120" required placeholder="grip_strength"><label for="coachKpiUnit">Unit</label><input id="coachKpiUnit" maxlength="40" required placeholder="kg"><label for="coachKpiTarget">Target (optional)</label><input id="coachKpiTarget" type="number" step="any" placeholder="25"><label for="coachKpiDirection">Direction</label><select id="coachKpiDirection"><option value="higher_is_better">Higher is better</option><option value="lower_is_better">Lower is better</option><option value="target_range">Target range</option></select><button type="submit">Save KPI definition</button></form><form id="coachKpiCaptureForm" class="coach-roster-form" onsubmit="createCoachKpiCapture(event)"><h5>Capture KPI for selected assessment</h5><label for="coachKpiCaptureId">Coach-scoped KPI ID</label><input id="coachKpiCaptureId" maxlength="120" required placeholder="Create or enter your KPI ID"><label for="coachKpiCaptureValue">Observed value</label><input id="coachKpiCaptureValue" type="number" step="any" required><button type="submit">Save KPI capture</button></form><form id="coachEvidenceForm" class="coach-roster-form" onsubmit="attachCoachAssessmentEvidence(event)"><h5>Attach existing evidence</h5><label for="coachAssessmentEvidenceId">Persisted evidence ID</label><input id="coachAssessmentEvidenceId" maxlength="160" required placeholder="Existing assessment evidence reference"><button type="submit">Attach evidence to selected assessment</button></form><form id="coachStateSnapshotForm" class="coach-roster-form" onsubmit="createCoachStateSnapshot(event)"><h5>Create baseline / current-state snapshot</h5><label for="coachSnapshotType">Snapshot type</label><select id="coachSnapshotType"><option value="baseline">Baseline</option><option value="current_state">Current state</option></select><label for="coachKpiCaptureIds">KPI capture IDs (comma-separated)</label><input id="coachKpiCaptureIds" maxlength="1000" required placeholder="Capture IDs from the KPI capture response"><button type="submit">Save state snapshot</button></form><pre id="coachAssessmentOutput" class="output" aria-live="polite"></pre></section>'+
    '<section id="athleteLifecycleSection" hidden><h4>Athlete lifecycle</h4><p>Current status: <strong>'+escapeHtml(result.status||"Unknown")+'</strong></p>'+
    (next.length?'<label for="athleteNextStatus">Change status</label><select id="athleteNextStatus">'+next.map(s=>'<option value="'+s+'">'+s+'</option>').join("")+'</select><label for="athleteStatusReason">Reason (required)</label><input id="athleteStatusReason" maxlength="500" required placeholder="Record why this status changes"><button type="button" onclick="changeCoachAthleteStatus(\''+escapeHtml(athleteId)+'\')">Save lifecycle change</button>':'<p class="muted">Archived is terminal. No further status transition is permitted.</p>')+'</section>'+
    '<section id="athleteStatusHistorySection" hidden><h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div></section>'+
@@ -159,6 +164,7 @@ async function viewCoachAthlete(athleteId){
   loadCoachAthleteDecisionCycles(athleteId);
   loadCoachDigitalTwinState(athleteId);
   loadCoachDecisionWorkspace(athleteId);
+  loadCoachAssessmentData(athleteId);
   loadCoachActionHistory(athleteId);
  }catch(e){
   if(selectedCoachAthleteId!==String(athleteId))return;
@@ -303,6 +309,133 @@ async function loadCoachDecisionWorkspace(athleteId){
   notice.textContent="Decision workspace unavailable: "+String(e&&e.message?e.message:e);
   content.textContent="No workspace data is displayed when authentication or authorization fails.";
  }
+}
+
+
+async function loadCoachAssessmentData(athleteId, preferredAssessmentId){
+ const notice=document.getElementById("coachAssessmentNotice");
+ const select=document.getElementById("coachAssessmentSelect");
+ const list=document.getElementById("coachAssessmentList");
+ if(!notice||!select||!list)return;
+ notice.textContent="Loading persisted assessments in verified Coach scope…";
+ list.textContent="";
+ try{
+  const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/assessments");
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  const rows=Array.isArray(data.assessments)?data.assessments:[];
+  const selected=preferredAssessmentId||currentCoachAssessmentId;
+  select.innerHTML='<option value="">Select an assessment</option>'+rows.map(a=>'<option value="'+escapeHtml(a.assessment_id)+'">'+escapeHtml(a.template_id)+' · '+escapeHtml(a.assessed_at||a.created_at||"")+'</option>').join("");
+  if(selected&&rows.some(a=>String(a.assessment_id)===String(selected))){
+   select.value=selected;currentCoachAssessmentId=String(selected);
+  }else{select.value="";currentCoachAssessmentId=null}
+  list.innerHTML=rows.length?rows.map(a=>'<p class="muted"><strong>'+escapeHtml(a.template_id)+'</strong> · '+escapeHtml(a.assessment_id)+' · '+escapeHtml(a.assessed_at||"")+'</p>').join(""):'<p class="muted">No assessments have been recorded for this owned athlete yet.</p>';
+  notice.textContent=rows.length+ " owned assessment(s) loaded. Select one before attaching evidence or creating a snapshot.";
+ }catch(e){
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  notice.textContent="Assessment data unavailable: "+String(e&&e.message?e.message:e);
+  select.innerHTML='<option value="">Assessment data unavailable</option>';
+  list.textContent="No assessment data is displayed when authentication or authorization fails.";
+ }
+}
+function selectCoachAssessment(assessmentId){
+ currentCoachAssessmentId=assessmentId||null;
+ const notice=document.getElementById("coachAssessmentNotice");
+ if(notice)notice.textContent=currentCoachAssessmentId?"Selected assessment "+currentCoachAssessmentId+". Server-side ownership is rechecked on every operation.":"Select an assessment before attaching evidence or creating a snapshot.";
+}
+async function createCoachAssessment(event){
+ event.preventDefault();
+ const athleteId=selectedCoachAthleteId,notice=document.getElementById("coachAssessmentNotice"),output=document.getElementById("coachAssessmentOutput");
+ if(!athleteId){if(notice)notice.textContent="Select an athlete from your verified roster first.";return}
+ let measurements;
+ try{measurements=JSON.parse(document.getElementById("coachAssessmentMeasurements").value)}catch(_){notice.textContent="Measurements must be valid JSON.";return}
+ if(!measurements||Array.isArray(measurements)||typeof measurements!=="object"||!Object.keys(measurements).length){notice.textContent="Measurements must be a non-empty JSON object.";return}
+ const templateId=document.getElementById("coachAssessmentTemplateId").value.trim();
+ if(!templateId){notice.textContent="Assessment template is required.";return}
+ notice.textContent="Saving measurements through the verified Coach API…";output.textContent="";
+ try{
+  const created=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/assessments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({template_id:templateId,measurements})});
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  currentCoachAssessmentId=created.assessment_id;
+  const readback=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/assessments/"+encodeURIComponent(created.assessment_id));
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  output.textContent=pretty(readback);
+  notice.textContent="Assessment saved and read back from the protected API. Actor and audit were derived server-side.";
+  await loadCoachAssessmentData(athleteId,created.assessment_id);
+  await loadCoachDecisionWorkspace(athleteId);
+ }catch(e){notice.textContent="Assessment was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function createCoachKpiDefinition(event){
+ event.preventDefault();
+ const notice=document.getElementById("coachAssessmentNotice"),output=document.getElementById("coachAssessmentOutput");
+ if(!selectedCoachAthleteId){notice.textContent="Select an athlete from your verified roster first.";return}
+ const kpiId=document.getElementById("coachKpiDefinitionId").value.trim();
+ const name=document.getElementById("coachKpiDefinitionName").value.trim();
+ const metricName=document.getElementById("coachKpiMetricName").value.trim();
+ const unit=document.getElementById("coachKpiUnit").value.trim();
+ const targetText=document.getElementById("coachKpiTarget").value.trim();
+ const target=targetText?Number(targetText):null;
+ if(!kpiId||!name||!metricName||!unit||(targetText&&!Number.isFinite(target))){notice.textContent="Complete KPI ID, name, metric, unit, and a valid optional target.";return}
+ const direction=document.getElementById("coachKpiDirection").value;
+ notice.textContent="Saving KPI definition in this verified Coach scope…";output.textContent="";
+ try{
+  const created=await productCall("/coach/kpi-definitions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kpi_id:kpiId,name,metric_name:metricName,unit,target,direction})});
+  currentCoachKpiId=created.kpi_id;
+  const captureInput=document.getElementById("coachKpiCaptureId");if(captureInput)captureInput.value=currentCoachKpiId;
+  const readback=await productCall("/coach/kpi-definitions/"+encodeURIComponent(currentCoachKpiId));
+  output.textContent=pretty(readback);
+  notice.textContent="Coach-scoped KPI definition saved and read back. Other Coaches cannot read this definition.";
+ }catch(e){notice.textContent="KPI definition was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function createCoachKpiCapture(event){
+ event.preventDefault();
+ const athleteId=selectedCoachAthleteId,notice=document.getElementById("coachAssessmentNotice"),output=document.getElementById("coachAssessmentOutput");
+ if(!athleteId||!currentCoachAssessmentId){notice.textContent="Select an owned athlete and an assessment first.";return}
+ const kpiId=document.getElementById("coachKpiCaptureId").value.trim();
+ const value=Number(document.getElementById("coachKpiCaptureValue").value);
+ if(!kpiId||!Number.isFinite(value)){notice.textContent="Enter a Coach-scoped KPI ID and a finite numeric value.";return}
+ notice.textContent="Saving KPI capture against the selected owned athlete and assessment…";output.textContent="";
+ try{
+  const created=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/kpi-captures",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kpi_id:kpiId,value,assessment_id:currentCoachAssessmentId})});
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  currentCoachKpiCaptureId=created.capture_id;
+  const ids=document.getElementById("coachKpiCaptureIds");if(ids)ids.value=currentCoachKpiCaptureId;
+  const readback=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/kpi-captures/"+encodeURIComponent(currentCoachKpiCaptureId));
+  output.textContent=pretty(readback);
+  notice.textContent="KPI capture saved and read back under the current Coach ownership.";
+ }catch(e){notice.textContent="KPI capture was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function attachCoachAssessmentEvidence(event){
+ event.preventDefault();
+ const athleteId=selectedCoachAthleteId,notice=document.getElementById("coachAssessmentNotice"),output=document.getElementById("coachAssessmentOutput");
+ if(!athleteId||!currentCoachAssessmentId){notice.textContent="Select an owned athlete and assessment first.";return}
+ const evidenceId=document.getElementById("coachAssessmentEvidenceId").value.trim();
+ if(!evidenceId){notice.textContent="An existing persisted evidence ID is required.";return}
+ notice.textContent="Attaching evidence to the selected assessment…";output.textContent="";
+ try{
+  await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/assessments/"+encodeURIComponent(currentCoachAssessmentId)+"/evidence",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({evidence_id:evidenceId})});
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  const readback=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/assessments/"+encodeURIComponent(currentCoachAssessmentId)+"/evidence");
+  output.textContent=pretty(readback);
+  notice.textContent="Evidence attachment saved and read back. The server verified that the evidence belongs to this assessment.";
+  await loadCoachDecisionWorkspace(athleteId);
+ }catch(e){notice.textContent="Evidence was not attached: "+String(e&&e.message?e.message:e)}
+}
+async function createCoachStateSnapshot(event){
+ event.preventDefault();
+ const athleteId=selectedCoachAthleteId,notice=document.getElementById("coachAssessmentNotice"),output=document.getElementById("coachAssessmentOutput");
+ if(!athleteId||!currentCoachAssessmentId){notice.textContent="Select an owned athlete and assessment first.";return}
+ const snapshotType=document.getElementById("coachSnapshotType").value;
+ const captureIds=document.getElementById("coachKpiCaptureIds").value.split(",").map(x=>x.trim()).filter(Boolean);
+ if(!captureIds.length){notice.textContent="At least one persisted KPI capture ID is required.";return}
+ notice.textContent="Materializing the snapshot from the selected assessment and KPI captures…";output.textContent="";
+ try{
+  const created=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/state-snapshots",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({assessment_id:currentCoachAssessmentId,snapshot_type:snapshotType,kpi_capture_ids:captureIds})});
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  const readback=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/state-snapshots/"+encodeURIComponent(created.snapshot_id));
+  output.textContent=pretty(readback);
+  notice.textContent="State snapshot saved and read back with assessment/KPI lineage and tenant audit.";
+  await loadCoachDecisionWorkspace(athleteId);
+ }catch(e){notice.textContent="State snapshot was not saved: "+String(e&&e.message?e.message:e)}
 }
 
 async function loadCoachActionHistory(athleteId){
