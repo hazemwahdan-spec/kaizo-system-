@@ -21,6 +21,7 @@ on:
       - feat/coach-athlete-lifecycle
       - feat/coach-athlete-decision-history
       - feat/coach-protected-feat-029-032-20261110
+      - fix/coach-feat-033-040-ownership-lock-20261110
       - feat/coach-home-dashboard
       - feat/coach-today-priority-queue
       - feat/coach-athlete-workflow-navigation
