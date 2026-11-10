@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "productization/coach_assessment_workflow.py"
+      - "productization/coach_problem_workflow.py"
+      - "productization/test_coach_problem_workflow_api.py"
+      - "productization/test_coach_problem_workflow_postgres.py"
       - "productization/product_api.py"
       - "productization/test_coach_assessment_workflow_api.py"
       - "productization/test_coach_assessment_workflow_postgres.py"
@@ -63,6 +66,10 @@ jobs:
         run: python -m pytest -q productization/test_coach_assessment_workflow_api.py
       - name: Verify PostgreSQL persistence, ownership, and atomic audit rollback
         run: python -m pytest -q productization/test_coach_assessment_workflow_postgres.py
+      - name: Verify protected FEAT-016 problem statement API and PostgreSQL persistence
+        run: |
+          python -m pytest -q productization/test_coach_problem_workflow_api.py
+          python -m pytest -q productization/test_coach_problem_workflow_postgres.py
       - name: Verify OpenAPI exposes protected FEAT-011..015 routes only
         run: |
           python - <<'PY'
