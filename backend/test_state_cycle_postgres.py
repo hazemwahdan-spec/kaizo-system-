@@ -13,7 +13,7 @@ sys.path.insert(0,str(ROOT/"backend"))
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import persistence
-from productization import coach_roster
+from productization import coach_decision_cycles, coach_roster
 from state_cycle import router, reset_memory_state
 
 app=FastAPI()
@@ -93,6 +93,79 @@ def test_audit_failure_rolls_back_state_and_history():
             conn.commit()
 
 
+def test_decision_state_link_requires_same_owned_decision_cycle_and_case():
+    tenant, coach, athlete, headers, payload = _fixture()
+    created = client.post(
+        "/api/v1/state-cycle/feat-042/digital-twin-state",
+        json=payload, headers=headers,
+    )
+    assert created.status_code == 201, created.text
+
+    matching = coach_decision_cycles.create_cycle(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete,
+        case_id=payload["case_id"], decision_input={"intent":"retest"},
+        decision_output={"coach_choice":"review"},
+    )
+    assert matching is not None
+    valid = client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id":matching["decision_cycle_id"],"entity_id":athlete,
+              "state_version":1,"state_ref":f"{athlete}:v1"},
+        headers=headers,
+    )
+    assert valid.status_code == 201, valid.text
+
+    mismatch = coach_decision_cycles.create_cycle(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete,
+        case_id="OTHER-" + uuid4().hex, decision_input={"intent":"other"},
+        decision_output={"coach_choice":"other"},
+    )
+    assert mismatch is not None
+    mismatch_response = client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id":mismatch["decision_cycle_id"],"entity_id":athlete,
+              "state_version":1,"state_ref":f"{athlete}:v1"},
+        headers=headers,
+    )
+    assert mismatch_response.status_code == 409
+
+    other_coach_athlete = coach_roster.create_owned_athlete(
+        tenant_id=tenant, coach_actor_id=coach + "-OTHER",
+        display_name="Different Coach decision-link scope",
+    )["athlete_id"]
+    other_coach_cycle = coach_decision_cycles.create_cycle(
+        tenant_id=tenant, coach_actor_id=coach + "-OTHER", athlete_id=other_coach_athlete,
+        case_id=payload["case_id"], decision_input={"intent":"other"},
+        decision_output={"coach_choice":"other"},
+    )
+    assert other_coach_cycle is not None
+    other_coach_response = client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id":other_coach_cycle["decision_cycle_id"],"entity_id":athlete,
+              "state_version":1,"state_ref":f"{athlete}:v1"},
+        headers=headers,
+    )
+    assert other_coach_response.status_code == 404
+
+    other_tenant_athlete = coach_roster.create_owned_athlete(
+        tenant_id=tenant + "-OTHER", coach_actor_id=coach,
+        display_name="Different tenant decision-link scope",
+    )["athlete_id"]
+    other_tenant_cycle = coach_decision_cycles.create_cycle(
+        tenant_id=tenant + "-OTHER", coach_actor_id=coach, athlete_id=other_tenant_athlete,
+        case_id=payload["case_id"], decision_input={"intent":"other"},
+        decision_output={"coach_choice":"other"},
+    )
+    assert other_tenant_cycle is not None
+    other_tenant_response = client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id":other_tenant_cycle["decision_cycle_id"],"entity_id":athlete,
+              "state_version":1,"state_ref":f"{athlete}:v1"},
+        headers=headers,
+    )
+    assert other_tenant_response.status_code == 404
+
+
 def test_state_reads_recheck_current_ownership_inside_read_transaction(monkeypatch):
     tenant, coach, athlete, headers, payload = _fixture()
     created = client.post(
@@ -100,10 +173,16 @@ def test_state_reads_recheck_current_ownership_inside_read_transaction(monkeypat
         json=payload, headers=headers,
     )
     assert created.status_code == 201, created.text
+    cycle = coach_decision_cycles.create_cycle(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete,
+        case_id=payload["case_id"], decision_input={"intent":"retest"},
+        decision_output={"coach_choice":"review"},
+    )
+    assert cycle is not None
     linked = client.post(
         "/api/v1/state-cycle/feat-044/decision-state-link",
         json={
-            "decision_id": "DECISION-" + uuid4().hex,
+            "decision_id": cycle["decision_cycle_id"],
             "entity_id": athlete,
             "state_version": 1,
             "state_ref": f"{athlete}:v1",
