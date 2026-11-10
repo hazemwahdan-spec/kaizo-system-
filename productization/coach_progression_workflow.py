@@ -548,7 +548,8 @@ def list_session_constraints(*, tenant_id: str, coach_actor_id: str,
                                         athlete_id=athlete_id, session_id=session_id) is None:
                     return None
                 cur.execute(
-                    """SELECT constraint_id,session_id,kind,content,priority,created_by,created_at
+                    """SELECT constraint_id,tenant_id,coach_actor_id,athlete_id,plan_id,
+                              session_id,kind,content,priority,created_by,created_at
                        FROM kaizo_coach_session_constraints
                        WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s AND session_id=%s
                        ORDER BY created_at,constraint_id""",
@@ -556,10 +557,11 @@ def list_session_constraints(*, tenant_id: str, coach_actor_id: str,
                 )
                 rows = cur.fetchall()
         return [{
-            "item_id": x[0], "session_id": x[1], "kind": x[2],
-            "content": x[3], "priority": x[4], "created_by": x[5],
-            "created_at": x[6], "coach_final_authority": True,
-            "execution_authorized": False,
+            "item_id": x[0], "tenant_id": x[1], "coach_actor_id": x[2],
+            "athlete_id": x[3], "plan_id": x[4], "session_id": x[5],
+            "kind": x[6], "content": x[7], "priority": x[8],
+            "created_by": x[9], "created_at": x[10],
+            "coach_final_authority": True, "execution_authorized": False,
         } for x in rows]
     if _session_context_memory(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
                                athlete_id=athlete_id, session_id=session_id) is None:
