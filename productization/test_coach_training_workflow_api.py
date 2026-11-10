@@ -50,6 +50,7 @@ def _setup(monkeypatch):
     client = TestClient(main.app)
     headers = {key: {"Authorization": f"Bearer {key}"} for key in principals}
     athletes, decisions, evidence = {}, {}, {}
+    monkeypatch.setattr(persistence, "get_evidence", lambda evidence_id: evidence.get(evidence_id))
     for key in principals:
         tenant, actor = ("ACADEMY-B", "auth0|coach-c") if key == "coach-c" else ("ACADEMY-A", "auth0|" + key)
         athlete = coach_roster.create_owned_athlete(
@@ -85,7 +86,6 @@ def _setup(monkeypatch):
             tenant_id=tenant, coach_actor_id=actor, athlete_id=athlete["athlete_id"],
             candidate_id=candidates[0]["candidate_id"],
             outcome_intent="Improve successful entry under resistance.")
-    monkeypatch.setattr(persistence, "get_evidence", lambda evidence_id: evidence.get(evidence_id))
     return client, headers, athletes, decisions
 
 
