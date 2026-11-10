@@ -157,6 +157,7 @@ async function viewCoachAthlete(athleteId){
  }
  selectedCoachAthleteId=String(athleteId);
  currentCoachDecisionCycleId=null;
+ currentCoachDecisionId=null;currentCoachSessionId=null;currentCoachDrillId=null;coachTrainingLineageData=null;
  if(list)list.style.display="none";
  if(detail)detail.textContent="Loading athlete from your verified Coach scope…";
  if(panel)panel.innerHTML="";
@@ -196,6 +197,8 @@ async function viewCoachAthlete(athleteId){
   loadCoachDecisionWorkspace(athleteId);
   loadCoachAssessmentData(athleteId);
   loadCoachProblemAnalysis(athleteId);
+  loadCoachDrillLibrary();
+  loadCoachTrainingLineage();
   loadCoachActionHistory(athleteId);
  }catch(e){
   if(selectedCoachAthleteId!==String(athleteId))return;
@@ -745,6 +748,7 @@ async function loadCoachCandidateDetails(athleteId,candidateId){
  ]);
  const decisionRows=decisions.decisions||[];
  currentCoachDecisionId=decisionRows.length?decisionRows[decisionRows.length-1].decision_id:null;
+ await loadCoachTrainingLineage();
  return {rationales:rationales.rationales||[],reviews:reviews.reviews||[],decisions:decisionRows};
 }
 async function generateCoachDecisionCandidates(){
