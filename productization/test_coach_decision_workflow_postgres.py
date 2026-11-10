@@ -96,10 +96,18 @@ def test_postgres_rationale_comparison_review_and_decision_lineage():
     assert coach_decision_workflow.list_decision_rationales(
         tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
         candidate_id=first["candidate_id"]) == [rationale]
+    wrong = dict(evidence, evidence_id="EVID-" + uuid.uuid4().hex,
+                 subject_id="another-assessment")
+    persistence.upsert_evidence(wrong)
     with pytest.raises(coach_decision_workflow.CoachDecisionConflict):
         coach_decision_workflow.record_decision_rationale(
             tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
             candidate_id=first["candidate_id"], rationale="Cross resource",
+            evidence_ids=[wrong["evidence_id"]])
+    with pytest.raises(coach_decision_workflow.CoachDecisionNotFound):
+        coach_decision_workflow.record_decision_rationale(
+            tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+            candidate_id=first["candidate_id"], rationale="Missing evidence",
             evidence_ids=["missing"])
     comparison = coach_decision_workflow.compare_decision_alternatives(
         tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
