@@ -438,7 +438,6 @@ def create_training_dosage(
         raise ValueError("rest_seconds must be a non-negative integer")
     now = _now()
     if persistence.is_postgres_enabled():
-        persistence._ensure_training_dosages_table()
         with persistence.atomic_transaction() as conn:
             with conn.cursor() as cur:
                 session = _session_sql(
