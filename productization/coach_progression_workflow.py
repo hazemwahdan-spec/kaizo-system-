@@ -6,6 +6,7 @@ evidence is revalidated, and no rule or drill authorizes autonomous execution.
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -193,6 +194,8 @@ def create_progression_rule(
 ) -> dict[str, Any] | None:
     now = _now()
     rule_id = str(uuid.uuid4())
+    if not math.isfinite(float(threshold)) or not math.isfinite(float(adjustment)):
+        raise ValueError("threshold and adjustment must be finite numbers")
     values = {
         "rule_id": rule_id, "name": str(name or "").strip(),
         "metric": str(metric or "").strip(), "operator": str(operator or "").upper(),
@@ -359,6 +362,8 @@ def approve_progression_rule(*, tenant_id: str, coach_actor_id: str,
 def evaluate_progression_rule(*, tenant_id: str, coach_actor_id: str,
                               athlete_id: str, rule_id: str,
                               observed_value: float) -> dict[str, Any] | None:
+    if not math.isfinite(float(observed_value)):
+        raise ValueError("observed_value must be a finite number")
     now = _now()
     if persistence.is_postgres_enabled():
         with persistence.atomic_transaction() as conn:
