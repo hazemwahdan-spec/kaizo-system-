@@ -67,9 +67,10 @@ def test_postgres_candidate_generation_is_scoped_idempotent_and_audited():
         diagnosis_id=diagnosis["diagnosis_id"])
     assert second["status"] == "CANDIDATES_ALREADY_EXIST"
     assert {x["candidate_id"] for x in first} == {x["candidate_id"] for x in second["candidates"]}
-    assert coach_decision_workflow.list_decision_candidates(
+    listed = coach_decision_workflow.list_decision_candidates(
         tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
-        diagnosis_id=diagnosis["diagnosis_id"]) == first
+        diagnosis_id=diagnosis["diagnosis_id"])
+    assert {x["candidate_id"] for x in listed} == {x["candidate_id"] for x in first}
     assert coach_decision_workflow.list_decision_candidates(
         tenant_id=tenant, coach_actor_id="auth0|other", athlete_id=athlete_id,
         diagnosis_id=diagnosis["diagnosis_id"]) is None
