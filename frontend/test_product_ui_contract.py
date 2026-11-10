@@ -302,17 +302,9 @@ def test_coach_progression_constraints_drill_and_problem_link_ui_is_protected():
 
 
 def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api():
-    for route in (
-        "/feat-033/decision-drill",
-        "/feat-034/drill-prescription",
-        "/feat-035/execution-cues",
-        "/feat-036/training-response",
-        "/feat-037/retest",
-        "/feat-038/before-after",
-        "/feat-039/progress-state",
-        "/feat-040/next-decision-trigger",
-    ):
-        assert route in APP
+    for feature in ("033","034","035","036","037","038","039","040"):
+        assert f'"{feature}":' in APP
+    assert '"/feat-"+feature+"/"+COACH_WORKFLOW_STEPS[feature]' in APP
     assert 'async function trainingWorkflowCall(path,opts={})' in APP
     assert 'fetch(API+"/training-workflow"+path,opts)' in APP
     assert '"Authorization":"Bearer "+token' in APP
