@@ -274,6 +274,23 @@ CREATE TABLE IF NOT EXISTS kaizo_training_sessions (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_training_dosages (
+    dosage_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    block_name TEXT NOT NULL,
+    sets INTEGER NOT NULL,
+    reps INTEGER NOT NULL,
+    rest_seconds INTEGER NOT NULL DEFAULT 0,
+    dosage_notes TEXT,
+    status TEXT NOT NULL,
+    prescribed_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kaizo_training_dosages_session_scope
+    ON kaizo_training_dosages (session_id, athlete_id, created_at, dosage_id);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
@@ -1736,33 +1753,13 @@ def get_training_session(session_id: str) -> Optional[Dict[str, Any]]:
             "created_at":row[8]}
 
 def _ensure_training_dosages_table() -> None:
-    if not is_postgres_enabled():
-        return
-    with connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS kaizo_training_dosages (
-                    dosage_id TEXT PRIMARY KEY,
-                    session_id TEXT NOT NULL,
-                    plan_id TEXT NOT NULL,
-                    athlete_id TEXT NOT NULL,
-                    block_name TEXT NOT NULL,
-                    sets INTEGER NOT NULL,
-                    reps INTEGER NOT NULL,
-                    rest_seconds INTEGER NOT NULL DEFAULT 0,
-                    dosage_notes TEXT,
-                    status TEXT NOT NULL,
-                    prescribed_by TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-            """)
-        conn.commit()
+    """Compatibility shim; dosage schema is provisioned by initialize(), never by requests."""
+    return
 
 
 def upsert_training_dosage(dosage: Dict[str, Any]) -> None:
     if not is_postgres_enabled():
         return
-    _ensure_training_dosages_table()
     with connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
