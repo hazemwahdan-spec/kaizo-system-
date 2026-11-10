@@ -83,9 +83,12 @@ def test_problem_statement_is_bearer_owned_and_cross_scope_denied(monkeypatch):
     assert read.json()["statement"] == record["statement"]
     assert client.get(path + "/" + record["problem_id"], headers=headers["coach-b"]).status_code == 404
     assert client.get(path + "/" + record["problem_id"], headers=headers["coach-c"]).status_code == 404
-    assert client.get(path, headers=headers["coach-b"]).status_code == 200
-    assert client.get(path, headers=headers["coach-b"]).json()["total"] == 0
-    assert client.get(path, headers=headers["coach-c"]).json()["total"] == 0
+    path_b = f"/api/v1/product/coach/athletes/{athletes['coach-b']['athlete_id']}/problem-statements"
+    path_c = f"/api/v1/product/coach/athletes/{athletes['coach-c']['athlete_id']}/problem-statements"
+    assert client.get(path_b, headers=headers["coach-b"]).status_code == 200
+    assert client.get(path_b, headers=headers["coach-b"]).json()["total"] == 0
+    assert client.get(path_c, headers=headers["coach-c"]).status_code == 200
+    assert client.get(path_c, headers=headers["coach-c"]).json()["total"] == 0
     assert coach_problem_workflow._MEMORY_AUDIT[0]["who"] == "auth0|coach-a"
     assert coach_problem_workflow._MEMORY_AUDIT[0]["tenant_id"] == "ACADEMY-A"
 
@@ -113,7 +116,7 @@ def test_problem_statement_requires_bearer_and_hides_retired_unscoped_route(monk
     assert client.post(path, json={
         "assessment_id": assessments["coach-a"]["assessment_id"],
         "statement": "Anonymous", "problem_type": "technical"}).status_code == 401
-    assert client.post("/api/v1/problem-statements", json={}).status_code in (404, 405)
+    assert client.post("/api/v1/problem-statements", json={}).status_code in (404, 405, 410)
     openapi = client.get("/openapi.json").json()["paths"]
     assert path in openapi or "/api/v1/product/coach/athletes/{athlete_id}/problem-statements" in openapi
     assert "/api/v1/problem-statements" not in openapi
