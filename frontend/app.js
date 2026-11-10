@@ -62,6 +62,7 @@ let currentCoachDecisionCycleId=null;
 let currentCoachAssessmentId=null;
 let currentCoachKpiId=null;
 let currentCoachKpiCaptureId=null;
+let currentCoachProblemId=null;
 
 function renderCoachRosterRows(){
  const list=document.getElementById("coachRosterList");
@@ -87,7 +88,7 @@ function returnCoachRoster(){
  if(search)search.focus();
 }
 function coachAthleteSection(sectionId){
- const ids=["athleteProfileSection","athleteAssessmentSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionExecutionSection","coachDigitalTwinSection","athleteDecisionWorkspaceSection","athleteActionHistorySection","athleteAuditReviewSection"];
+ const ids=["athleteProfileSection","athleteAssessmentSection","athleteProblemAnalysisSection","athleteLifecycleSection","athleteStatusHistorySection","athleteDecisionCyclesSection","athleteDecisionExecutionSection","coachDigitalTwinSection","athleteDecisionWorkspaceSection","athleteActionHistorySection","athleteAuditReviewSection"];
  if(!ids.includes(sectionId))return;
  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=id!==sectionId});
  document.querySelectorAll("[data-athlete-section]").forEach(button=>{
@@ -142,6 +143,7 @@ async function viewCoachAthlete(athleteId){
    '<nav class="coach-athlete-tabs" aria-label="Athlete workflow sections">'+
    '<button type="button" data-athlete-section="athleteProfileSection" aria-pressed="true" onclick="coachAthleteSection(\'athleteProfileSection\')">Profile</button>'+
    '<button type="button" data-athlete-section="athleteAssessmentSection" aria-pressed="false" onclick="coachAthleteSection(&quot;athleteAssessmentSection&quot;)">Assessment & KPIs</button>'+
+   '<button type="button" data-athlete-section="athleteProblemAnalysisSection" aria-pressed="false" onclick="coachAthleteSection(&quot;athleteProblemAnalysisSection&quot;)">Problem analysis</button>'+
    '<button type="button" data-athlete-section="athleteLifecycleSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteLifecycleSection\')">Lifecycle</button>'+
    '<button type="button" data-athlete-section="athleteStatusHistorySection" aria-pressed="false" onclick="coachAthleteSection(\'athleteStatusHistorySection\')">Status history</button>'+
    '<button type="button" data-athlete-section="athleteDecisionCyclesSection" aria-pressed="false" onclick="coachAthleteSection(\'athleteDecisionCyclesSection\')">Decision history</button>'+
@@ -151,6 +153,7 @@ async function viewCoachAthlete(athleteId){
    '<button type="button" data-athlete-section="athleteAuditReviewSection" aria-pressed="false" onclick="coachAthleteSection(&quot;athleteAuditReviewSection&quot;)">Audit review</button></nav>'+
    '<section id="athleteProfileSection"><h4>Verified athlete profile</h4><pre class="output">'+escapeHtml(pretty(result))+'</pre></section>'+
    '<section id="athleteAssessmentSection" hidden><h4>Assessment, KPI, evidence & state baseline (FEAT-011–015)</h4><p class="muted">All operations use the selected athlete and the protected Coach Product API. The server verifies Bearer identity, tenant, athlete ownership, dependency lineage, and audit. No execution is authorized.</p><div id="coachAssessmentNotice" class="notice">Loading owned assessments…</div><div class="coach-roster-form"><label for="coachAssessmentSelect">Owned assessment</label><select id="coachAssessmentSelect" onchange="selectCoachAssessment(this.value)"><option value="">Select an assessment</option></select><div id="coachAssessmentList"></div></div><form id="coachAssessmentForm" class="coach-roster-form" onsubmit="createCoachAssessment(event)"><h5>Record assessment measurements</h5><label for="coachAssessmentTemplateId">Assessment template</label><input id="coachAssessmentTemplateId" maxlength="120" required placeholder="e.g. U15-GRIP-BASELINE"><label for="coachAssessmentMeasurements">Measurements (JSON object)</label><textarea id="coachAssessmentMeasurements" rows="4" required>{\"grip_strength_kg\":18.5,\"entry_quality\":7}</textarea><button type="submit">Save assessment</button></form><form id="coachKpiDefinitionForm" class="coach-roster-form" onsubmit="createCoachKpiDefinition(event)"><h5>Define Coach-scoped KPI</h5><label for="coachKpiDefinitionId">KPI ID</label><input id="coachKpiDefinitionId" maxlength="120" required placeholder="e.g. GRIP-STRENGTH"><label for="coachKpiDefinitionName">Name</label><input id="coachKpiDefinitionName" maxlength="120" required placeholder="Grip strength"><label for="coachKpiMetricName">Metric name</label><input id="coachKpiMetricName" maxlength="120" required placeholder="grip_strength"><label for="coachKpiUnit">Unit</label><input id="coachKpiUnit" maxlength="40" required placeholder="kg"><label for="coachKpiTarget">Target (optional)</label><input id="coachKpiTarget" type="number" step="any" placeholder="25"><label for="coachKpiDirection">Direction</label><select id="coachKpiDirection"><option value="higher_is_better">Higher is better</option><option value="lower_is_better">Lower is better</option><option value="target_range">Target range</option></select><button type="submit">Save KPI definition</button></form><form id="coachKpiCaptureForm" class="coach-roster-form" onsubmit="createCoachKpiCapture(event)"><h5>Capture KPI for selected assessment</h5><label for="coachKpiCaptureId">Coach-scoped KPI ID</label><input id="coachKpiCaptureId" maxlength="120" required placeholder="Create or enter your KPI ID"><label for="coachKpiCaptureValue">Observed value</label><input id="coachKpiCaptureValue" type="number" step="any" required><button type="submit">Save KPI capture</button></form><form id="coachEvidenceForm" class="coach-roster-form" onsubmit="attachCoachAssessmentEvidence(event)"><h5>Attach existing evidence</h5><label for="coachAssessmentEvidenceId">Persisted evidence ID</label><input id="coachAssessmentEvidenceId" maxlength="160" required placeholder="Existing assessment evidence reference"><button type="submit">Attach evidence to selected assessment</button></form><form id="coachStateSnapshotForm" class="coach-roster-form" onsubmit="createCoachStateSnapshot(event)"><h5>Create baseline / current-state snapshot</h5><label for="coachSnapshotType">Snapshot type</label><select id="coachSnapshotType"><option value="baseline">Baseline</option><option value="current_state">Current state</option></select><label for="coachKpiCaptureIds">KPI capture IDs (comma-separated)</label><input id="coachKpiCaptureIds" maxlength="1000" required placeholder="Capture IDs from the KPI capture response"><button type="submit">Save state snapshot</button></form><pre id="coachAssessmentOutput" class="output" aria-live="polite"></pre></section>'+
+   '<section id="athleteProblemAnalysisSection" hidden><h4>Problem analysis and diagnosis (FEAT-016–020)</h4><p class="muted">Create a problem statement from an owned assessment, record cause/context, and create an evidence-linked diagnosis. Only verified evidence linked to this athlete, problem, or assessment is accepted. The Coach remains the final authority; execution is not authorized.</p><div id="coachProblemNotice" class="notice">Loading owned problem records…</div><label for="coachProblemSelect">Owned problem statement</label><select id="coachProblemSelect" onchange="selectCoachProblem(this.value)"><option value="">Select a problem</option></select><form id="coachProblemStatementForm" class="coach-roster-form" onsubmit="createCoachProblemStatement(event)"><h5>Create structured problem statement</h5><label for="coachProblemStatement">Problem statement</label><textarea id="coachProblemStatement" rows="3" required maxlength="1200" placeholder="Describe the observable performance problem"></textarea><label for="coachProblemType">Problem type</label><input id="coachProblemType" required maxlength="120" placeholder="e.g. technical_execution"><label for="coachProblemImpact">Impact (optional)</label><input id="coachProblemImpact" maxlength="500" placeholder="Effect on performance"><button type="submit">Save problem statement</button></form><form id="coachCauseContextForm" class="coach-roster-form" onsubmit="createCoachCauseContext(event)"><h5>Cause and context framing (FEAT-018)</h5><label for="coachProblemCause">Cause</label><textarea id="coachProblemCause" rows="2" required maxlength="1200" placeholder="Describe the likely cause"></textarea><label for="coachProblemContext">Context (JSON object)</label><textarea id="coachProblemContext" rows="3">{}</textarea><label for="coachProblemFactors">Contributing factors (comma-separated)</label><input id="coachProblemFactors" maxlength="1000" placeholder="distance, timing, grip"><button type="submit">Save cause/context</button></form><form id="coachDiagnosisForm" class="coach-roster-form" onsubmit="createCoachDiagnosis(event)"><h5>Evidence-linked diagnosis (FEAT-019/020)</h5><label for="coachDiagnosisText">Diagnosis</label><textarea id="coachDiagnosisText" rows="2" required maxlength="1200" placeholder="Describe the evidence-supported diagnosis"></textarea><label for="coachDiagnosisEvidenceIds">Verified evidence IDs (comma-separated)</label><input id="coachDiagnosisEvidenceIds" required maxlength="1000" placeholder="EVID-001, EVID-002"><label for="coachDiagnosisConfidence">Confidence</label><select id="coachDiagnosisConfidence"><option value="">Not assessed</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option></select><label for="coachDiagnosisResolution">Resolution state</label><select id="coachDiagnosisResolution"><option value="UNRESOLVED">Unresolved</option><option value="RESOLVED">Resolved</option></select><button type="submit">Save diagnosis</button></form><pre id="coachProblemAnalysisOutput" class="output" aria-live="polite"></pre></section>'+
    '<section id="athleteLifecycleSection" hidden><h4>Athlete lifecycle</h4><p>Current status: <strong>'+escapeHtml(result.status||"Unknown")+'</strong></p>'+
    (next.length?'<label for="athleteNextStatus">Change status</label><select id="athleteNextStatus">'+next.map(s=>'<option value="'+s+'">'+s+'</option>').join("")+'</select><label for="athleteStatusReason">Reason (required)</label><input id="athleteStatusReason" maxlength="500" required placeholder="Record why this status changes"><button type="button" onclick="changeCoachAthleteStatus(\''+escapeHtml(athleteId)+'\')">Save lifecycle change</button>':'<p class="muted">Archived is terminal. No further status transition is permitted.</p>')+'</section>'+
    '<section id="athleteStatusHistorySection" hidden><h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div></section>'+
@@ -165,6 +168,7 @@ async function viewCoachAthlete(athleteId){
   loadCoachDigitalTwinState(athleteId);
   loadCoachDecisionWorkspace(athleteId);
   loadCoachAssessmentData(athleteId);
+  loadCoachProblemAnalysis(athleteId);
   loadCoachActionHistory(athleteId);
  }catch(e){
   if(selectedCoachAthleteId!==String(athleteId))return;
@@ -577,4 +581,86 @@ async function unassignCoachGroupAthlete(groupId,athleteId){
  const notice=document.getElementById("coachGroupsNotice");
  try{await productCall("/coach/groups/"+encodeURIComponent(groupId)+"/athletes/"+encodeURIComponent(athleteId),{method:"DELETE"});notice.textContent="Athlete removed from group. Audit event recorded.";await loadCoachGroups()}
  catch(e){notice.textContent="Removal denied or failed: "+String(e&&e.message?e.message:e)}
+}
+
+
+async function loadCoachProblemAnalysis(athleteId, preferredProblemId){
+ const notice=document.getElementById("coachProblemNotice"),select=document.getElementById("coachProblemSelect"),output=document.getElementById("coachProblemAnalysisOutput");
+ if(!notice||!select||!output)return;
+ notice.textContent="Loading problem statements in verified Coach scope…";output.textContent="";
+ try{
+  const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/problem-statements");
+  if(selectedCoachAthleteId!==String(athleteId))return;
+  const rows=Array.isArray(data.problem_statements)?data.problem_statements:[];
+  const wanted=preferredProblemId||currentCoachProblemId;
+  select.innerHTML='<option value="">Select a problem</option>'+rows.map(p=>'<option value="'+escapeHtml(p.problem_id)+'">'+escapeHtml(p.statement)+' · '+escapeHtml(p.problem_type)+'</option>').join("");
+  if(wanted&&rows.some(p=>String(p.problem_id)===String(wanted))){select.value=wanted;currentCoachProblemId=String(wanted);await loadCoachProblemDetails(athleteId,currentCoachProblemId)}
+  else{select.value="";currentCoachProblemId=null}
+  notice.textContent=rows.length+" owned problem statement(s) loaded. Select one to review its cause and diagnosis.";
+ }catch(e){notice.textContent="Problem analysis unavailable: "+String(e&&e.message?e.message:e);select.innerHTML='<option value="">Problem data unavailable</option>'}
+}
+function selectCoachProblem(problemId){
+ currentCoachProblemId=problemId||null;
+ if(currentCoachProblemId&&selectedCoachAthleteId)loadCoachProblemDetails(selectedCoachAthleteId,currentCoachProblemId);
+}
+async function loadCoachProblemDetails(athleteId,problemId){
+ const output=document.getElementById("coachProblemAnalysisOutput"),notice=document.getElementById("coachProblemNotice");
+ if(!output||!problemId)return;
+ output.textContent="Loading cause/context and diagnosis read-back…";
+ const root="/coach/athletes/"+encodeURIComponent(athleteId)+"/problem-statements/"+encodeURIComponent(problemId);
+ try{
+  const [cause,diagnoses]=await Promise.all([
+   productCall(root+"/cause-context"),productCall(root+"/diagnoses")
+  ]);
+  if(selectedCoachAthleteId!==String(athleteId)||currentCoachProblemId!==String(problemId))return;
+  output.textContent=pretty({cause_context:cause.framings||[],diagnoses:diagnoses.diagnoses||[]});
+  if(notice)notice.textContent="Scoped problem, cause/context, and diagnosis records loaded. Evidence references remain traceable.";
+ }catch(e){output.textContent="Problem detail read-back unavailable: "+String(e&&e.message?e.message:e)}
+}
+async function createCoachProblemStatement(event){
+ event.preventDefault();
+ const athleteId=selectedCoachAthleteId,notice=document.getElementById("coachProblemNotice"),output=document.getElementById("coachProblemAnalysisOutput");
+ if(!athleteId){notice.textContent="Select an athlete from your verified roster first.";return}
+ if(!currentCoachAssessmentId){notice.textContent="Select an owned assessment in the Assessment & KPIs section first.";return}
+ const statement=document.getElementById("coachProblemStatement").value.trim(),problemType=document.getElementById("coachProblemType").value.trim(),impact=document.getElementById("coachProblemImpact").value.trim();
+ if(!statement||!problemType){notice.textContent="Problem statement and problem type are required.";return}
+ notice.textContent="Saving structured problem statement through the protected Coach API…";output.textContent="";
+ try{
+  const record=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/problem-statements",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({assessment_id:currentCoachAssessmentId,statement,problem_type:problemType,impact:impact||null})});
+  document.getElementById("coachProblemStatementForm").reset();
+  currentCoachProblemId=record.problem_id;
+  await loadCoachProblemAnalysis(athleteId,record.problem_id);
+  notice.textContent="Problem statement saved and read back under the selected athlete and assessment.";
+ }catch(e){notice.textContent="Problem statement was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function createCoachCauseContext(event){
+ event.preventDefault();
+ const athleteId=selectedCoachAthleteId,problemId=currentCoachProblemId,notice=document.getElementById("coachProblemNotice"),output=document.getElementById("coachProblemAnalysisOutput");
+ if(!athleteId||!problemId){notice.textContent="Select an owned problem statement first.";return}
+ let context;try{context=JSON.parse(document.getElementById("coachProblemContext").value||"{}")}catch(_){notice.textContent="Context must be valid JSON.";return}
+ if(!context||Array.isArray(context)||typeof context!=="object"){notice.textContent="Context must be a JSON object.";return}
+ const cause=document.getElementById("coachProblemCause").value.trim(),factors=document.getElementById("coachProblemFactors").value.split(",").map(x=>x.trim()).filter(Boolean);
+ if(!cause){notice.textContent="Cause is required.";return}
+ notice.textContent="Saving cause/context with ownership and audit…";output.textContent="";
+ try{
+  const root="/coach/athletes/"+encodeURIComponent(athleteId)+"/problem-statements/"+encodeURIComponent(problemId);
+  await productCall(root+"/cause-context",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cause,context,contributing_factors:factors})});
+  document.getElementById("coachCauseContextForm").reset();
+  await loadCoachProblemDetails(athleteId,problemId);
+ }catch(e){notice.textContent="Cause/context was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function createCoachDiagnosis(event){
+ event.preventDefault();
+ const athleteId=selectedCoachAthleteId,problemId=currentCoachProblemId,notice=document.getElementById("coachProblemNotice"),output=document.getElementById("coachProblemAnalysisOutput");
+ if(!athleteId||!problemId){notice.textContent="Select an owned problem statement first.";return}
+ const diagnosis=document.getElementById("coachDiagnosisText").value.trim(),evidenceIds=document.getElementById("coachDiagnosisEvidenceIds").value.split(",").map(x=>x.trim()).filter(Boolean),confidence=document.getElementById("coachDiagnosisConfidence").value||null,resolutionState=document.getElementById("coachDiagnosisResolution").value;
+ if(!diagnosis||!evidenceIds.length){notice.textContent="Diagnosis and at least one evidence ID are required.";return}
+ notice.textContent="Verifying evidence and saving diagnosis…";output.textContent="";
+ try{
+  const root="/coach/athletes/"+encodeURIComponent(athleteId)+"/problem-statements/"+encodeURIComponent(problemId);
+  await productCall(root+"/diagnoses",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({diagnosis,evidence_ids:evidenceIds,confidence,resolution_state:resolutionState})});
+  document.getElementById("coachDiagnosisForm").reset();
+  await loadCoachProblemDetails(athleteId,problemId);
+  notice.textContent="Diagnosis saved. Only verified, non-E0 evidence linked to this athlete/problem/assessment is accepted.";
+ }catch(e){notice.textContent="Diagnosis was not saved: "+String(e&&e.message?e.message:e)}
 }
