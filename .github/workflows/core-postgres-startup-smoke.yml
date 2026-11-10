@@ -1,0 +1,78 @@
+name: Core PostgreSQL Startup Smoke
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/core-postgres-startup-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-startup-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kaizo
+          POSTGRES_PASSWORD: kaizo-ci-only
+          POSTGRES_DB: kaizo_startup_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kaizo -d kaizo_startup_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://kaizo:kaizo-ci-only@localhost:5432/kaizo_startup_test
+      KAIZO_PERSISTENCE_MODE: postgres
+      PYTHONPATH: backend
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Verify disposable PostgreSQL accepts read-only query
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1 AS db_ready;"
+
+      - name: Start Core Engine with PostgreSQL persistence
+        run: |
+          nohup python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8080 > /tmp/kaizo-core.log 2>&1 &
+          echo $! > /tmp/kaizo-core.pid
+
+      - name: Verify startup and health endpoint
+        run: |
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8080/api/v1/health -o /tmp/kaizo-health.json; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$(cat /tmp/kaizo-core.pid)" 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/kaizo-core.log
+            exit 1
+          fi
+          cat /tmp/kaizo-health.json
+          grep -q '"status":"Online"' /tmp/kaizo-health.json
+
+      - name: Verify database remains queryable after app startup
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1 AS db_ready_after_startup;"
+
+      - name: Stop Core Engine
+        if: always()
+        run: |
+          if [ -f /tmp/kaizo-core.pid ]; then
+            kill "$(cat /tmp/kaizo-core.pid)" 2>/dev/null || true
+          fi
