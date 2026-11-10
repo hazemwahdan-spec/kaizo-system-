@@ -101,6 +101,14 @@ def _memory_decision(*, tenant_id: str, coach_actor_id: str,
     )
     if candidate is None:
         return None
+    reviews = [
+        x for x in coach_decision_workflow._MEMORY_REVIEWS.values()
+        if x.get("candidate_id") == decision["candidate_id"]
+        and x.get("coach_id") == coach_actor_id
+        and x.get("action") == decision.get("coach_action")
+    ]
+    if not reviews:
+        return None
     return decision
 
 
@@ -263,6 +271,11 @@ def list_training_plans(*, tenant_id: str, coach_actor_id: str,
                               t.constraints,t.status,t.created_by,t.created_at
                        FROM kaizo_training_plans t
                        JOIN kaizo_decision_records d ON d.decision_id=t.decision_id AND d.athlete_id=t.athlete_id
+                       JOIN kaizo_coach_decision_reviews r
+                         ON r.candidate_id=d.candidate_id AND r.coach_id=d.coach_id AND r.action=d.coach_action
+                       JOIN kaizo_decision_candidates c ON c.candidate_id=d.candidate_id
+                       JOIN kaizo_evidence_linked_diagnoses g ON g.diagnosis_id=d.diagnosis_id
+                       JOIN kaizo_problem_statements p ON p.problem_id=d.problem_id AND p.athlete_id=d.athlete_id
                        JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=t.athlete_id
                        WHERE t.athlete_id=%s AND d.coach_id=%s AND d.status='RECORDED'
                          AND o.tenant_id=%s AND o.coach_actor_id=%s
