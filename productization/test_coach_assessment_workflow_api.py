@@ -27,7 +27,8 @@ def _setup(monkeypatch):
     }
 
     def resolve(authorization):
-        assert authorization and authorization.startswith("Bearer ")
+        if not authorization or not authorization.startswith("Bearer "):
+            raise product_api.IdentityNotConfiguredError("Bearer authentication is required")
         token = authorization.removeprefix("Bearer ")
         if token not in principals:
             raise product_api.IdentityNotConfiguredError("unknown test token")
