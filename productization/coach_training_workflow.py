@@ -514,3 +514,45 @@ def list_training_dosages(*, tenant_id: str, coach_actor_id: str,
         return None
     return sorted([x for x in _MEMORY_DOSAGES.values() if x["session_id"] == session_id],
                   key=lambda x: (x["created_at"], x["dosage_id"]))
+
+
+def get_training_dosage(*, tenant_id: str, coach_actor_id: str,
+                        athlete_id: str, session_id: str, dosage_id: str) -> dict[str, Any] | None:
+    if persistence.is_postgres_enabled():
+        persistence._ensure_training_dosages_table()
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                if _session_sql(cur, tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+                                athlete_id=athlete_id, session_id=session_id) is None:
+                    return None
+                cur.execute(
+                    """SELECT d.dosage_id,d.session_id,d.plan_id,d.athlete_id,d.block_name,
+                              d.sets,d.reps,d.rest_seconds,d.dosage_notes,d.status,
+                              d.prescribed_by,d.created_at
+                       FROM kaizo_training_dosages d
+                       JOIN kaizo_training_sessions s ON s.session_id=d.session_id
+                       JOIN kaizo_training_plans t ON t.plan_id=s.plan_id
+                       JOIN kaizo_decision_records r ON r.decision_id=t.decision_id
+                       JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=d.athlete_id
+                       WHERE d.dosage_id=%s AND d.session_id=%s AND d.athlete_id=%s
+                         AND r.coach_id=%s AND o.tenant_id=%s AND o.coach_actor_id=%s""",
+                    (dosage_id, session_id, athlete_id, coach_actor_id, tenant_id, coach_actor_id),
+                )
+                row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "dosage_id": row[0], "session_id": row[1], "plan_id": row[2],
+            "athlete_id": row[3], "block_name": row[4], "sets": row[5],
+            "reps": row[6], "rest_seconds": row[7], "dosage_notes": row[8],
+            "status": row[9], "prescribed_by": row[10], "created_at": row[11],
+            "coach_final_authority": True, "execution_authorized": False,
+        }
+    session = _memory_session(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+                              athlete_id=athlete_id, session_id=session_id)
+    if session is None:
+        return None
+    dosage = _MEMORY_DOSAGES.get(dosage_id)
+    if dosage is None or dosage.get("session_id") != session_id:
+        return None
+    return dosage
