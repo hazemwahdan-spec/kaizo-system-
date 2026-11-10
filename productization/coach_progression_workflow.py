@@ -644,6 +644,7 @@ def create_drill(
                     "coach_review": False, "created_by": coach_actor_id,
                     "approved_by": None, "approved_at": None,
                     "created_at": now, "updated_at": now,
+                    "coach_final_authority": True, "execution_authorized": False,
                 }
                 cur.execute(
                     """INSERT INTO kaizo_coach_drill_library
@@ -673,6 +674,7 @@ def create_drill(
             "coach_review": False, "created_by": coach_actor_id,
             "approved_by": None, "approved_at": None,
             "created_at": now, "updated_at": now,
+            "coach_final_authority": True, "execution_authorized": False,
         }
         _MEMORY_DRILLS[drill_id] = record
         _audit(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
