@@ -299,3 +299,28 @@ def test_coach_progression_constraints_drill_and_problem_link_ui_is_protected():
     assert "execution_authorized:true" not in APP.replace(" ", "").lower()
     assert "X-KAIZO-Actor" not in APP
     assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api():
+    for route in (
+        "/feat-033/decision-drill",
+        "/feat-034/drill-prescription",
+        "/feat-035/execution-cues",
+        "/feat-036/training-response",
+        "/feat-037/retest",
+        "/feat-038/before-after",
+        "/feat-039/progress-state",
+        "/feat-040/next-decision-trigger",
+    ):
+        assert route in APP
+    assert 'async function trainingWorkflowCall(path,opts={})' in APP
+    assert 'fetch(API+"/training-workflow"+path,opts)' in APP
+    assert '"Authorization":"Bearer "+token' in APP
+    assert 'function loadCoachTrainingLineage()' in APP
+    assert 'function submitCoachTrainingLineage()' in APP
+    assert 'payload.athlete_id=athleteId' in APP
+    assert 'payload.coach_final_authority=true' in APP
+    assert 'loadCoachTrainingLineage();' in APP
+    assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
+    assert '"X-KAIZO-Actor"' not in APP
+    assert '"X-KAIZO-Tenant"' not in APP
