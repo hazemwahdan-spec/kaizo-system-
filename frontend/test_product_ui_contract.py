@@ -266,3 +266,36 @@ def test_coach_problem_library_ui_uses_provenance_gated_scoped_selection():
     assert "execution_authorized:true" not in APP.replace(" ", "").lower()
     assert "X-KAIZO-Actor" not in APP
     assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_progression_constraints_drill_and_problem_link_ui_is_protected():
+    for function in (
+        "createCoachProgressionRule",
+        "approveCoachProgressionRule",
+        "evaluateCoachProgressionRule",
+        "createCoachSessionConstraint",
+        "loadCoachSessionConstraints",
+        "createCoachDrill",
+        "loadCoachDrillLibrary",
+        "approveCoachDrill",
+        "createCoachProblemDrillLink",
+        "loadCoachProblemDrillLinks",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    for route in (
+        "/progression-rules",
+        "/coach-approval",
+        "/evaluations",
+        "/constraints-notes",
+        "/drill-library",
+        "/drill-links",
+    ):
+        assert route in APP
+    assert "currentCoachRuleId" in APP
+    assert "currentCoachDrillId" in APP
+    assert "currentCoachSessionId" in APP
+    assert "Coach approval is required before evaluation." in APP
+    assert "No execution was triggered." in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
