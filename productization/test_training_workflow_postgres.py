@@ -25,6 +25,44 @@ app.include_router(router)
 client = TestClient(app, raise_server_exceptions=False)
 
 
+def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
+    decision = "DEC-" + uuid4().hex
+    problem = "PROB-" + uuid4().hex
+    assessment = "ASSESS-" + uuid4().hex
+    drill = "DRILL-" + uuid4().hex
+    link = "LINK-" + uuid4().hex
+    now = "2026-11-10T00:00:00+00:00"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO kaizo_problem_statements
+                (problem_id,athlete_id,assessment_id,statement,problem_type,impact,
+                 context,structured_fields,status,created_by,created_at,updated_at)
+                VALUES (%s,%s,%s,'Entry timing problem','TECHNICAL','MEDIUM',
+                        '{}'::jsonb,'{}'::jsonb,'ACTIVE',%s,%s,%s)""",
+                (problem,athlete_id,assessment,coach,now,now))
+            cur.execute("""INSERT INTO kaizo_decision_records
+                (decision_id,candidate_id,diagnosis_id,problem_id,athlete_id,assessment_id,
+                 candidate_type,coach_action,coach_id,decision_summary,outcome_intent,status,recorded_at)
+                VALUES (%s,%s,%s,%s,%s,%s,'TECHNICAL_ADAPTATION','CONFIRM',%s,
+                        'Improve entry timing','Increase successful entries','RECORDED',%s)""",
+                (decision,"CAND-"+uuid4().hex,"DIAG-"+uuid4().hex,problem,athlete_id,
+                 assessment,coach,now))
+            cur.execute("""INSERT INTO kaizo_coach_drill_library
+                (drill_id,tenant_id,coach_actor_id,source_assessment_id,payload,status,
+                 coach_review,created_by,approved_by,approved_at,created_at,updated_at)
+                VALUES (%s,%s,%s,%s,%s::jsonb,'PUBLISHED',TRUE,%s,%s,%s,%s,%s)""",
+                (drill,tenant,coach,assessment,
+                 '{"name":"Entry timing drill","coach_review":true}',
+                 coach,coach,now,now,now))
+            cur.execute("""INSERT INTO kaizo_coach_problem_drill_links
+                (link_id,tenant_id,coach_actor_id,problem_id,drill_id,athlete_id,
+                 assessment_id,rationale,evidence_ids,created_by,created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,'Targets recorded decision','["REF-POSTGRES"]'::jsonb,%s,%s)""",
+                (link,tenant,coach,problem,drill,athlete_id,assessment,coach,now))
+        conn.commit()
+    return decision, drill
+
+
 def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert persistence.is_postgres_enabled()
     persistence.initialize()
@@ -39,10 +77,11 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
+    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
-        "decision_id": "DEC-" + uuid4().hex,
-        "drill_id": "DRILL-POSTGRES",
+        "decision_id": decision_id,
+        "drill_id": drill_id,
         "rationale": "PostgreSQL ownership and audit acceptance",
         "evidence_refs": ["REF-POSTGRES"],
         "selected_by": "SPOOFED-CLIENT-IDENTITY",
@@ -162,10 +201,11 @@ def test_audit_failure_rolls_back_workflow_record():
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
+    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
-        "decision_id": "DEC-" + uuid4().hex,
-        "drill_id": "DRILL-ROLLBACK",
+        "decision_id": decision_id,
+        "drill_id": drill_id,
         "rationale": "Audit failure must roll back record",
         "evidence_refs": ["REF-ROLLBACK"],
     }
