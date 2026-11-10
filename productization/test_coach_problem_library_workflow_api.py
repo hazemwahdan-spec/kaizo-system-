@@ -144,5 +144,10 @@ def test_problem_library_selection_openapi_hides_unscoped_legacy_routes(monkeypa
     paths = client.get("/openapi.json").json()["paths"]
     assert "/api/v1/product/coach/problem-library" in paths
     assert "/api/v1/product/coach/athletes/{athlete_id}/assessments/{assessment_id}/problem-library-selections" in paths
-    assert "/api/v1/problem-library" not in paths
+    assert "/api/v1/problem-library" in paths  # legacy shared read-only listing remains documented
     assert "/api/v1/problem-library/selections" not in paths
+    retired = client.post("/api/v1/problem-library/selections", headers=headers["coach-a"], json={
+        "athlete_id": athletes["coach-a"]["athlete_id"],
+        "assessment_id": assessments["coach-a"]["assessment_id"],
+        "library_item_id": "PRB-017-001", "selected_by": "forged-client"})
+    assert retired.status_code == 410
