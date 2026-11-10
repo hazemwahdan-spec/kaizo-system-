@@ -4,7 +4,7 @@ os.environ["KAIZO_IDENTITY_MODE"]="development"
 
 from fastapi.testclient import TestClient
 from main import app
-from productization import coach_roster
+from productization import coach_decision_cycles, coach_roster
 from state_cycle import reset_memory_state
 
 client=TestClient(app)
@@ -16,6 +16,7 @@ TENANT={"X-KAIZO-Actor":"coach-1","X-KAIZO-Role":"coach","X-KAIZO-Tenant":"tenan
 def setup_function():
     reset_memory_state()
     coach_roster.reset_memory_state()
+    coach_decision_cycles.reset_memory_state()
     global ATHLETE
     ATHLETE=coach_roster.create_owned_athlete(
         tenant_id="tenant-1",coach_actor_id="coach-1",display_name="State cycle test athlete"
@@ -48,20 +49,72 @@ def test_feat_042_to_045_requires_authenticated_owned_coach_and_preserves_lineag
     assert [x["version"] for x in history.json()["versions"]]==[1,2]
     assert all(x["recorded_by"]=="coach-1" for x in history.json()["versions"])
 
+    cycle=coach_decision_cycles.create_cycle(
+        tenant_id="tenant-1",coach_actor_id="coach-1",athlete_id=ATHLETE,
+        case_id="CASE-1",decision_input={"intent":"improve entry"},
+        decision_output={"coach_choice":"retain decision"},
+    )
+    assert cycle is not None
+    decision_id=cycle["decision_cycle_id"]
     link=client.post("/api/v1/state-cycle/feat-044/decision-state-link",
-        json={"decision_id":"DEC-1","entity_id":ATHLETE,"state_version":2,
+        json={"decision_id":decision_id,"entity_id":ATHLETE,"state_version":2,
               "state_ref":f"{ATHLETE}:v2","linked_by":"spoofed-actor"},
         headers=COACH)
     assert link.status_code==201,link.text
     assert link.json()["link"]["linked_by"]=="coach-1"
 
     nxt=client.post("/api/v1/state-cycle/feat-045/next-state",
-        json={"athlete_id":ATHLETE,"decision_id":"DEC-1","requested_by":"spoofed-actor"},
+        json={"athlete_id":ATHLETE,"decision_id":decision_id,"requested_by":"spoofed-actor"},
         headers=COACH)
     assert nxt.status_code==200,nxt.text
-    assert nxt.json()["linked_decision_state"]["decision_id"]=="DEC-1"
+    assert nxt.json()["linked_decision_state"]["decision_id"]==decision_id
     assert nxt.json()["coach_actor_id"]=="coach-1"
     assert nxt.json()["execution_authorized"] is False
+
+
+def test_feat_044_rejects_unowned_and_case_mismatched_decision_cycles():
+    created=client.post(
+        "/api/v1/state-cycle/feat-042/digital-twin-state",
+        json=update_payload(),headers=COACH,
+    )
+    assert created.status_code==201,created.text
+    arbitrary=client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id":"NOT-A-DECISION-CYCLE","entity_id":ATHLETE,
+              "state_version":1,"state_ref":f"{ATHLETE}:v1"},
+        headers=COACH,
+    )
+    assert arbitrary.status_code==404
+
+    mismatched=coach_decision_cycles.create_cycle(
+        tenant_id="tenant-1",coach_actor_id="coach-1",athlete_id=ATHLETE,
+        case_id="OTHER-CASE",decision_input={"intent":"test"},
+        decision_output={"choice":"test"},
+    )
+    assert mismatched is not None
+    mismatch_response=client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id":mismatched["decision_cycle_id"],"entity_id":ATHLETE,
+              "state_version":1,"state_ref":f"{ATHLETE}:v1"},
+        headers=COACH,
+    )
+    assert mismatch_response.status_code==409
+
+    other_athlete=coach_roster.create_owned_athlete(
+        tenant_id="tenant-1",coach_actor_id="coach-2",display_name="Other Coach athlete"
+    )["athlete_id"]
+    other_coach_cycle=coach_decision_cycles.create_cycle(
+        tenant_id="tenant-1",coach_actor_id="coach-2",athlete_id=other_athlete,
+        case_id="CASE-1",decision_input={"intent":"test"},decision_output={"choice":"test"},
+    )
+    assert other_coach_cycle is not None
+    denied=client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={"decision_id":other_coach_cycle["decision_cycle_id"],"entity_id":ATHLETE,
+              "state_version":1,"state_ref":f"{ATHLETE}:v1"},
+        headers=COACH,
+    )
+    assert denied.status_code==404
 
 
 def test_anonymous_non_coach_cross_coach_and_cross_tenant_denied():
