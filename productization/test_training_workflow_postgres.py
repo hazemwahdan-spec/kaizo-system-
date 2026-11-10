@@ -1,6 +1,7 @@
 """PostgreSQL acceptance for atomic, tenant-scoped FEAT-033..040 workflow writes."""
 import os
 import sys
+import json
 from pathlib import Path
 from contextlib import contextmanager
 from uuid import uuid4
@@ -59,6 +60,12 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
                  assessment_id,rationale,evidence_ids,created_by,created_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,'Targets recorded decision','["REF-POSTGRES"]'::jsonb,%s,%s)""",
                 (link,tenant,coach,problem,drill,athlete_id,assessment,coach,now))
+            cur.execute("""INSERT INTO kaizo_audit_logs
+                (timestamp,who,action,old_value,new_value,why,tenant_id)
+                VALUES (%s,%s,'COACH_DECISION_RECORD_RECORDED',NULL,%s::jsonb,
+                        'Protected Coach decision source for FEAT-033',%s)""",
+                (now,coach,json.dumps({"decision_id":decision,"athlete_id":athlete_id,
+                                       "coach_id":coach,"problem_id":problem,"status":"RECORDED"}),tenant))
         conn.commit()
     return decision, drill
 
