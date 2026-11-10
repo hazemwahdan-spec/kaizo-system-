@@ -246,6 +246,9 @@ def _validate_initial_decision_drill(req: "DecisionDrillRequest", principal: Any
                  and item.get("coach_actor_id") == principal.actor_id), None)
     if link is None:
         raise HTTPException(status_code=409, detail="drill has no verified problem-drill link for this decision and athlete")
+    linked_evidence = set(link.get("evidence_ids") or [])
+    if not req.evidence_refs or not set(req.evidence_refs).issubset(linked_evidence):
+        raise HTTPException(status_code=409, detail="FEAT-033 evidence_refs must come from the verified problem-drill link evidence")
     return {"decision": decision, "problem_id": problem_id, "drill": drill, "problem_drill_link": link}
 
 def reset_memory_state() -> None:
