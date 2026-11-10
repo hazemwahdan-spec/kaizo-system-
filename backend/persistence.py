@@ -508,7 +508,7 @@ CREATE TABLE IF NOT EXISTS kaizo_coach_session_constraints (
     athlete_id TEXT NOT NULL,
     kind TEXT NOT NULL,
     content TEXT NOT NULL,
-    priority INTEGER NOT NULL,
+    priority TEXT NOT NULL,
     created_by TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
