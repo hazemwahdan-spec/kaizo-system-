@@ -94,7 +94,7 @@ def test_candidate_generation_is_scoped_idempotent_and_audited(monkeypatch):
     assert repeated.json()["status"] == "CANDIDATES_ALREADY_EXIST"
     assert len(repeated.json()["candidates"]) == 3
     read = client.get(path, headers=headers["coach-a"])
-    assert read.status_code == 200 and len(read.json()["candidates"]) == 3
+    assert read.status_code == 200 and {x["candidate_id"] for x in read.json()["candidates"]} == {x["candidate_id"] for x in first}
     assert client.get(path, headers=headers["coach-b"]).status_code == 404
     assert client.get(path, headers=headers["coach-c"]).status_code == 404
     assert coach_decision_workflow._MEMORY_AUDIT[0]["who"] == "auth0|coach-a"
