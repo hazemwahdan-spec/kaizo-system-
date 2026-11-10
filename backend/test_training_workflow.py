@@ -57,28 +57,44 @@ def cases(athlete_id):
           "created_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-036/training-response",
          {"athlete_id":athlete_id,"session_id":"S1","response":{"quality":"GOOD"},
-          "kpi_values":{"entry_success":4},"observed_by":"spoofed-coach"}),
+          "drill_id":"DR1","prescription_record_id":"PENDING-034","execution_cue_record_id":"PENDING-035","kpi_values":{"entry_success":4},"observed_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-037/retest",
-         {"athlete_id":athlete_id,"session_id":"S1","baseline_reference":"BASE-1",
+         {"athlete_id":athlete_id,"session_id":"S1","response_record_id":"PENDING-036","baseline_reference":"FEAT-036",
           "retest_values":{"entry_success":6},"evidence_refs":["REF-016"],"retested_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-038/before-after",
-         {"athlete_id":athlete_id,"baseline":{"entry_success":4},"current":{"entry_success":6},
+         {"athlete_id":athlete_id,"response_record_id":"PENDING-036","retest_record_id":"PENDING-037","baseline":{"entry_success":4},"current":{"entry_success":6},
           "comparison_method":"absolute_change","compared_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-039/progress-state",
-         {"athlete_id":athlete_id,"state":{"status":"IMPROVING","entry_success":6},
+         {"athlete_id":athlete_id,"comparison_record_id":"PENDING-038","state":{"status":"IMPROVING","entry_success":6},
           "evidence_refs":["REF-016"],"updated_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-040/next-decision-trigger",
-         {"athlete_id":athlete_id,"session_id":"S1","trigger_type":"RETEST_COMPLETE",
+         {"athlete_id":athlete_id,"session_id":"S1","progress_record_id":"PENDING-039","trigger_type":"RETEST_COMPLETE",
           "trigger_reason":"Retest changed the decision state","required_evidence":["REF-016"],
           "created_by":"spoofed-coach"}),
     ]
 
 
 def test_all_feat_033_to_040_writes_require_owned_coach_and_attribute_verified_actor():
-    for path, payload in cases(ATHLETE_ID):
+    records = {}
+    for path, original in cases(ATHLETE_ID):
+        payload = dict(original)
+        feature = path.split("/feat-")[1][:3]
+        if feature == "036":
+            payload["prescription_record_id"] = records["034"]["record_id"]
+            payload["execution_cue_record_id"] = records["035"]["record_id"]
+        elif feature == "037":
+            payload["response_record_id"] = records["036"]["record_id"]
+        elif feature == "038":
+            payload["response_record_id"] = records["036"]["record_id"]
+            payload["retest_record_id"] = records["037"]["record_id"]
+        elif feature == "039":
+            payload["comparison_record_id"] = records["038"]["record_id"]
+        elif feature == "040":
+            payload["progress_record_id"] = records["039"]["record_id"]
         response = client.post(path, json=payload, headers=COACH_HEADERS)
         assert response.status_code == 201, (path, response.text)
         body = response.json()
+        records[feature] = body
         assert body["created_by"] == "coach-1"
         assert body["coach_actor_id"] == "coach-1"
         assert body["tenant_id"] == "tenant-1"
@@ -116,6 +132,8 @@ def test_invalid_training_values_and_coach_final_authority_still_fail_closed():
     path, payload = cases(ATHLETE_ID)[0]
     payload["coach_final_authority"] = False
     assert client.post(path, json=payload, headers=COACH_HEADERS).status_code == 400
+    first_path, first_payload = cases(ATHLETE_ID)[0]
+    assert client.post(first_path, json=first_payload, headers=COACH_HEADERS).status_code == 201
     invalid = {
         "athlete_id":ATHLETE_ID,"decision_id":"D1","session_id":"S1","drill_id":"DR1",
         "objective":"x","dosage":{"sets":0,"reps":5},
@@ -124,3 +142,8 @@ def test_invalid_training_values_and_coach_final_authority_still_fail_closed():
         "/api/v1/training-workflow/feat-034/drill-prescription",
         json=invalid, headers=COACH_HEADERS,
     ).status_code == 400
+
+
+def test_workflow_rejects_missing_predecessor():
+    path, payload = cases(ATHLETE_ID)[1]
+    assert client.post(path, json=payload, headers=COACH_HEADERS).status_code == 409
