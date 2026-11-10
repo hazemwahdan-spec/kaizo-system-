@@ -7,6 +7,8 @@ on:
       - "productization/product_api.py"
       - "productization/test_coach_assessment_workflow_api.py"
       - "productization/test_coach_assessment_workflow_postgres.py"
+      - "frontend/app.js"
+      - "frontend/test_product_ui_contract.py"
       - ".github/workflows/coach-feat-011-015-protected.yml"
   workflow_dispatch:
 
@@ -49,6 +51,14 @@ jobs:
           python -m pip install "fastapi==0.115.6" "pydantic==2.10.4" "httpx==0.28.1" "pytest>=8,<9" "PyJWT[crypto]>=2.10,<3" "psycopg[binary]==3.2.3"
       - name: Compile protected Coach workflow
         run: python -m compileall -q productization backend
+      - name: Set up Node for Coach UI syntax validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify Coach UI syntax and protected API integration
+        run: |
+          node --check frontend/app.js
+          python -m pytest -q frontend/test_product_ui_contract.py
       - name: Verify Bearer identity, ownership, and UI-facing API contract
         run: python -m pytest -q productization/test_coach_assessment_workflow_api.py
       - name: Verify PostgreSQL persistence, ownership, and atomic audit rollback
