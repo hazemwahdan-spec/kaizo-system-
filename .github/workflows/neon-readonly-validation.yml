@@ -45,7 +45,7 @@ jobs:
 
       - name: Verify Neon connection in read-only transaction
         env:
-          DATABASE_URL: ${{ env.NEON_READONLY_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.KAIZO_NEON_READONLY_URL }}
         run: |
           python - <<'PY'
           import os
