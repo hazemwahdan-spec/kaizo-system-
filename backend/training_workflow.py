@@ -13,7 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 import persistence
-from productization import coach_roster
+from productization import coach_roster, coach_progression_workflow
 from productization.product_api import verified_coach_scope
 
 router = APIRouter(prefix="/api/v1/training-workflow", tags=["training-workflow"])
@@ -192,6 +192,44 @@ def _same_keys(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
     return bool(left) and set(left.keys()) == set(right.keys())
 
 
+
+def _validate_initial_decision_drill(req: "DecisionDrillRequest", principal: Any) -> Dict[str, Any]:
+    """Resolve FEAT-033 inputs against authoritative Coach-owned source records."""
+    if persistence.is_postgres_enabled():
+        decision = persistence.get_decision_record(req.decision_id)
+    else:
+        import sys
+        core = sys.modules.get("main")
+        decision = getattr(core, "DECISION_RECORDS", {}).get(req.decision_id) if core else None
+    if not decision or decision.get("athlete_id") != req.athlete_id:
+        raise HTTPException(status_code=409, detail="decision_id is not a recorded decision for this athlete")
+    if decision.get("coach_id") != principal.actor_id or decision.get("status") != "RECORDED":
+        raise HTTPException(status_code=409, detail="decision_id is not an authoritative recorded decision by this Coach")
+    problem_id = str(decision.get("problem_id") or "").strip()
+    if not problem_id:
+        raise HTTPException(status_code=409, detail="recorded decision has no authoritative problem_id")
+    drills = coach_progression_workflow.list_drills(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        include_drafts=False,
+    )
+    drill = next((item for item in drills if item.get("drill_id") == req.drill_id
+                  and item.get("status") == "PUBLISHED" and item.get("coach_review") is True
+                  and item.get("approved_by") == principal.actor_id), None)
+    if drill is None:
+        raise HTTPException(status_code=409, detail="drill_id is not a Coach-reviewed published drill in this Coach scope")
+    links = coach_progression_workflow.list_problem_drill_links(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=req.athlete_id, problem_id=problem_id,
+    )
+    link = next((item for item in (links or []) if item.get("drill_id") == req.drill_id
+                 and item.get("problem_id") == problem_id
+                 and item.get("athlete_id") == req.athlete_id
+                 and item.get("tenant_id") == principal.tenant_id
+                 and item.get("coach_actor_id") == principal.actor_id), None)
+    if link is None:
+        raise HTTPException(status_code=409, detail="drill has no verified problem-drill link for this decision and athlete")
+    return {"decision": decision, "problem_id": problem_id, "drill": drill, "problem_drill_link": link}
+
 def reset_memory_state() -> None:
     """Test helper; clears only the isolated in-memory adapter."""
     _MEMORY_RECORDS.clear()
@@ -296,7 +334,11 @@ def select_decision_drill(
     _require_authority(req.coach_final_authority)
     if not req.rationale.strip() or not req.drill_id.strip():
         raise HTTPException(400, "drill_id and rationale are required")
-    return _save("FEAT-033", req.athlete_id, req.model_dump(), principal, req.decision_id)
+    sources = _validate_initial_decision_drill(req, principal)
+    payload = req.model_dump()
+    payload["problem_id"] = sources["problem_id"]
+    payload["problem_drill_link_id"] = sources["problem_drill_link"].get("link_id")
+    return _save("FEAT-033", req.athlete_id, payload, principal, req.decision_id)
 
 
 @router.post("/feat-034/drill-prescription", status_code=status.HTTP_201_CREATED)
@@ -310,7 +352,7 @@ def prescribe_drill(
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
-    _prior_record("FEAT-033", req.athlete_id, principal,
+    predecessor = _prior_record("FEAT-033", req.athlete_id, principal,
         lambda r, p: r.get("decision_id") == req.decision_id and p.get("drill_id") == req.drill_id)
     d = req.dosage
     if not d or any(k not in d for k in ("sets", "reps")):
@@ -333,9 +375,10 @@ def record_execution_cues(
     _require_authority(req.coach_final_authority)
     if any(not item.strip() for item in req.cues + req.checklist):
         raise HTTPException(400, "cues and checklist items must be non-empty")
-    _prior_record("FEAT-034", req.athlete_id, principal,
+    predecessor = _prior_record("FEAT-034", req.athlete_id, principal,
         lambda r, p: r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
-    return _save("FEAT-035", req.athlete_id, req.model_dump(), principal, session_id=req.session_id)
+    return _save("FEAT-035", req.athlete_id, req.model_dump(), principal,
+        decision_id=predecessor.get("decision_id"), session_id=req.session_id)
 
 
 @router.post("/feat-036/training-response", status_code=status.HTTP_201_CREATED)
@@ -353,8 +396,10 @@ def capture_training_response(
         raise HTTPException(400, "response and kpi_values are required")
     prescription = _prior_record("FEAT-034", req.athlete_id, principal,
         lambda r, p: r.get("record_id") == req.prescription_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
-    _prior_record("FEAT-035", req.athlete_id, principal,
+    cues = _prior_record("FEAT-035", req.athlete_id, principal,
         lambda r, p: r.get("record_id") == req.execution_cue_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
+    if cues.get("decision_id") != prescription.get("decision_id"):
+        raise HTTPException(409, detail="prescription and execution cues do not share the same decision lineage")
     return _save("FEAT-036", req.athlete_id, req.model_dump(), principal, decision_id=prescription.get("decision_id"), session_id=req.session_id)
 
 
@@ -403,6 +448,8 @@ def compare_before_after(
         raise HTTPException(409, detail="comparison baseline/current must equal the linked response/retest KPI values")
     if not _same_keys(req.baseline, req.current):
         raise HTTPException(409, detail="comparison KPI keys must match exactly")
+    if retest_record.get("decision_id") != response_record.get("decision_id"):
+        raise HTTPException(409, detail="response and retest do not share the same decision lineage")
     return _save("FEAT-038", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=response_record.get("session_id"))
 
 
@@ -419,8 +466,9 @@ def update_progress_state(
     _require_authority(req.coach_final_authority)
     if not req.state:
         raise HTTPException(400, "state is required")
-    _prior_record("FEAT-038", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.comparison_record_id)
-    return _save("FEAT-039", req.athlete_id, req.model_dump(), principal)
+    comparison = _prior_record("FEAT-038", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.comparison_record_id)
+    return _save("FEAT-039", req.athlete_id, req.model_dump(), principal,
+        decision_id=comparison.get("decision_id"), session_id=comparison.get("session_id"))
 
 
 @router.post("/feat-040/next-decision-trigger", status_code=status.HTTP_201_CREATED)
@@ -436,8 +484,11 @@ def create_next_decision_trigger(
     _require_authority(req.coach_final_authority)
     if not req.trigger_type.strip() or not req.trigger_reason.strip():
         raise HTTPException(400, "trigger_type and trigger_reason are required")
-    _prior_record("FEAT-039", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.progress_record_id)
-    return _save("FEAT-040", req.athlete_id, req.model_dump(), principal, session_id=req.session_id)
+    progress = _prior_record("FEAT-039", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.progress_record_id)
+    if progress.get("session_id") != req.session_id:
+        raise HTTPException(409, detail="next-decision trigger session does not match the linked progress record")
+    return _save("FEAT-040", req.athlete_id, req.model_dump(), principal,
+        decision_id=progress.get("decision_id"), session_id=req.session_id)
 
 
 @router.get("/athletes/{athlete_id}")
