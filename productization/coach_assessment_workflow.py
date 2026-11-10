@@ -82,32 +82,14 @@ def _audit(*, tenant_id: str, coach_actor_id: str, action: str,
 
 
 def _ensure_kpi_schema() -> None:
+    """Fail closed if the application startup migration did not create the scoped KPI table."""
     if not persistence.is_postgres_enabled():
         return
     with persistence.connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """CREATE TABLE IF NOT EXISTS kaizo_coach_kpi_definitions (
-                    tenant_id TEXT NOT NULL,
-                    coach_actor_id TEXT NOT NULL,
-                    kpi_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    metric_name TEXT NOT NULL,
-                    unit TEXT NOT NULL,
-                    target DOUBLE PRECISION,
-                    direction TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    PRIMARY KEY (tenant_id, coach_actor_id, kpi_id)
-                )"""
-            )
-            cur.execute(
-                """CREATE INDEX IF NOT EXISTS idx_coach_kpi_scope
-                   ON kaizo_coach_kpi_definitions
-                      (tenant_id, coach_actor_id, kpi_id)"""
-            )
-        conn.commit()
+            cur.execute("SELECT to_regclass('public.kaizo_coach_kpi_definitions')")
+            if cur.fetchone()[0] is None:
+                raise RuntimeError("Coach KPI schema is not initialized; run the approved PostgreSQL schema migration")
 
 
 def _assessment(row: Any) -> dict[str, Any]:
