@@ -1803,8 +1803,7 @@ def get_training_dosage(dosage_id: str) -> Optional[Dict[str, Any]]:
 def list_training_dosages(session_id: str) -> list[Dict[str, Any]]:
     if not is_postgres_enabled():
         return []
-    _ensure_training_dosages_table()
-    with connection() as conn:
+        with connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT dosage_id, session_id, plan_id, athlete_id, block_name, sets, reps,
