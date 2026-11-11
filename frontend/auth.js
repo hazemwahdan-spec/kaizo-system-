@@ -1,5 +1,11 @@
 (function () {
   const config = window.KAIZO_AUTH_CONFIG || {};
+  const authorizationParams = () => ({
+    audience: config.audience,
+    scope: "product",
+    redirect_uri: window.location.origin
+  });
+
   window.KAIZO_AUTH_READY = (async function () {
     try {
       if (!config.clientId) throw new Error("AUTH0_SPA_CLIENT_ID_REQUIRED: set the public clientId in frontend/auth-config.js and allow this site origin in Auth0 callback/web-origin settings.");
@@ -7,15 +13,15 @@
       const client = await window.createAuth0Client({
         domain: config.domain,
         clientId: config.clientId,
-        authorizationParams: { audience: config.audience, redirect_uri: window.location.origin }
+        authorizationParams: authorizationParams()
       });
       if (window.location.search.includes("code=") && window.location.search.includes("state=")) {
         await client.handleRedirectCallback();
         window.history.replaceState({}, document.title, window.location.pathname);
       }
       window.KAIZO_AUTH = {
-        getAccessTokenSilently: () => client.getTokenSilently(),
-        loginWithRedirect: () => client.loginWithRedirect({ authorizationParams: { audience: config.audience, redirect_uri: window.location.origin } }),
+        getAccessTokenSilently: () => client.getTokenSilently({ authorizationParams: authorizationParams() }),
+        loginWithRedirect: () => client.loginWithRedirect({ authorizationParams: authorizationParams() }),
         isAuthenticated: () => client.isAuthenticated()
       };
       return window.KAIZO_AUTH;
