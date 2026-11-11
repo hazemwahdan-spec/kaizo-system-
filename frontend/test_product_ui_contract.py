@@ -311,7 +311,11 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
     assert 'function loadCoachTrainingLineage()' in APP
     assert 'function submitCoachTrainingLineage()' in APP
     assert 'payload.athlete_id=athleteId' in APP
-    assert 'payload.coach_final_authority=true' in APP
+    assert "payload.coach_final_authority=true" not in APP
+    assert "currentCoachBaselineSnapshotId" in APP
+    assert "loadCoachBaselineSnapshots" in APP
+    assert '"/coach/athletes/"+encodeURIComponent(athleteId)+"/state-snapshots"' in APP
+    assert "baseline_reference:baselineReference" in APP
     assert 'loadCoachTrainingLineage();' in APP
     assert 'coachTrainingLineageData=data' in APP
     assert 'r33?.decision_id' in APP
