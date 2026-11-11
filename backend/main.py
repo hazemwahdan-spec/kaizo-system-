@@ -1458,9 +1458,21 @@ KNOWLEDGE_REPOSITORY: Dict[str, Any] = {
     }
 }
 
+# Database initialization must not prevent the HTTP process from starting.
+# Liveness remains available during a database outage; readiness stays fail-closed.
+CORE_DATABASE_STARTUP = {
+    "enabled": persistence.is_postgres_enabled(),
+    "initialized": not persistence.is_postgres_enabled(),
+    "error": None,
+}
 if persistence.is_postgres_enabled():
-    persistence.initialize()
-    KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
+    try:
+        persistence.initialize()
+        KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
+        CORE_DATABASE_STARTUP["initialized"] = True
+    except Exception as exc:
+        # Do not expose connection strings, hostnames, or driver messages.
+        CORE_DATABASE_STARTUP["error"] = type(exc).__name__
 
 class RuleEvaluationRequest(BaseModel):
     athlete_id: str
@@ -1784,7 +1796,31 @@ def get_audit_logs(principal=Depends(require_tenant_audit_reader)):
 
 @app.get("/api/v1/health")
 def health_check():
+    """Process liveness only; deliberately independent of database readiness."""
     return {"system": "KAIZO Core Engine v2.0", "status": "Online", "mode": "Enterprise AI-Ready"}
+
+
+@app.get("/api/v1/ready")
+def readiness_check():
+    """Fail-closed readiness probe; database verification is strictly read-only."""
+    if not CORE_DATABASE_STARTUP["enabled"]:
+        return {"status": "ready", "database": "disabled"}
+    if not CORE_DATABASE_STARTUP["initialized"]:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "not_ready",
+                "reason": CORE_DATABASE_STARTUP["error"] or "database_initialization_incomplete",
+            },
+        )
+    try:
+        persistence.check_connection()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not_ready", "reason": type(exc).__name__},
+        ) from None
+    return {"status": "ready", "database": "connected"}
 
 
 DIGITAL_TWIN_STATE: Dict[str, Dict[str, Any]] = {}
