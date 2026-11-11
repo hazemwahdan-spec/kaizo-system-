@@ -13,7 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 import persistence
-from productization import coach_roster, coach_progression_workflow, coach_decision_workflow
+from productization import coach_roster, coach_progression_workflow, coach_decision_workflow, coach_assessment_workflow
 from productization.product_api import verified_coach_scope
 
 router = APIRouter(prefix="/api/v1/training-workflow", tags=["training-workflow"])
@@ -25,10 +25,6 @@ _MEMORY_AUDIT: list[dict[str, Any]] = []
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-
-def _require_authority(value: bool) -> None:
-    if not value:
-        raise HTTPException(status_code=400, detail="coach_final_authority is required")
 
 
 def _coach_for_athlete(
@@ -192,6 +188,30 @@ def _same_keys(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
     return bool(left) and set(left.keys()) == set(right.keys())
 
 
+def _verified_baseline_snapshot(athlete_id: str, principal: Any, snapshot_id: str) -> Dict[str, Any]:
+    snapshot = coach_assessment_workflow.get_state_snapshot(
+        tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+        snapshot_id=snapshot_id,
+    )
+    if snapshot is None or snapshot.get("snapshot_type") != "baseline":
+        raise HTTPException(status_code=409, detail="baseline_reference must identify a persisted baseline snapshot in this Coach/athlete scope")
+    return snapshot
+
+
+def _baseline_kpi_values(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    values: Dict[str, Any] = {}
+    for item in snapshot.get("kpis") or []:
+        kpi_id = str(item.get("kpi_id") or "").strip()
+        if not kpi_id or kpi_id in values:
+            raise HTTPException(status_code=409, detail="baseline snapshot contains missing or duplicate KPI identity")
+        values[kpi_id] = item.get("value")
+    if not values:
+        raise HTTPException(status_code=409, detail="baseline snapshot has no persisted KPI values")
+    return values
+
+
 
 def _validate_initial_decision_drill(req: "DecisionDrillRequest", principal: Any) -> Dict[str, Any]:
     """Resolve FEAT-033 inputs against authoritative Coach-owned source records."""
@@ -263,7 +283,6 @@ class DecisionDrillRequest(BaseModel):
     drill_id: str
     rationale: str
     evidence_refs: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 class DrillPrescriptionRequest(BaseModel):
@@ -292,6 +311,7 @@ class ResponseRequest(BaseModel):
     drill_id: str
     prescription_record_id: str
     execution_cue_record_id: str
+    baseline_reference: str
     response: Dict[str, Any]
     kpi_values: Dict[str, Any]
     coach_final_authority: bool = True
@@ -352,7 +372,6 @@ def select_decision_drill(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.rationale.strip() or not req.drill_id.strip():
         raise HTTPException(400, "drill_id and rationale are required")
     sources = _validate_initial_decision_drill(req, principal)
@@ -413,14 +432,31 @@ def capture_training_response(
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(req.coach_final_authority)
-    if not req.response or not req.kpi_values:
-        raise HTTPException(400, "response and kpi_values are required")
+    if not req.response or not req.kpi_values or not req.baseline_reference.strip():
+        raise HTTPException(400, "response, kpi_values and baseline_reference are required")
     prescription = _prior_record("FEAT-034", req.athlete_id, principal,
         lambda r, p: r.get("record_id") == req.prescription_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
     cues = _prior_record("FEAT-035", req.athlete_id, principal,
         lambda r, p: r.get("record_id") == req.execution_cue_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
     if cues.get("decision_id") != prescription.get("decision_id"):
         raise HTTPException(409, detail="prescription and execution cues do not share the same decision lineage")
+    baseline_snapshot = _verified_baseline_snapshot(req.athlete_id, principal, req.baseline_reference)
+    baseline_values = _baseline_kpi_values(baseline_snapshot)
+    if not _same_keys(baseline_values, req.kpi_values):
+        raise HTTPException(409, detail="training response KPI identities must match the referenced baseline snapshot")
+    decision = persistence.get_decision_record(prescription.get("decision_id")) if persistence.is_postgres_enabled() else None
+    if decision is None and not persistence.is_postgres_enabled():
+        import sys
+        core = sys.modules.get("main")
+        decision = getattr(core, "DECISION_RECORDS", {}).get(prescription.get("decision_id")) if core else None
+    if (
+        not decision
+        or decision.get("athlete_id") != req.athlete_id
+        or decision.get("coach_id") != principal.actor_id
+        or decision.get("status") != "RECORDED"
+        or decision.get("assessment_id") != baseline_snapshot.get("assessment_id")
+    ):
+        raise HTTPException(409, detail="baseline snapshot must belong to the assessment used by the linked Coach decision")
     return _save("FEAT-036", req.athlete_id, req.model_dump(), principal, decision_id=prescription.get("decision_id"), session_id=req.session_id)
 
 
@@ -441,8 +477,12 @@ def capture_retest(
         lambda r, p: r.get("record_id") == req.response_record_id and r.get("session_id") == req.session_id)
     response_payload = response_record.get("payload") or {}
     if isinstance(response_payload, str): response_payload = json.loads(response_payload)
-    if not _same_keys(response_payload.get("kpi_values", {}), req.retest_values):
-        raise HTTPException(409, detail="retest KPI keys must exactly match the linked training response baseline")
+    if response_payload.get("baseline_reference") != req.baseline_reference:
+        raise HTTPException(409, detail="retest must preserve the baseline snapshot linked to the training response")
+    baseline_snapshot = _verified_baseline_snapshot(req.athlete_id, principal, req.baseline_reference)
+    baseline_values = _baseline_kpi_values(baseline_snapshot)
+    if not _same_keys(baseline_values, response_payload.get("kpi_values", {})) or not _same_keys(baseline_values, req.retest_values):
+        raise HTTPException(409, detail="response and retest KPI identities must exactly match the linked baseline snapshot")
     return _save("FEAT-037", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=req.session_id)
 
 
@@ -465,10 +505,15 @@ def compare_before_after(
     retest_payload = retest_record.get("payload") or {}
     if isinstance(response_payload, str): response_payload = json.loads(response_payload)
     if isinstance(retest_payload, str): retest_payload = json.loads(retest_payload)
-    if req.baseline != response_payload.get("kpi_values") or req.current != retest_payload.get("retest_values"):
-        raise HTTPException(409, detail="comparison baseline/current must equal the linked response/retest KPI values")
-    if not _same_keys(req.baseline, req.current):
-        raise HTTPException(409, detail="comparison KPI keys must match exactly")
+    baseline_reference = response_payload.get("baseline_reference")
+    if not baseline_reference or retest_payload.get("baseline_reference") != baseline_reference:
+        raise HTTPException(409, detail="response and retest must share the same persisted baseline snapshot")
+    baseline_snapshot = _verified_baseline_snapshot(req.athlete_id, principal, baseline_reference)
+    baseline_values = _baseline_kpi_values(baseline_snapshot)
+    if req.baseline != baseline_values or req.current != retest_payload.get("retest_values"):
+        raise HTTPException(409, detail="comparison baseline/current must equal the referenced baseline snapshot and linked retest values")
+    if not _same_keys(baseline_values, response_payload.get("kpi_values", {})) or not _same_keys(req.baseline, req.current):
+        raise HTTPException(409, detail="comparison KPI identities must match exactly across baseline, response and retest")
     if retest_record.get("decision_id") != response_record.get("decision_id"):
         raise HTTPException(409, detail="response and retest do not share the same decision lineage")
     return _save("FEAT-038", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=response_record.get("session_id"))
