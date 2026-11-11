@@ -306,10 +306,14 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
         assert f'"{feature}":' in APP
     assert '"/feat-"+feature+"/"+COACH_WORKFLOW_STEPS[feature]' in APP
     assert 'async function trainingWorkflowCall(path,opts={})' in APP
-    assert 'fetch(API+"/training-workflow"+path,opts)' in APP
+    assert 'productCall("/coach/training-workflow"+path,opts)' in APP
     assert '"Authorization":"Bearer "+token' in APP
     assert 'function loadCoachTrainingLineage()' in APP
     assert 'function submitCoachTrainingLineage()' in APP
+    assert 'let currentCoachBaselineSnapshot=null' in APP
+    assert 'function loadCoachBaselineSnapshot()' in APP
+    assert 'baseline_reference:baselineSnapshot?.snapshot_id||""' in APP
+    assert 'baseline:baselineValues' in APP
     assert 'payload.athlete_id=athleteId' in APP
     assert 'payload.coach_final_authority=true' in APP
     assert 'loadCoachTrainingLineage();' in APP
