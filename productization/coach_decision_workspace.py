@@ -117,14 +117,14 @@ def get_coach_decision_workspace(
                   ON owned.athlete_id=a.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
                 LEFT JOIN kaizo_assessment_evidence_attachments att
-                  ON att.assessment_id=a.assessment_id
+                  ON att.assessment_id=a.assessment_id AND att.attached_by=%s
                 LEFT JOIN kaizo_evidence_records e
                   ON e.evidence_id=att.evidence_id
                  AND e.subject_type='assessment'
                  AND e.subject_id=a.assessment_id
-                WHERE a.athlete_id=%s
+                WHERE a.athlete_id=%s AND a.recorded_by=%s
                 ORDER BY a.assessed_at DESC, a.assessment_id, att.attached_at, att.evidence_id
-            """, params)
+            """, (tenant_id, coach_actor_id, coach_actor_id, athlete_id, coach_actor_id))
             for row in cur.fetchall():
                 item = assessments.setdefault(row[0], {
                     "assessment_id": row[0], "athlete_id": row[1], "template_id": row[2],
@@ -147,8 +147,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=s.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE s.athlete_id=%s ORDER BY s.captured_at DESC,s.snapshot_id
-            """, params, ("snapshot_id","assessment_id","snapshot_type","measurements","kpis",
+                WHERE s.athlete_id=%s AND s.captured_by=%s ORDER BY s.captured_at DESC,s.snapshot_id
+            """, params + (coach_actor_id,), ("snapshot_id","assessment_id","snapshot_type","measurements","kpis",
                           "captured_by","captured_at","created_at"))
 
             problems = _rows(cur, """
@@ -158,8 +158,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=p.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE p.athlete_id=%s ORDER BY p.created_at,p.problem_id
-            """, params, ("problem_id","assessment_id","statement","problem_type","impact",
+                WHERE p.athlete_id=%s AND p.created_by=%s ORDER BY p.created_at,p.problem_id
+            """, params + (coach_actor_id,), ("problem_id","assessment_id","statement","problem_type","impact",
                           "context","structured_fields","status","created_by","created_at","updated_at"))
 
             framings = _rows(cur, """
@@ -169,8 +169,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=f.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE f.athlete_id=%s ORDER BY f.framed_at,f.framing_id
-            """, params, ("framing_id","problem_id","assessment_id","cause","context",
+                WHERE f.athlete_id=%s AND f.framed_by=%s ORDER BY f.framed_at,f.framing_id
+            """, params + (coach_actor_id,), ("framing_id","problem_id","assessment_id","cause","context",
                           "contributing_factors","framed_by","framed_at"))
 
             diagnoses = _rows(cur, """
@@ -180,8 +180,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=d.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE d.athlete_id=%s ORDER BY d.diagnosed_at,d.diagnosis_id
-            """, params, ("diagnosis_id","problem_id","assessment_id","evidence_ids","diagnosis",
+                WHERE d.athlete_id=%s AND d.diagnosed_by=%s ORDER BY d.diagnosed_at,d.diagnosis_id
+            """, params + (coach_actor_id,), ("diagnosis_id","problem_id","assessment_id","evidence_ids","diagnosis",
                           "diagnosed_by","confidence","resolution_state","diagnosed_at"))
 
             candidates = _rows(cur, """
@@ -191,8 +191,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=c.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE c.athlete_id=%s ORDER BY c.created_at,c.candidate_id
-            """, params, ("candidate_id","diagnosis_id","problem_id","assessment_id","candidate_type",
+                WHERE c.athlete_id=%s AND c.generated_by=%s ORDER BY c.created_at,c.candidate_id
+            """, params + (coach_actor_id,), ("candidate_id","diagnosis_id","problem_id","assessment_id","candidate_type",
                           "title","rationale","source_diagnosis","status","generated_by","created_at"))
 
             rationales = _rows(cur, """
@@ -202,8 +202,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=r.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE r.athlete_id=%s ORDER BY r.recorded_at,r.rationale_id
-            """, params, ("rationale_id","candidate_id","diagnosis_id","problem_id","assessment_id",
+                WHERE r.athlete_id=%s AND r.recorded_by=%s ORDER BY r.recorded_at,r.rationale_id
+            """, params + (coach_actor_id,), ("rationale_id","candidate_id","diagnosis_id","problem_id","assessment_id",
                           "rationale","evidence_ids","recorded_by","recorded_at"))
 
             comparisons = _rows(cur, """
@@ -214,8 +214,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=d.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE d.athlete_id=%s ORDER BY c.compared_at,c.comparison_id
-            """, params, ("comparison_id","diagnosis_id","candidate_ids","alternatives",
+                WHERE d.athlete_id=%s AND c.compared_by=%s ORDER BY c.compared_at,c.comparison_id
+            """, params + (coach_actor_id,), ("comparison_id","diagnosis_id","candidate_ids","alternatives",
                           "comparison_status","compared_by","compared_at"))
 
             reviews = _rows(cur, """
@@ -225,8 +225,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=r.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE r.athlete_id=%s ORDER BY r.reviewed_at,r.review_id
-            """, params, ("review_id","candidate_id","diagnosis_id","problem_id","assessment_id",
+                WHERE r.athlete_id=%s AND r.coach_id=%s ORDER BY r.reviewed_at,r.review_id
+            """, params + (coach_actor_id,), ("review_id","candidate_id","diagnosis_id","problem_id","assessment_id",
                           "action","status","coach_id","override_reason","reviewed_at"))
 
             decisions = _rows(cur, """
@@ -237,8 +237,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=d.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE d.athlete_id=%s ORDER BY d.recorded_at,d.decision_id
-            """, params, ("decision_id","candidate_id","diagnosis_id","problem_id","assessment_id",
+                WHERE d.athlete_id=%s AND d.coach_id=%s ORDER BY d.recorded_at,d.decision_id
+            """, params + (coach_actor_id,), ("decision_id","candidate_id","diagnosis_id","problem_id","assessment_id",
                           "candidate_type","coach_action","coach_id","decision_summary",
                           "outcome_intent","status","recorded_at"))
 
@@ -249,8 +249,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=p.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE p.athlete_id=%s ORDER BY p.created_at,p.plan_id
-            """, params, ("plan_id","decision_id","title","objective","constraints","status",
+                WHERE p.athlete_id=%s AND p.created_by=%s ORDER BY p.created_at,p.plan_id
+            """, params + (coach_actor_id,), ("plan_id","decision_id","title","objective","constraints","status",
                           "created_by","created_at"))
 
             sessions = _rows(cur, """
@@ -260,8 +260,8 @@ def get_coach_decision_workspace(
                 JOIN kaizo_coach_athlete_ownership owned
                   ON owned.athlete_id=s.athlete_id
                  AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                WHERE s.athlete_id=%s ORDER BY s.created_at,s.session_id
-            """, params, ("session_id","plan_id","title","duration_minutes","blocks","status",
+                WHERE s.athlete_id=%s AND s.created_by=%s ORDER BY s.created_at,s.session_id
+            """, params + (coach_actor_id,), ("session_id","plan_id","title","duration_minutes","blocks","status",
                           "created_by","created_at"))
 
             workflow = []
@@ -273,8 +273,8 @@ def get_coach_decision_workspace(
                     JOIN kaizo_coach_athlete_ownership owned
                       ON owned.athlete_id=w.athlete_id
                      AND owned.tenant_id=%s AND owned.coach_actor_id=%s
-                    WHERE w.athlete_id=%s ORDER BY w.created_at,w.record_id
-                """, params, ("record_id","feature_id","decision_id","session_id","payload",
+                    WHERE w.athlete_id=%s AND w.created_by=%s ORDER BY w.created_at,w.record_id
+                """, params + (coach_actor_id,), ("record_id","feature_id","decision_id","session_id","payload",
                               "created_by","created_at","coach_final_authority","execution_authorized"))
 
     data = {
