@@ -101,7 +101,7 @@ def cases(athlete_id):
          {"athlete_id":athlete_id,"response_record_id":"PENDING-036","retest_record_id":"PENDING-037","baseline":{BASELINE_KPI_ID:4},"current":{BASELINE_KPI_ID:6},
           "comparison_method":"absolute_change","compared_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-039/progress-state",
-         {"athlete_id":athlete_id,"comparison_record_id":"PENDING-038","state":{"status":"IMPROVING","entry_success":6},
+         {"athlete_id":athlete_id,"comparison_record_id":"PENDING-038","state":{"status":"IMPROVING",BASELINE_KPI_ID:6},
           "evidence_refs":["REF-016"],"updated_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-040/next-decision-trigger",
          {"athlete_id":athlete_id,"session_id":"S1","progress_record_id":"PENDING-039","trigger_type":"RETEST_COMPLETE",
