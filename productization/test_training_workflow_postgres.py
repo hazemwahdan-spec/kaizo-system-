@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 import persistence
 import training_workflow
-from productization import coach_roster
+from productization import coach_roster, coach_assessment_workflow
 from training_workflow import router
 
 app = FastAPI()
@@ -29,10 +29,29 @@ client = TestClient(app, raise_server_exceptions=False)
 def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
     decision = "DEC-" + uuid4().hex
     problem = "PROB-" + uuid4().hex
-    assessment = "ASSESS-" + uuid4().hex
     drill = "DRILL-" + uuid4().hex
     link = "LINK-" + uuid4().hex
     now = "2026-11-10T00:00:00+00:00"
+    assessment_record = coach_assessment_workflow.create_assessment(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+        template_id="POSTGRES-FEAT-011-015", measurements={"entry_success": 4},
+    )
+    assessment = assessment_record["assessment_id"]
+    kpi_id = "ENTRY-SUCCESS-" + uuid4().hex
+    definition = coach_assessment_workflow.create_kpi_definition(
+        tenant_id=tenant, coach_actor_id=coach, kpi_id=kpi_id,
+        name="Entry success", metric_name="entry_success", unit="count",
+        target=None, direction="higher_is_better",
+    )
+    capture = coach_assessment_workflow.create_kpi_capture(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+        kpi_id=definition["kpi_id"], value=4, assessment_id=assessment,
+    )
+    baseline = coach_assessment_workflow.create_state_snapshot(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+        assessment_id=assessment, snapshot_type="baseline",
+        kpi_capture_ids=[capture["capture_id"]],
+    )
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO kaizo_problem_statements
@@ -67,7 +86,7 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
                 (now,coach,json.dumps({"decision_id":decision,"athlete_id":athlete_id,
                                        "coach_id":coach,"problem_id":problem,"status":"RECORDED"}),tenant))
         conn.commit()
-    return decision, drill
+    return decision, drill, baseline["snapshot_id"], kpi_id, 4
 
 
 def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
@@ -84,7 +103,7 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, baseline_id, kpi_id, baseline_value = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
@@ -169,20 +188,20 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "session_id":session_id,"drill_id":drill_id,
         "prescription_record_id":prescription["record_id"],
         "execution_cue_record_id":cues["record_id"],
-        "response":{"quality":"GOOD"},"kpi_values":{"entry_success":4}})
+        "baseline_reference":baseline_id,"response":{"quality":"GOOD"},"kpi_values":{kpi_id:5}})
     bad_retest = client.post("/api/v1/training-workflow/feat-037/retest",headers=headers,json={
         "athlete_id":athlete_id,"session_id":session_id,
         "response_record_id":training_response["record_id"],
-        "baseline_reference":training_response["record_id"],
+        "baseline_reference":baseline_id,
         "retest_values":{"different_kpi":6},"evidence_refs":["REF-POSTGRES"]})
     assert bad_retest.status_code == 409, bad_retest.text
     retest = post("037","retest",{
         "session_id":session_id,"response_record_id":training_response["record_id"],
-        "baseline_reference":training_response["record_id"],
-        "retest_values":{"entry_success":6},"evidence_refs":["REF-POSTGRES"]})
+        "baseline_reference":baseline_id,
+        "retest_values":{kpi_id:6},"evidence_refs":["REF-POSTGRES"]})
     comparison = post("038","before-after",{
         "response_record_id":training_response["record_id"],"retest_record_id":retest["record_id"],
-        "baseline":{"entry_success":4},"current":{"entry_success":6},
+        "baseline":{kpi_id:baseline_value},"current":{kpi_id:6},
         "comparison_method":"same_kpi_absolute_change"})
     progress = post("039","progress-state",{
         "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"},"evidence_refs":["REF-POSTGRES"]})
@@ -256,7 +275,7 @@ def test_audit_failure_rolls_back_workflow_record():
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, *_ = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
@@ -368,7 +387,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         coach_actor_id=coach,
         display_name="OIDC FEAT-033 PostgreSQL acceptance",
     )
-    decision_id, drill_id = seed_authoritative_feat033_sources(
+    decision_id, drill_id, *_ = seed_authoritative_feat033_sources(
         tenant, coach, athlete["athlete_id"]
     )
     path = "/api/v1/training-workflow/feat-033/decision-drill"
