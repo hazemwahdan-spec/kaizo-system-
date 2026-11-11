@@ -18,21 +18,37 @@ from fastapi.testclient import TestClient
 
 import persistence
 import training_workflow
-from productization import coach_roster
-from training_workflow import router
+from productization import coach_roster, coach_assessment_workflow
+from main import app
 
-app = FastAPI()
-app.include_router(router)
 client = TestClient(app, raise_server_exceptions=False)
 
 
 def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
     decision = "DEC-" + uuid4().hex
     problem = "PROB-" + uuid4().hex
-    assessment = "ASSESS-" + uuid4().hex
     drill = "DRILL-" + uuid4().hex
     link = "LINK-" + uuid4().hex
     now = "2026-11-10T00:00:00+00:00"
+    assessment_record = coach_assessment_workflow.create_assessment(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+        template_id="FEAT-015 baseline assessment", measurements={"entry_success": 4},
+    )
+    assessment = assessment_record["assessment_id"]
+    coach_assessment_workflow.create_kpi_definition(
+        tenant_id=tenant, coach_actor_id=coach, kpi_id="entry_success",
+        name="Entry success", metric_name="successful_entries", unit="count",
+        target=None, direction="higher_is_better",
+    )
+    capture = coach_assessment_workflow.create_kpi_capture(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+        kpi_id="entry_success", value=4, assessment_id=assessment,
+    )
+    baseline = coach_assessment_workflow.create_state_snapshot(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+        assessment_id=assessment, snapshot_type="baseline",
+        kpi_capture_ids=[capture["capture_id"]],
+    )
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO kaizo_problem_statements
@@ -65,9 +81,10 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
                 VALUES (%s,%s,'COACH_DECISION_RECORD_RECORDED',NULL,%s::jsonb,
                         'Protected Coach decision source for FEAT-033',%s)""",
                 (now,coach,json.dumps({"decision_id":decision,"athlete_id":athlete_id,
-                                       "coach_id":coach,"problem_id":problem,"status":"RECORDED"}),tenant))
+                                       "coach_id":coach,"problem_id":problem,
+                                       "assessment_id":assessment,"status":"RECORDED"}),tenant))
         conn.commit()
-    return decision, drill
+    return decision, drill, baseline["snapshot_id"]
 
 
 def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
@@ -84,7 +101,7 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, baseline_snapshot_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
@@ -135,7 +152,7 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
 
     monkeypatch.setattr(persistence, "connection", recording_connection)
     response = client.post(
-        "/api/v1/training-workflow/feat-033/decision-drill",
+        "/api/v1/product/coach/training-workflow/feat-033/decision-drill",
         json=payload, headers=headers,
     )
     assert response.status_code == 201, response.text
@@ -149,7 +166,7 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     athlete_id = athlete["athlete_id"]
     session_id = "SESSION-" + uuid4().hex
     def post(feature, suffix, body):
-        result = client.post(f"/api/v1/training-workflow/feat-{feature}/{suffix}",
+        result = client.post(f"/api/v1/product/coach/training-workflow/feat-{feature}/{suffix}",
                              json={"athlete_id":athlete_id, **body}, headers=headers)
         assert result.status_code == 201, (feature, result.text)
         saved = result.json()
@@ -169,17 +186,29 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "session_id":session_id,"drill_id":drill_id,
         "prescription_record_id":prescription["record_id"],
         "execution_cue_record_id":cues["record_id"],
-        "response":{"quality":"GOOD"},"kpi_values":{"entry_success":4}})
-    bad_retest = client.post("/api/v1/training-workflow/feat-037/retest",headers=headers,json={
+        "response":{"quality":"GOOD"},"kpi_values":{"entry_success":5}})
+    bad_retest = client.post("/api/v1/product/coach/training-workflow/feat-037/retest",headers=headers,json={
+        "athlete_id":athlete_id,"session_id":session_id,
+        "response_record_id":training_response["record_id"],
+        "baseline_reference":baseline_snapshot_id,
+        "retest_values":{"different_kpi":6},"evidence_refs":["REF-POSTGRES"]})
+    assert bad_retest.status_code == 409, bad_retest.text
+    invalid_baseline_reference = client.post("/api/v1/product/coach/training-workflow/feat-037/retest",headers=headers,json={
         "athlete_id":athlete_id,"session_id":session_id,
         "response_record_id":training_response["record_id"],
         "baseline_reference":training_response["record_id"],
-        "retest_values":{"different_kpi":6},"evidence_refs":["REF-POSTGRES"]})
-    assert bad_retest.status_code == 409, bad_retest.text
+        "retest_values":{"entry_success":6},"evidence_refs":["REF-POSTGRES"]})
+    assert invalid_baseline_reference.status_code == 409, invalid_baseline_reference.text
     retest = post("037","retest",{
         "session_id":session_id,"response_record_id":training_response["record_id"],
-        "baseline_reference":training_response["record_id"],
+        "baseline_reference":baseline_snapshot_id,
         "retest_values":{"entry_success":6},"evidence_refs":["REF-POSTGRES"]})
+    forged_response_baseline = client.post("/api/v1/product/coach/training-workflow/feat-038/before-after",headers=headers,json={
+        "athlete_id":athlete_id,"response_record_id":training_response["record_id"],
+        "retest_record_id":retest["record_id"],
+        "baseline":{"entry_success":5},"current":{"entry_success":6},
+        "comparison_method":"same_kpi_absolute_change"})
+    assert forged_response_baseline.status_code == 409, forged_response_baseline.text
     comparison = post("038","before-after",{
         "response_record_id":training_response["record_id"],"retest_record_id":retest["record_id"],
         "baseline":{"entry_success":4},"current":{"entry_success":6},
@@ -193,7 +222,7 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert trigger["record_id"]
 
     own_read = client.get(
-        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        f"/api/v1/product/coach/training-workflow/athletes/{athlete['athlete_id']}",
         headers=headers,
     )
     assert own_read.status_code == 200, own_read.text
@@ -236,7 +265,7 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     # A different Coach cannot read the record, even in the same tenant.
     other_headers = {**headers, "X-KAIZO-Actor": coach + "-OTHER"}
     denied = client.get(
-        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        f"/api/v1/product/coach/training-workflow/athletes/{athlete['athlete_id']}",
         headers=other_headers,
     )
     assert denied.status_code == 404
@@ -256,7 +285,7 @@ def test_audit_failure_rolls_back_workflow_record():
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, _ = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
@@ -289,7 +318,7 @@ def test_audit_failure_rolls_back_workflow_record():
 
     try:
         response = client.post(
-            "/api/v1/training-workflow/feat-033/decision-drill",
+            "/api/v1/product/coach/training-workflow/feat-033/decision-drill",
             json=payload, headers=headers,
         )
         assert response.status_code == 500
@@ -368,10 +397,10 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         coach_actor_id=coach,
         display_name="OIDC FEAT-033 PostgreSQL acceptance",
     )
-    decision_id, drill_id = seed_authoritative_feat033_sources(
+    decision_id, drill_id, _ = seed_authoritative_feat033_sources(
         tenant, coach, athlete["athlete_id"]
     )
-    path = "/api/v1/training-workflow/feat-033/decision-drill"
+    path = "/api/v1/product/coach/training-workflow/feat-033/decision-drill"
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
@@ -397,7 +426,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
     assert record["execution_authorized"] is False
 
     own_read = client.get(
-        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        f"/api/v1/product/coach/training-workflow/athletes/{athlete['athlete_id']}",
         headers={"Authorization": bearer(coach, tenant)},
     )
     assert own_read.status_code == 200, own_read.text
@@ -411,7 +440,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
 
     for foreign_token in (other_coach, other_tenant):
         denied_read = client.get(
-            f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+            f"/api/v1/product/coach/training-workflow/athletes/{athlete['athlete_id']}",
             headers={"Authorization": foreign_token},
         )
         assert denied_read.status_code == 404, denied_read.text
@@ -421,10 +450,10 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         assert denied_write.status_code == 404, denied_write.text
 
     assert client.get(
-        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        f"/api/v1/product/coach/training-workflow/athletes/{athlete['athlete_id']}",
         headers={"Authorization": non_coach},
     ).status_code == 403
     assert client.get(
-        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        f"/api/v1/product/coach/training-workflow/athletes/{athlete['athlete_id']}",
         headers={"Authorization": invalid_signature},
     ).status_code == 401
