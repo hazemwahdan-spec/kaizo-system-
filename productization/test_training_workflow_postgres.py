@@ -2,6 +2,7 @@
 import os
 import sys
 from pathlib import Path
+from contextlib import contextmanager
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import persistence
+import training_workflow
 from productization import coach_roster
 from training_workflow import router
 
@@ -23,7 +25,7 @@ app.include_router(router)
 client = TestClient(app, raise_server_exceptions=False)
 
 
-def test_workflow_record_and_tenant_audit_commit_atomically():
+def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert persistence.is_postgres_enabled()
     persistence.initialize()
     tenant = "TENANT-" + uuid4().hex
@@ -45,6 +47,47 @@ def test_workflow_record_and_tenant_audit_commit_atomically():
         "evidence_refs": ["REF-POSTGRES"],
         "selected_by": "SPOOFED-CLIENT-IDENTITY",
     }
+    def unexpected_request_ddl():
+        raise AssertionError("FEAT-033..040 request handlers must not execute schema DDL")
+
+    monkeypatch.setattr(training_workflow, "_ensure_schema", unexpected_request_ddl)
+    statements = []
+    original_connection = persistence.connection
+
+    class RecordingCursor:
+        def __init__(self, cursor):
+            self.cursor = cursor
+
+        def __enter__(self):
+            self.cursor.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.cursor.__exit__(*args)
+
+        def execute(self, query, params=None):
+            statements.append(str(query))
+            return self.cursor.execute(query, params)
+
+        def __getattr__(self, name):
+            return getattr(self.cursor, name)
+
+    class RecordingConnection:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def cursor(self):
+            return RecordingCursor(self.connection.cursor())
+
+        def __getattr__(self, name):
+            return getattr(self.connection, name)
+
+    @contextmanager
+    def recording_connection():
+        with original_connection() as conn:
+            yield RecordingConnection(conn)
+
+    monkeypatch.setattr(persistence, "connection", recording_connection)
     response = client.post(
         "/api/v1/training-workflow/feat-033/decision-drill",
         json=payload, headers=headers,
@@ -54,6 +97,30 @@ def test_workflow_record_and_tenant_audit_commit_atomically():
     assert record["created_by"] == coach
     assert record["tenant_id"] == tenant
     assert record["coach_actor_id"] == coach
+
+    own_read = client.get(
+        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        headers=headers,
+    )
+    assert own_read.status_code == 200, own_read.text
+    monkeypatch.setattr(persistence, "connection", original_connection)
+
+    normalized = [query.upper() for query in statements]
+    lock_indexes = [
+        i for i, query in enumerate(normalized)
+        if "FROM KAIZO_COACH_ATHLETE_OWNERSHIP" in query and "FOR UPDATE" in query
+    ]
+    insert_indexes = [
+        i for i, query in enumerate(normalized)
+        if "INSERT INTO KAIZO_TRAINING_WORKFLOW_RECORDS" in query
+    ]
+    assert lock_indexes and insert_indexes, statements
+    assert lock_indexes[0] < insert_indexes[0], statements
+    assert any("JOIN KAIZO_COACH_ATHLETE_OWNERSHIP" in query for query in normalized), statements
+    assert not any(
+        query.lstrip().startswith(("CREATE TABLE", "ALTER TABLE", "CREATE INDEX"))
+        for query in normalized
+    ), statements
 
     with persistence.connection() as conn:
         with conn.cursor() as cur:
