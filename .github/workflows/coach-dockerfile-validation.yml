@@ -1,0 +1,55 @@
+name: Coach Dockerfile Build Validation
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/coach-dockerfile-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coach-docker-build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+
+      - name: Build Coach image with Railway-equivalent context
+        run: |
+          docker build \
+            --file frontend/Dockerfile \
+            --tag kaizo-coach-ui:ci \
+            frontend
+
+      - name: Run Coach container
+        run: |
+          docker run --detach --rm \
+            --name kaizo-coach-ui-ci \
+            --publish 127.0.0.1:8080:8080 \
+            kaizo-coach-ui:ci
+
+      - name: Verify static UI and application bundle
+        run: |
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:8080/ -o /tmp/coach-index.html; then
+              break
+            fi
+            sleep 1
+          done
+          test -s /tmp/coach-index.html
+          curl --fail --silent http://127.0.0.1:8080/app.js -o /tmp/coach-app.js
+          test -s /tmp/coach-app.js
+          grep -q "KAIZO" /tmp/coach-index.html
+          echo "Coach Docker image build and HTTP smoke test passed."
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs kaizo-coach-ui-ci || true
+
+      - name: Stop test container
+        if: always()
+        run: docker rm --force kaizo-coach-ui-ci || true

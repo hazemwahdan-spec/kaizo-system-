@@ -1,4 +1,4 @@
-name: Coach FEAT-011-020 Protected Workflow
+name: Coach FEAT-011-032 Protected Workflow
 
 on:
   pull_request:
@@ -6,6 +6,18 @@ on:
       - "productization/coach_assessment_workflow.py"
       - "productization/coach_problem_workflow.py"
       - "productization/coach_diagnostic_workflow.py"
+      - "productization/coach_decision_workflow.py"
+      - "productization/coach_training_workflow.py"
+      - "productization/coach_problem_library_workflow.py"
+      - "productization/coach_progression_workflow.py"
+      - "productization/test_coach_progression_workflow_api.py"
+      - "productization/test_coach_progression_workflow_postgres.py"
+      - "productization/test_coach_problem_library_workflow_api.py"
+      - "productization/test_coach_problem_library_workflow_postgres.py"
+      - "productization/test_coach_training_workflow_api.py"
+      - "productization/test_coach_training_workflow_postgres.py"
+      - "productization/test_coach_decision_workflow_api.py"
+      - "productization/test_coach_decision_workflow_postgres.py"
       - "productization/test_coach_diagnostic_workflow_api.py"
       - "productization/test_coach_diagnostic_workflow_postgres.py"
       - "productization/test_coach_problem_workflow_api.py"
@@ -73,11 +85,27 @@ jobs:
         run: |
           python -m pytest -q productization/test_coach_problem_workflow_api.py
           python -m pytest -q productization/test_coach_problem_workflow_postgres.py
+      - name: Verify protected FEAT-029..032 progression, constraints and drill APIs
+        run: |
+          python -m pytest -q productization/test_coach_progression_workflow_api.py
+          python -m pytest -q productization/test_coach_progression_workflow_postgres.py
+      - name: Verify protected FEAT-017 provenance-gated problem library APIs
+        run: |
+          python -m pytest -q productization/test_coach_problem_library_workflow_api.py
+          python -m pytest -q productization/test_coach_problem_library_workflow_postgres.py
       - name: Verify protected FEAT-018..020 Coach diagnostic APIs
         run: |
           python -m pytest -q productization/test_coach_diagnostic_workflow_api.py
           python -m pytest -q productization/test_coach_diagnostic_workflow_postgres.py
-      - name: Verify OpenAPI exposes protected FEAT-011..020 routes only
+      - name: Verify protected FEAT-021..025 candidate, rationale, comparison, review and decision APIs
+        run: |
+          python -m pytest -q productization/test_coach_decision_workflow_api.py
+          python -m pytest -q productization/test_coach_decision_workflow_postgres.py
+      - name: Verify protected FEAT-026..028 training plan, session and dosage workflows
+        run: |
+          python -m pytest -q productization/test_coach_training_workflow_api.py
+          python -m pytest -q productization/test_coach_training_workflow_postgres.py
+      - name: Verify OpenAPI exposes protected FEAT-011..032 routes only
         run: |
           python - <<'PY'
           from main import app
@@ -94,8 +122,30 @@ jobs:
               "/api/v1/product/coach/athletes/{athlete_id}/state-snapshots/{snapshot_id}",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}",
+              "/api/v1/product/coach/problem-library",
+              "/api/v1/product/coach/athletes/{athlete_id}/assessments/{assessment_id}/problem-library-selections",
+              "/api/v1/product/coach/athletes/{athlete_id}/assessments/{assessment_id}/problem-library-selections/{selection_id}",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}/cause-context",
               "/api/v1/product/coach/athletes/{athlete_id}/problem-statements/{problem_id}/diagnoses",
+              "/api/v1/product/coach/athletes/{athlete_id}/diagnoses/{diagnosis_id}/decision-candidates",
+              "/api/v1/product/coach/athletes/{athlete_id}/decision-candidates/{candidate_id}/rationales",
+              "/api/v1/product/coach/athletes/{athlete_id}/diagnoses/{diagnosis_id}/decision-comparisons",
+              "/api/v1/product/coach/athletes/{athlete_id}/decision-candidates/{candidate_id}/coach-review",
+              "/api/v1/product/coach/athletes/{athlete_id}/decision-candidates/{candidate_id}/decision-record",
+              "/api/v1/product/coach/athletes/{athlete_id}/training-plans",
+              "/api/v1/product/coach/athletes/{athlete_id}/training-plans/{plan_id}",
+              "/api/v1/product/coach/athletes/{athlete_id}/training-plans/{plan_id}/sessions",
+              "/api/v1/product/coach/athletes/{athlete_id}/training-sessions/{session_id}",
+              "/api/v1/product/coach/athletes/{athlete_id}/training-sessions/{session_id}/dosage",
+              "/api/v1/product/coach/athletes/{athlete_id}/training-sessions/{session_id}/dosage/{dosage_id}",
+              "/api/v1/product/coach/athletes/{athlete_id}/training-plans/{plan_id}/progression-rules",
+              "/api/v1/product/coach/athletes/{athlete_id}/progression-rules/{rule_id}/coach-approval",
+              "/api/v1/product/coach/athletes/{athlete_id}/progression-rules/{rule_id}/evaluations",
+              "/api/v1/product/coach/athletes/{athlete_id}/training-sessions/{session_id}/constraints-notes",
+              "/api/v1/product/coach/athletes/{athlete_id}/drill-library",
+              "/api/v1/product/coach/athletes/{athlete_id}/drill-library/{drill_id}/coach-review",
+              "/api/v1/product/coach/drill-library",
+              "/api/v1/product/coach/athletes/{athlete_id}/problems/{problem_id}/drill-links",
           }
           missing = sorted(required - paths)
           if missing:
