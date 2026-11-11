@@ -33,7 +33,7 @@ function coachWorkflowExample(){
   "036":{session_id:sessionId,drill_id:p34.drill_id||drillId,prescription_record_id:r34?.record_id||"",execution_cue_record_id:r35?.record_id||"",baseline_reference:baselineReference,response:{quality:"RECORDED"},kpi_values:responseKpis},
   "037":{session_id:sessionId,response_record_id:r36?.record_id||"",baseline_reference:baselineReference,retest_values:retestKpis,evidence_refs:[]},
   "038":{response_record_id:r36?.record_id||"",retest_record_id:r37?.record_id||"",baseline,current:retestKpis,comparison_method:"same_kpi_absolute_change"},
-  "039":{comparison_record_id:r38?.record_id||"",state:{status:"REVIEW_REQUIRED",decision_note:"Coach interpretation"},evidence_refs:[]},
+  "039":{comparison_record_id:r38?.record_id||"",state:{status:"REVIEW_REQUIRED",kpi_values:retestKpis,decision_note:"Coach interpretation"},evidence_refs:[]},
   "040":{session_id:sessionId,progress_record_id:r39?.record_id||"",trigger_type:"RETEST_COMPLETE",trigger_reason:"Coach-reviewed progress requires a new decision",required_evidence:r38?.record_id?[r38.record_id]:[]}
  };
  const editor=document.getElementById("coachWorkflowPayload");
