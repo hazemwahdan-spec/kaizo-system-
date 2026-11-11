@@ -7,6 +7,7 @@ and DATABASE_URL. No credentials are stored in source control.
 
 import json
 import os
+from contextvars import ContextVar
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
 
@@ -56,6 +57,23 @@ CREATE TABLE IF NOT EXISTS kaizo_kpi_definitions (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_kpi_definitions (
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    kpi_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    target DOUBLE PRECISION,
+    direction TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, coach_actor_id, kpi_id)
+);
+CREATE INDEX IF NOT EXISTS idx_coach_kpi_scope
+    ON kaizo_coach_kpi_definitions (tenant_id, coach_actor_id, kpi_id);
 
 CREATE TABLE IF NOT EXISTS kaizo_kpi_captures (
     capture_id TEXT PRIMARY KEY,
@@ -256,6 +274,23 @@ CREATE TABLE IF NOT EXISTS kaizo_training_sessions (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kaizo_training_dosages (
+    dosage_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    block_name TEXT NOT NULL,
+    sets INTEGER NOT NULL,
+    reps INTEGER NOT NULL,
+    rest_seconds INTEGER NOT NULL DEFAULT 0,
+    dosage_notes TEXT,
+    status TEXT NOT NULL,
+    prescribed_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kaizo_training_dosages_session_scope
+    ON kaizo_training_dosages (session_id, athlete_id, created_at, dosage_id);
+
 CREATE TABLE IF NOT EXISTS kaizo_cause_context_framings (
     framing_id TEXT PRIMARY KEY,
     problem_id TEXT NOT NULL,
@@ -401,6 +436,117 @@ ALTER TABLE kaizo_decision_state_links ADD COLUMN IF NOT EXISTS tenant_id TEXT;
 ALTER TABLE kaizo_decision_state_links ADD COLUMN IF NOT EXISTS coach_actor_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_kaizo_decision_state_links_decision
     ON kaizo_decision_state_links(tenant_id, coach_actor_id, decision_id, linked_at);
+
+-- Distinct durable business record; never alias FEAT-025 decision records.
+CREATE TABLE IF NOT EXISTS kaizo_coach_decision_cycles (
+    decision_cycle_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    decision_input JSONB NOT NULL,
+    decision_output JSONB NOT NULL,
+    adaptation_input JSONB,
+    adaptation_output JSONB,
+    status TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_decision_cycles_scope
+    ON kaizo_coach_decision_cycles(tenant_id, coach_actor_id, athlete_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_progression_rules (
+    rule_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    operator TEXT NOT NULL,
+    threshold DOUBLE PRECISION NOT NULL,
+    action TEXT NOT NULL,
+    adjustment DOUBLE PRECISION NOT NULL,
+    rule_version TEXT NOT NULL,
+    approval_status TEXT NOT NULL,
+    evidence_ids JSONB NOT NULL,
+    created_by TEXT NOT NULL,
+    approved_by TEXT,
+    approved_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    name TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_progression_rules_scope
+    ON kaizo_coach_progression_rules(tenant_id, coach_actor_id, athlete_id, plan_id, created_at);
+ALTER TABLE kaizo_coach_progression_rules
+    ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_progression_evaluations (
+    evaluation_id TEXT PRIMARY KEY,
+    rule_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    observed_value DOUBLE PRECISION NOT NULL,
+    matched BOOLEAN NOT NULL,
+    recommended_action TEXT NOT NULL,
+    adjustment DOUBLE PRECISION NOT NULL,
+    evaluated_by TEXT NOT NULL,
+    evaluated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_progression_evaluations_scope
+    ON kaizo_coach_progression_evaluations(tenant_id, coach_actor_id, athlete_id, rule_id, evaluated_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_session_constraints (
+    constraint_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    content TEXT NOT NULL,
+    priority TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_session_constraints_scope
+    ON kaizo_coach_session_constraints(tenant_id, coach_actor_id, athlete_id, session_id, created_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_drill_library (
+    drill_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    source_assessment_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    status TEXT NOT NULL,
+    coach_review BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by TEXT NOT NULL,
+    approved_by TEXT,
+    approved_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_drill_library_scope
+    ON kaizo_coach_drill_library(tenant_id, coach_actor_id, status, created_at);
+
+CREATE TABLE IF NOT EXISTS kaizo_coach_problem_drill_links (
+    link_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    coach_actor_id TEXT NOT NULL,
+    problem_id TEXT NOT NULL,
+    drill_id TEXT NOT NULL,
+    athlete_id TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    evidence_ids JSONB NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coach_problem_drill_links_scope
+    ON kaizo_coach_problem_drill_links(tenant_id, coach_actor_id, athlete_id, problem_id, created_at);
 """
 
 
@@ -429,10 +575,58 @@ def _database_url() -> str:
     return value
 
 
+_ACTIVE_CONNECTION: ContextVar[Any | None] = ContextVar("kaizo_active_persistence_connection", default=None)
+
+
+class _NestedConnectionProxy:
+    """Share an outer transaction while preventing inner helpers from committing it."""
+
+    def __init__(self, connection: Any):
+        self._connection = connection
+
+    def commit(self) -> None:
+        # The outer atomic_transaction owns commit/rollback.
+        return None
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._connection, name)
+
+
 @contextmanager
 def connection() -> Iterator[Any]:
-    with psycopg.connect(_database_url()) as conn:
+    active = _ACTIVE_CONNECTION.get()
+    if active is not None:
+        yield _NestedConnectionProxy(active)
+        return
+    with psycopg.connect(_database_url(), connect_timeout=5) as conn:
+        token = _ACTIVE_CONNECTION.set(conn)
+        try:
+            yield conn
+        finally:
+            _ACTIVE_CONNECTION.reset(token)
+
+
+@contextmanager
+def atomic_transaction() -> Iterator[Any]:
+    """Run nested persistence helpers and their audit writes in one DB transaction.
+
+    Inner connection() calls share this connection; their explicit commit() calls
+    are suppressed until this outer context exits successfully.
+    """
+    with connection() as conn:
         yield conn
+
+
+def check_connection() -> None:
+    """Verify database connectivity using a read-only transaction."""
+    if not is_postgres_enabled():
+        return
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SET TRANSACTION READ ONLY")
+            cur.execute("SELECT 1")
+            if cur.fetchone()[0] != 1:
+                raise RuntimeError("PostgreSQL readiness probe returned an unexpected result")
 
 
 def initialize() -> None:
@@ -1571,33 +1765,13 @@ def get_training_session(session_id: str) -> Optional[Dict[str, Any]]:
             "created_at":row[8]}
 
 def _ensure_training_dosages_table() -> None:
-    if not is_postgres_enabled():
-        return
-    with connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS kaizo_training_dosages (
-                    dosage_id TEXT PRIMARY KEY,
-                    session_id TEXT NOT NULL,
-                    plan_id TEXT NOT NULL,
-                    athlete_id TEXT NOT NULL,
-                    block_name TEXT NOT NULL,
-                    sets INTEGER NOT NULL,
-                    reps INTEGER NOT NULL,
-                    rest_seconds INTEGER NOT NULL DEFAULT 0,
-                    dosage_notes TEXT,
-                    status TEXT NOT NULL,
-                    prescribed_by TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-            """)
-        conn.commit()
+    """Compatibility shim; dosage schema is provisioned by initialize(), never by requests."""
+    return
 
 
 def upsert_training_dosage(dosage: Dict[str, Any]) -> None:
     if not is_postgres_enabled():
         return
-    _ensure_training_dosages_table()
     with connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -1620,7 +1794,6 @@ def upsert_training_dosage(dosage: Dict[str, Any]) -> None:
 def get_training_dosage(dosage_id: str) -> Optional[Dict[str, Any]]:
     if not is_postgres_enabled():
         return None
-    _ensure_training_dosages_table()
     with connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -1642,7 +1815,6 @@ def get_training_dosage(dosage_id: str) -> Optional[Dict[str, Any]]:
 def list_training_dosages(session_id: str) -> list[Dict[str, Any]]:
     if not is_postgres_enabled():
         return []
-    _ensure_training_dosages_table()
     with connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -1658,4 +1830,3 @@ def list_training_dosages(session_id: str) -> list[Dict[str, Any]]:
         "dosage_notes": r[8], "status": r[9], "prescribed_by": r[10], "created_at": r[11],
         "coach_final_authority": True, "execution_authorized": False,
     } for r in rows]
-

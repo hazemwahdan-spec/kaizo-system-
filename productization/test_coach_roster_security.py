@@ -60,15 +60,13 @@ def test_coach_sees_only_owned_athletes_in_same_tenant(monkeypatch):
                  headers=auth_headers()).status_code == 404
 
 
-def test_legacy_unassigned_athlete_stays_invisible_without_trusted_ownership(monkeypatch):
+def test_legacy_unscoped_athlete_creation_is_retired_and_cannot_create_unowned_records(monkeypatch):
     monkeypatch.setenv("KAIZO_IDENTITY_MODE", "development")
     c = client()
     legacy = c.post("/api/v1/athletes", json={"display_name": "Legacy unassigned"})
-    athlete_id = legacy.json()["athlete_id"]
+    assert legacy.status_code == 410
     assert c.get("/api/v1/product/coach/athletes",
                  headers=auth_headers()).json()["total"] == 0
-    assert c.get(f"/api/v1/product/coach/athletes/{athlete_id}",
-                 headers=auth_headers()).status_code == 404
 
 
 def test_each_coach_receives_only_their_server_created_athletes(monkeypatch):

@@ -91,3 +91,55 @@ def test_audit_failure_rolls_back_state_and_history():
                 cur.execute(f"DROP TRIGGER IF EXISTS {trigger} ON kaizo_audit_logs")
                 cur.execute(f"DROP FUNCTION IF EXISTS {function}()")
             conn.commit()
+
+
+def test_state_reads_recheck_current_ownership_inside_read_transaction(monkeypatch):
+    tenant, coach, athlete, headers, payload = _fixture()
+    created = client.post(
+        "/api/v1/state-cycle/feat-042/digital-twin-state",
+        json=payload, headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    linked = client.post(
+        "/api/v1/state-cycle/feat-044/decision-state-link",
+        json={
+            "decision_id": "DECISION-" + uuid4().hex,
+            "entity_id": athlete,
+            "state_version": 1,
+            "state_ref": f"{athlete}:v1",
+            "coach_final_authority": True,
+        },
+        headers=headers,
+    )
+    assert linked.status_code == 201, linked.text
+    decision_id = linked.json()["link"]["decision_id"]
+
+    # Simulate ownership changing after the request-level principal check.
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """DELETE FROM kaizo_coach_athlete_ownership
+                   WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s""",
+                (tenant, coach, athlete),
+            )
+
+    # Let the route-level check proceed as if it observed the old owner row;
+    # the persistence read must independently recheck the authoritative row.
+    monkeypatch.setattr(
+        coach_roster, "get_owned_athlete",
+        lambda **kwargs: {"athlete_id": athlete, "tenant_id": tenant, "coach_actor_id": coach},
+    )
+
+    assert client.get(
+        f"/api/v1/state-cycle/feat-042/digital-twin-state/{athlete}",
+        headers=headers,
+    ).status_code == 404
+    assert client.get(
+        f"/api/v1/state-cycle/feat-043/state-history/{athlete}",
+        headers=headers,
+    ).status_code == 404
+    assert client.get(
+        f"/api/v1/state-cycle/feat-044/decision-state-link/{decision_id}",
+        params={"athlete_id": athlete},
+        headers=headers,
+    ).status_code == 404

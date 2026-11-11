@@ -1,4 +1,4 @@
-name: FEAT-071-075 Reporting Runtime Integration
+name: FEAT-071-075 Reporting Runtime Fail-Closed Boundary
 
 on:
   pull_request:

@@ -1,4 +1,4 @@
-name: FEAT-057-060 Evidence Safety Integration
+name: FEAT-057-060 Evidence Safety Fail-Closed Boundary
 on:
   pull_request:
     paths:

@@ -1,4 +1,4 @@
-name: FEAT-061-065 Academy Operations Integration
+name: FEAT-061-065 Academy Operations Fail-Closed Boundary
 
 on:
   pull_request:

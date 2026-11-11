@@ -99,8 +99,9 @@ def test_coach_ui_fails_closed_for_unscoped_core_decision_and_digital_twin_actio
         "/audit/logs",
     ):
         assert route not in APP
-    assert "Decision and Digital Twin writes are not connected" in APP
-    assert "no unscoped request will be sent" in APP
+    assert "Protected Coach workflow boundary" in APP
+    assert "Legacy unscoped Core routes remain retired" in APP
+    assert "no unscoped request is sent" in APP
     assert 'id="coachWorkspace"' not in APP
     assert "coachGo(" not in APP
 
@@ -111,3 +112,218 @@ def test_coach_audit_review_uses_selected_owned_athlete_and_product_bearer():
     assert "athleteAuditReviewSection" in APP
     assert "productAccessToken()" in APP
     assert 'fetch(API+"/audit/logs"' not in APP
+
+
+def test_coach_ui_decision_cycle_and_adaptation_use_protected_scoped_api():
+    assert 'productCall("/decision",{method:"POST"' in APP
+    assert 'productCall("/adaptation",{method:"POST"' in APP
+    assert 'decision_cycle_id:currentCoachDecisionCycleId' in APP
+    assert '"/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-cycles/"+encodeURIComponent(cycleId)' in APP
+    assert 'function createCoachDecisionCycle(event)' in APP
+    assert 'function adaptCoachDecisionCycle(event)' in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+
+
+def test_coach_ui_connects_scoped_digital_twin_state_and_history():
+    assert 'stateCycleCall("/state-cycle/feat-042/digital-twin-state/"+encodeURIComponent(athleteId))' in APP
+    assert 'stateCycleCall("/state-cycle/feat-043/state-history/"+encodeURIComponent(athleteId))' in APP
+    assert 'stateCycleCall("/state-cycle/feat-042/digital-twin-state"' in APP
+    assert 'function saveCoachDigitalTwinState(event)' in APP
+    assert 'loadCoachDigitalTwinState(athleteId)' in APP
+    assert 'coachDigitalTwinSection' in APP
+    assert 'evidence_refs:evidenceRefs' in APP
+    assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
+
+
+def test_coach_digital_twin_uses_state_cycle_router_not_product_prefix():
+    assert "async function stateCycleCall(path, opts={})" in APP
+    assert "fetch(API+path,opts)" in APP
+    assert "stateCycleCall(\"/state-cycle/feat-042/digital-twin-state/\"" in APP
+    assert "stateCycleCall(\"/state-cycle/feat-043/state-history/\"" in APP
+    assert "stateCycleCall(\"/state-cycle/feat-042/digital-twin-state\"" in APP
+    assert "productCall(\"/state-cycle/" not in APP
+
+
+def test_coach_assessment_and_kpi_ui_uses_protected_bearer_product_api():
+    for function in (
+        "loadCoachAssessmentData",
+        "createCoachAssessment",
+        "createCoachKpiDefinition",
+        "createCoachKpiCapture",
+        "attachCoachAssessmentEvidence",
+        "createCoachStateSnapshot",
+    ):
+        assert f"function {function}(" in APP
+    for route in (
+        "/coach/athletes/",
+        "/assessments",
+        "/coach/kpi-definitions",
+        "/kpi-captures",
+        "/state-snapshots",
+    ):
+        assert route in APP
+    assert 'productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/assessments"' in APP
+    assert 'productCall("/coach/kpi-definitions"' in APP
+    assert 'Authorization":"Bearer "+token' in APP
+    assert "recorded_by:" not in APP
+    assert "captured_by:" not in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+
+
+def test_coach_assessment_ui_is_scoped_to_selected_roster_athlete():
+    assert "athleteAssessmentSection" in APP
+    assert "selectedCoachAthleteId" in APP
+    assert "currentCoachAssessmentId" in APP
+    assert "assessment_id:currentCoachAssessmentId" in APP
+    assert "kpi_capture_ids:captureIds" in APP
+    assert "loadCoachAssessmentData(athleteId)" in APP
+    assert "selectCoachAssessment(this.value)" in APP
+
+
+def test_coach_problem_analysis_ui_uses_protected_bearer_workflows():
+    for function in (
+        "loadCoachProblemAnalysis",
+        "createCoachProblemStatement",
+        "createCoachCauseContext",
+        "createCoachDiagnosis",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    assert "athleteProblemAnalysisSection" in APP
+    assert 'productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/problem-statements"' in APP
+    assert '"/cause-context"' in APP
+    assert '"/diagnoses"' in APP
+    assert "evidence_ids:evidenceIds" in APP
+    assert "currentCoachAssessmentId" in APP
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+
+
+def test_coach_decision_workflow_ui_uses_protected_candidate_review_and_decision_routes():
+    for function in (
+        "loadCoachDecisionWorkflow",
+        "generateCoachDecisionCandidates",
+        "recordCoachDecisionRationale",
+        "compareCoachDecisionCandidates",
+        "reviewCoachDecisionCandidate",
+        "recordCoachDecision",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    for route in (
+        "/decision-candidates",
+        "/rationales",
+        "/decision-comparisons",
+        "/coach-review",
+        "/decision-record",
+    ):
+        assert route in APP
+    assert "currentCoachDiagnosisId" in APP
+    assert "currentCoachCandidateId" in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "No training execution was authorized." in APP
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_training_plan_session_and_dosage_ui_uses_protected_draft_routes():
+    for function in (
+        "loadCoachTrainingWorkflow",
+        "createCoachTrainingPlan",
+        "createCoachTrainingSession",
+        "createCoachTrainingDosage",
+        "selectCoachTrainingPlan",
+        "selectCoachTrainingSession",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    for route in (
+        "/training-plans",
+        "/training-sessions/",
+        "/dosage",
+    ):
+        assert route in APP
+    assert "currentCoachDecisionId" in APP
+    assert "currentCoachPlanId" in APP
+    assert "currentCoachSessionId" in APP
+    assert "No training execution was authorized." in APP
+    assert "No execution was triggered." in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_problem_library_ui_uses_provenance_gated_scoped_selection():
+    for function in (
+        "loadCoachProblemLibrary",
+        "selectCoachProblemLibraryItem",
+        "createCoachProblemLibrarySelection",
+        "loadCoachProblemLibrarySelections",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    assert "/coach/problem-library" in APP
+    assert "/problem-library-selections" in APP
+    assert "currentCoachAssessmentId" in APP
+    assert "provenance-bearing APPROVED and VERIFIED" in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_progression_constraints_drill_and_problem_link_ui_is_protected():
+    for function in (
+        "createCoachProgressionRule",
+        "approveCoachProgressionRule",
+        "evaluateCoachProgressionRule",
+        "createCoachSessionConstraint",
+        "loadCoachSessionConstraints",
+        "createCoachDrill",
+        "loadCoachDrillLibrary",
+        "approveCoachDrill",
+        "createCoachProblemDrillLink",
+        "loadCoachProblemDrillLinks",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    for route in (
+        "/progression-rules",
+        "/coach-approval",
+        "/evaluations",
+        "/constraints-notes",
+        "/drill-library",
+        "/drill-links",
+    ):
+        assert route in APP
+    assert "currentCoachRuleId" in APP
+    assert "currentCoachDrillId" in APP
+    assert "currentCoachSessionId" in APP
+    assert "Coach approval is required before evaluation." in APP
+    assert "No execution was triggered." in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api():
+    for feature in ("033","034","035","036","037","038","039","040"):
+        assert f'"{feature}":' in APP
+    assert '"/feat-"+feature+"/"+COACH_WORKFLOW_STEPS[feature]' in APP
+    assert 'async function trainingWorkflowCall(path,opts={})' in APP
+    assert 'fetch(API+"/training-workflow"+path,opts)' in APP
+    assert '"Authorization":"Bearer "+token' in APP
+    assert 'function loadCoachTrainingLineage()' in APP
+    assert 'function submitCoachTrainingLineage()' in APP
+    assert 'payload.athlete_id=athleteId' in APP
+    assert 'payload.coach_final_authority=true' in APP
+    assert 'loadCoachTrainingLineage();' in APP
+    assert 'coachTrainingLineageData=data' in APP
+    assert 'r33?.decision_id' in APP
+    assert 'r34?.record_id' in APP
+    assert 'r35?.record_id' in APP
+    assert 'r36?.record_id' in APP
+    assert 'r37?.record_id' in APP
+    assert 'r38?.record_id' in APP
+    assert 'r39?.record_id' in APP
+    assert 'FEAT_034_RECORD_ID' not in APP
+    assert 'FEAT_035_RECORD_ID' not in APP
+    assert 'FEAT_036_RECORD_ID' not in APP
+    assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
+    assert '"X-KAIZO-Actor"' not in APP
+    assert '"X-KAIZO-Tenant"' not in APP
