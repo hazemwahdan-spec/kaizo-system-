@@ -625,6 +625,13 @@ def list_state_snapshots(*, tenant_id: str, coach_actor_id: str,
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
+                    """SELECT 1 FROM kaizo_coach_athlete_ownership
+                       WHERE athlete_id=%s AND tenant_id=%s AND coach_actor_id=%s""",
+                    (athlete_id, tenant_id, coach_actor_id),
+                )
+                if cur.fetchone() is None:
+                    return None
+                cur.execute(
                     """SELECT s.snapshot_id,s.athlete_id,s.assessment_id,s.snapshot_type,
                               s.measurements,s.kpis,s.captured_by,s.captured_at,s.created_at
                        FROM kaizo_state_snapshots s
