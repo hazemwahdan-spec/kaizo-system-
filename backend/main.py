@@ -35,7 +35,7 @@ app = FastAPI(
 )
 
 app.include_router(feature_runtime_router)
-app.include_router(training_workflow_router)
+app.include_router(training_workflow_router, prefix="/api/v1/training-workflow")
 app.include_router(knowledge_runtime_router)
 app.include_router(audit_trace_runtime_router)
 app.include_router(evidence_safety_runtime_router)
@@ -2076,6 +2076,8 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 from productization.product_api import router as product_api_router
+# Publish the same verified FEAT-033..040 handlers through the protected Commercial Product API.
+product_api_router.include_router(training_workflow_router, prefix="/coach/training-workflow")
 app.include_router(product_api_router)
 
 
