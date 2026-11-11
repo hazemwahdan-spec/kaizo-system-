@@ -299,3 +299,31 @@ def test_coach_progression_constraints_drill_and_problem_link_ui_is_protected():
     assert "execution_authorized:true" not in APP.replace(" ", "").lower()
     assert "X-KAIZO-Actor" not in APP
     assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api():
+    for feature in ("033","034","035","036","037","038","039","040"):
+        assert f'"{feature}":' in APP
+    assert '"/feat-"+feature+"/"+COACH_WORKFLOW_STEPS[feature]' in APP
+    assert 'async function trainingWorkflowCall(path,opts={})' in APP
+    assert 'fetch(API+"/training-workflow"+path,opts)' in APP
+    assert '"Authorization":"Bearer "+token' in APP
+    assert 'function loadCoachTrainingLineage()' in APP
+    assert 'function submitCoachTrainingLineage()' in APP
+    assert 'payload.athlete_id=athleteId' in APP
+    assert 'payload.coach_final_authority=true' in APP
+    assert 'loadCoachTrainingLineage();' in APP
+    assert 'coachTrainingLineageData=data' in APP
+    assert 'r33?.decision_id' in APP
+    assert 'r34?.record_id' in APP
+    assert 'r35?.record_id' in APP
+    assert 'r36?.record_id' in APP
+    assert 'r37?.record_id' in APP
+    assert 'r38?.record_id' in APP
+    assert 'r39?.record_id' in APP
+    assert 'FEAT_034_RECORD_ID' not in APP
+    assert 'FEAT_035_RECORD_ID' not in APP
+    assert 'FEAT_036_RECORD_ID' not in APP
+    assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
+    assert '"X-KAIZO-Actor"' not in APP
+    assert '"X-KAIZO-Tenant"' not in APP
