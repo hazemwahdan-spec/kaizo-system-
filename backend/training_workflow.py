@@ -635,17 +635,10 @@ def create_next_decision_trigger(
     comparison_payload = _record_payload(comparison)
     required_refs = {
         progress.get("record_id"), comparison.get("record_id"),
-        comparison_payload.get("baseline_snapshot_id"), retest_record_id := None,
+        comparison_payload.get("baseline_snapshot_id"),
+        comparison_payload.get("retest_record_id"),
     }
-    retest_record_id = None
-    for candidate in _list("FEAT-037", req.athlete_id, principal.tenant_id, principal.actor_id):
-        if candidate.get("session_id") == req.session_id and candidate.get("record_id"):
-            if _record_payload(candidate).get("baseline_snapshot_id") == comparison_payload.get("baseline_snapshot_id"):
-                retest_record_id = candidate["record_id"]
-    required_refs.discard(None)
-    if retest_record_id:
-        required_refs.add(retest_record_id)
-    if not required_refs.issubset(set(req.required_evidence)):
+    if None in required_refs or not required_refs.issubset(set(req.required_evidence)):
         raise HTTPException(409, detail="next-decision evidence must include progress, comparison, baseline snapshot and retest records")
     payload = req.model_dump()
     payload.update(_parent_lineage(progress_payload))
