@@ -438,7 +438,6 @@ def create_training_dosage(
         raise ValueError("rest_seconds must be a non-negative integer")
     now = _now()
     if persistence.is_postgres_enabled():
-        persistence._ensure_training_dosages_table()
         with persistence.atomic_transaction() as conn:
             with conn.cursor() as cur:
                 session = _session_sql(
@@ -500,7 +499,6 @@ def create_training_dosage(
 def list_training_dosages(*, tenant_id: str, coach_actor_id: str,
                           athlete_id: str, session_id: str) -> list[dict[str, Any]] | None:
     if persistence.is_postgres_enabled():
-        persistence._ensure_training_dosages_table()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 if _session_sql(cur, tenant_id=tenant_id, coach_actor_id=coach_actor_id,
@@ -532,7 +530,6 @@ def list_training_dosages(*, tenant_id: str, coach_actor_id: str,
 def get_training_dosage(*, tenant_id: str, coach_actor_id: str,
                         athlete_id: str, session_id: str, dosage_id: str) -> dict[str, Any] | None:
     if persistence.is_postgres_enabled():
-        persistence._ensure_training_dosages_table()
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 if _session_sql(cur, tenant_id=tenant_id, coach_actor_id=coach_actor_id,

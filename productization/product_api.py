@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
-from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow, coach_problem_workflow, coach_diagnostic_workflow, coach_decision_workflow, coach_training_workflow, coach_problem_library_workflow
+from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow, coach_problem_workflow, coach_diagnostic_workflow, coach_decision_workflow, coach_training_workflow, coach_problem_library_workflow, coach_progression_workflow
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -1694,3 +1694,325 @@ def get_coach_problem_library_selection(
         selection_id=selection_id,
     )
     return _coach_governed(record)
+
+
+# FEAT-029–032: progression governance, session constraints, Coach-reviewed drills and problem/drill links.
+class CoachProgressionRuleRequest(BaseModel):
+    name: str
+    metric: str
+    operator: str
+    threshold: float
+    action: str
+    adjustment: float
+    rule_version: str
+    evidence_ids: List[str]
+
+
+class CoachProgressionEvaluationRequest(BaseModel):
+    observed_value: float
+
+
+class CoachSessionConstraintRequest(BaseModel):
+    kind: str
+    content: str
+    priority: str = "NORMAL"
+
+
+class CoachDrillRequest(BaseModel):
+    assessment_id: str
+    name: str
+    judo_area: str
+    technical_skill: str
+    problem_target: str
+    decision_target: str
+    age_suitability: str
+    skill_level: str
+    execution_pattern: str
+    coach_cues: List[str] | None = None
+    common_errors: List[str] | None = None
+    correction: str = ""
+    dosage: str = ""
+    intensity: str = ""
+    rest: str = ""
+    partner_requirement: str = ""
+    equipment: str = ""
+    safety_constraints: str
+    kpi: str
+    retest_link: str | None = None
+    competition_randori_transfer: str = ""
+    evidence_ids: List[str]
+    source_refs: List[str]
+
+
+class CoachProblemDrillLinkRequest(BaseModel):
+    drill_id: str
+    rationale: str
+    evidence_ids: List[str]
+
+
+def _coach_progression_result(call, *args, **kwargs):
+    try:
+        result = call(*args, **kwargs)
+    except coach_progression_workflow.CoachProgressionNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except coach_progression_workflow.CoachProgressionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="progression/training resource not found in verified Coach scope")
+    return result
+
+
+@router.post("/coach/athletes/{athlete_id}/training-plans/{plan_id}/progression-rules", status_code=201)
+def create_coach_progression_rule(
+    athlete_id: str,
+    plan_id: str,
+    req: CoachProgressionRuleRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_progression_result(
+        coach_progression_workflow.create_progression_rule,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, plan_id=plan_id, name=req.name, metric=req.metric,
+        operator=req.operator, threshold=req.threshold, action=req.action,
+        adjustment=req.adjustment, rule_version=req.rule_version,
+        evidence_ids=req.evidence_ids,
+    )
+    return _coach_governed(record)
+
+
+@router.get("/coach/athletes/{athlete_id}/training-plans/{plan_id}/progression-rules")
+def list_coach_progression_rules(
+    athlete_id: str,
+    plan_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_progression_result(
+        coach_progression_workflow.list_progression_rules,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, plan_id=plan_id,
+    )
+    return {"plan_id": plan_id, "progression_rules": records,
+            "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.post("/coach/athletes/{athlete_id}/progression-rules/{rule_id}/coach-approval", status_code=200)
+def approve_coach_progression_rule(
+    athlete_id: str,
+    rule_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_progression_result(
+        coach_progression_workflow.approve_progression_rule,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, rule_id=rule_id,
+    )
+    return _coach_governed(record)
+
+
+@router.post("/coach/athletes/{athlete_id}/progression-rules/{rule_id}/evaluations", status_code=201)
+def evaluate_coach_progression_rule(
+    athlete_id: str,
+    rule_id: str,
+    req: CoachProgressionEvaluationRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_progression_result(
+        coach_progression_workflow.evaluate_progression_rule,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, rule_id=rule_id, observed_value=req.observed_value,
+    )
+    return _coach_governed(record)
+
+
+@router.get("/coach/athletes/{athlete_id}/progression-rules/{rule_id}/evaluations")
+def list_coach_progression_evaluations(
+    athlete_id: str,
+    rule_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_progression_result(
+        coach_progression_workflow.list_progression_evaluations,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, rule_id=rule_id,
+    )
+    return {"rule_id": rule_id, "evaluations": records,
+            "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.post("/coach/athletes/{athlete_id}/training-sessions/{session_id}/constraints-notes", status_code=201)
+def create_coach_session_constraint(
+    athlete_id: str,
+    session_id: str,
+    req: CoachSessionConstraintRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_progression_result(
+        coach_progression_workflow.create_session_constraint,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, session_id=session_id, kind=req.kind,
+        content=req.content, priority=req.priority,
+    )
+    return _coach_governed(record)
+
+
+@router.get("/coach/athletes/{athlete_id}/training-sessions/{session_id}/constraints-notes")
+def list_coach_session_constraints(
+    athlete_id: str,
+    session_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_progression_result(
+        coach_progression_workflow.list_session_constraints,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, session_id=session_id,
+    )
+    return {"session_id": session_id, "constraints_notes": records,
+            "coach_final_authority": True, "execution_authorized": False}
+
+
+@router.post("/coach/athletes/{athlete_id}/drill-library", status_code=201)
+def create_coach_drill(
+    athlete_id: str,
+    req: CoachDrillRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    drill_fields = {
+        "name": req.name, "judo_area": req.judo_area,
+        "technical_skill": req.technical_skill, "problem_target": req.problem_target,
+        "decision_target": req.decision_target, "age_suitability": req.age_suitability,
+        "skill_level": req.skill_level, "execution_pattern": req.execution_pattern,
+        "coach_cues": req.coach_cues or [], "common_errors": req.common_errors or [],
+        "correction": req.correction, "dosage": req.dosage, "intensity": req.intensity,
+        "rest": req.rest, "partner_requirement": req.partner_requirement,
+        "equipment": req.equipment, "safety_constraints": req.safety_constraints,
+        "kpi": req.kpi, "retest_link": req.retest_link,
+        "competition_randori_transfer": req.competition_randori_transfer,
+    }
+    record = _coach_progression_result(
+        coach_progression_workflow.create_drill,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, assessment_id=req.assessment_id,
+        drill_fields=drill_fields, evidence_ids=req.evidence_ids,
+        source_refs=req.source_refs,
+    )
+    return _coach_governed(record)
+
+
+@router.post("/coach/athletes/{athlete_id}/drill-library/{drill_id}/coach-review", status_code=200)
+def approve_coach_drill(
+    athlete_id: str,
+    drill_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_progression_result(
+        coach_progression_workflow.approve_drill,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, drill_id=drill_id,
+    )
+    return _coach_governed(record)
+
+
+@router.get("/coach/drill-library")
+def list_coach_drills(
+    include_drafts: bool = False,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = coach_progression_workflow.list_drills(
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        include_drafts=include_drafts,
+    )
+    return {"drills": records, "coach_final_authority": True,
+            "execution_authorized": False}
+
+
+@router.post("/coach/athletes/{athlete_id}/problems/{problem_id}/drill-links", status_code=201)
+def create_coach_problem_drill_link(
+    athlete_id: str,
+    problem_id: str,
+    req: CoachProblemDrillLinkRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    record = _coach_progression_result(
+        coach_progression_workflow.create_problem_drill_link,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, problem_id=problem_id, drill_id=req.drill_id,
+        rationale=req.rationale, evidence_ids=req.evidence_ids,
+    )
+    return _coach_governed(record)
+
+
+@router.get("/coach/athletes/{athlete_id}/problems/{problem_id}/drill-links")
+def list_coach_problem_drill_links(
+    athlete_id: str,
+    problem_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_progression_result(
+        coach_progression_workflow.list_problem_drill_links,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id, problem_id=problem_id,
+    )
+    return {"problem_id": problem_id, "drill_links": records,
+            "coach_final_authority": True, "execution_authorized": False}
