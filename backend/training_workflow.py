@@ -293,7 +293,6 @@ class DrillPrescriptionRequest(BaseModel):
     objective: str
     dosage: Dict[str, Any]
     constraints: List[str] = Field(default_factory=list)
-    coach_final_authority: bool = True
 
 
 class ExecutionCueRequest(BaseModel):
@@ -302,7 +301,6 @@ class ExecutionCueRequest(BaseModel):
     drill_id: str
     cues: List[str] = Field(min_length=1)
     checklist: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 class ResponseRequest(BaseModel):
@@ -314,7 +312,6 @@ class ResponseRequest(BaseModel):
     baseline_reference: str
     response: Dict[str, Any]
     kpi_values: Dict[str, Any]
-    coach_final_authority: bool = True
 
 
 class RetestRequest(BaseModel):
@@ -324,7 +321,6 @@ class RetestRequest(BaseModel):
     baseline_reference: str
     retest_values: Dict[str, Any]
     evidence_refs: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 class ComparisonRequest(BaseModel):
@@ -334,7 +330,6 @@ class ComparisonRequest(BaseModel):
     baseline: Dict[str, Any]
     current: Dict[str, Any]
     comparison_method: str
-    coach_final_authority: bool = True
 
 
 class ProgressRequest(BaseModel):
@@ -342,7 +337,6 @@ class ProgressRequest(BaseModel):
     comparison_record_id: str
     state: Dict[str, Any]
     evidence_refs: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 class NextDecisionRequest(BaseModel):
@@ -352,7 +346,6 @@ class NextDecisionRequest(BaseModel):
     trigger_type: str
     trigger_reason: str
     required_evidence: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 def _headers(
@@ -391,7 +384,6 @@ def prescribe_drill(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     predecessor = _prior_record("FEAT-033", req.athlete_id, principal,
         lambda r, p: r.get("decision_id") == req.decision_id and p.get("drill_id") == req.drill_id)
     d = req.dosage
@@ -412,7 +404,6 @@ def record_execution_cues(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if any(not item.strip() for item in req.cues + req.checklist):
         raise HTTPException(400, "cues and checklist items must be non-empty")
     predecessor = _prior_record("FEAT-034", req.athlete_id, principal,
@@ -431,7 +422,6 @@ def capture_training_response(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.response or not req.kpi_values or not req.baseline_reference.strip():
         raise HTTPException(400, "response, kpi_values and baseline_reference are required")
     prescription = _prior_record("FEAT-034", req.athlete_id, principal,
@@ -470,7 +460,6 @@ def capture_retest(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.baseline_reference.strip() or not req.retest_values:
         raise HTTPException(400, "baseline_reference and retest_values are required")
     response_record = _prior_record("FEAT-036", req.athlete_id, principal,
@@ -496,7 +485,6 @@ def compare_before_after(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.baseline or not req.current or not req.comparison_method.strip():
         raise HTTPException(400, "baseline, current and comparison_method are required")
     response_record = _prior_record("FEAT-036", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.response_record_id)
@@ -529,7 +517,6 @@ def update_progress_state(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.state:
         raise HTTPException(400, "state is required")
     comparison = _prior_record("FEAT-038", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.comparison_record_id)
@@ -547,7 +534,6 @@ def create_next_decision_trigger(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.trigger_type.strip() or not req.trigger_reason.strip():
         raise HTTPException(400, "trigger_type and trigger_reason are required")
     progress = _prior_record("FEAT-039", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.progress_record_id)
