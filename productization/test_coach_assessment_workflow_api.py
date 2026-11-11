@@ -225,6 +225,16 @@ def test_evidence_attachment_and_snapshot_preserve_dependency_lineage(monkeypatc
     )
     assert readback.status_code == 200
     assert readback.json()["assessment_id"] == assessment_id
+    listed = c.get(
+        f"/api/v1/product/coach/athletes/{a['athlete_id']}/state-snapshots",
+        headers=ha,
+    )
+    assert listed.status_code == 200, listed.text
+    assert [item["snapshot_id"] for item in listed.json()["snapshots"]] == [snapshot.json()["snapshot_id"]]
+    assert c.get(
+        f"/api/v1/product/coach/athletes/{a['athlete_id']}/state-snapshots",
+        headers=hb,
+    ).status_code == 404
     assert c.get(
         f"/api/v1/product/coach/athletes/{a['athlete_id']}/state-snapshots/{snapshot.json()['snapshot_id']}",
         headers=hb,
