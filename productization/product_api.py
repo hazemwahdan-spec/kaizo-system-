@@ -935,6 +935,27 @@ def create_coach_state_snapshot(
     return _coach_governed(result)
 
 
+@router.get("/coach/athletes/{athlete_id}/state-snapshots")
+def list_coach_state_snapshots(
+    athlete_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    records = _coach_workflow_result(
+        coach_assessment_workflow.list_state_snapshots,
+        tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+    )
+    return {
+        "athlete_id": athlete_id, "snapshots": records,
+        "coach_final_authority": True, "execution_authorized": False,
+    }
+
+
 @router.get("/coach/athletes/{athlete_id}/state-snapshots/{snapshot_id}")
 def get_coach_state_snapshot(
     athlete_id: str,
