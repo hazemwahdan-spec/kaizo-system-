@@ -619,6 +619,35 @@ def create_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: st
     return record
 
 
+def list_state_snapshots(*, tenant_id: str, coach_actor_id: str,
+                         athlete_id: str) -> list[dict[str, Any]] | None:
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT s.snapshot_id,s.athlete_id,s.assessment_id,s.snapshot_type,
+                              s.measurements,s.kpis,s.captured_by,s.captured_at,s.created_at
+                       FROM kaizo_state_snapshots s
+                       JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=s.athlete_id
+                       WHERE o.tenant_id=%s AND o.coach_actor_id=%s
+                         AND s.athlete_id=%s AND s.captured_by=%s
+                       ORDER BY s.created_at DESC,s.snapshot_id""",
+                    (tenant_id, coach_actor_id, athlete_id, coach_actor_id),
+                )
+                rows = cur.fetchall()
+        return [_snapshot(row) for row in rows]
+    if not _owned_in_memory(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+                            athlete_id=athlete_id):
+        return None
+    return sorted(
+        [record for record in _MEMORY_SNAPSHOTS.values()
+         if record.get("athlete_id") == athlete_id
+         and record.get("captured_by") == coach_actor_id],
+        key=lambda record: (record.get("created_at", ""), record.get("snapshot_id", "")),
+        reverse=True,
+    )
+
+
 def get_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                        snapshot_id: str) -> dict[str, Any] | None:
     if persistence.is_postgres_enabled():
@@ -630,8 +659,9 @@ def get_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                        FROM kaizo_state_snapshots s
                        JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=s.athlete_id
                        WHERE o.tenant_id=%s AND o.coach_actor_id=%s
-                         AND s.athlete_id=%s AND s.snapshot_id=%s""",
-                    (tenant_id, coach_actor_id, athlete_id, snapshot_id),
+                         AND s.athlete_id=%s AND s.snapshot_id=%s
+                         AND s.captured_by=%s""",
+                    (tenant_id, coach_actor_id, athlete_id, snapshot_id, coach_actor_id),
                 )
                 row = cur.fetchone()
         return _snapshot(row) if row else None
@@ -639,4 +669,4 @@ def get_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                             athlete_id=athlete_id):
         return None
     record = _MEMORY_SNAPSHOTS.get(snapshot_id)
-    return record if record and record["athlete_id"] == athlete_id else None
+    return record if record and record["athlete_id"] == athlete_id and record.get("captured_by") == coach_actor_id else None
