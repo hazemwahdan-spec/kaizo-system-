@@ -307,3 +307,124 @@ def test_audit_failure_rolls_back_workflow_record():
                 cur.execute(f"DROP TRIGGER IF EXISTS {trigger} ON kaizo_audit_logs")
                 cur.execute(f"DROP FUNCTION IF EXISTS {function}()")
             conn.commit()
+
+
+def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(monkeypatch):
+    """Exercise the real FEAT-033 route through verified RS256 OIDC and PostgreSQL."""
+    assert persistence.is_postgres_enabled()
+    persistence.initialize()
+
+    import time
+    import jwt
+    from types import SimpleNamespace
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from productization import identity
+
+    issuer = "https://issuer.example/"
+    audience = "kaizo-api"
+    jwks_url = "https://issuer.example/.well-known/jwks.json"
+    monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
+    monkeypatch.setenv("KAIZO_OIDC_ISSUER", issuer)
+    monkeypatch.setenv("KAIZO_OIDC_AUDIENCE", audience)
+    monkeypatch.setenv("KAIZO_OIDC_JWKS_URL", jwks_url)
+    monkeypatch.delenv("KAIZO_OIDC_CLAIM_NAMESPACE", raising=False)
+
+    trusted_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    attacker_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    class LocalJWKClient:
+        def __init__(self, url):
+            assert url == jwks_url
+
+        def get_signing_key_from_jwt(self, token):
+            assert jwt.get_unverified_header(token)["kid"] == "local-oidc-test-key"
+            return SimpleNamespace(key=trusted_key.public_key())
+
+    monkeypatch.setattr(identity, "PyJWKClient", LocalJWKClient)
+
+    def bearer(actor, tenant, role="coach", signing_key=trusted_key):
+        now = int(time.time())
+        claims = {
+            "sub": actor,
+            "iss": issuer,
+            "aud": audience,
+            "iat": now,
+            "exp": now + 300,
+            "https://kaizo.system/kaizo_role": role,
+            "https://kaizo.system/tenant_id": tenant,
+        }
+        token = jwt.encode(
+            claims,
+            signing_key,
+            algorithm="RS256",
+            headers={"kid": "local-oidc-test-key"},
+        )
+        return "Bearer " + token
+
+    tenant = "TENANT-OIDC-" + uuid4().hex
+    coach = "auth0|coach-" + uuid4().hex
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id=tenant,
+        coach_actor_id=coach,
+        display_name="OIDC FEAT-033 PostgreSQL acceptance",
+    )
+    decision_id, drill_id = seed_authoritative_feat033_sources(
+        tenant, coach, athlete["athlete_id"]
+    )
+    path = "/api/v1/training-workflow/feat-033/decision-drill"
+    payload = {
+        "athlete_id": athlete["athlete_id"],
+        "decision_id": decision_id,
+        "drill_id": drill_id,
+        "rationale": "Verified OIDC Coach ownership acceptance",
+        "evidence_refs": ["REF-POSTGRES"],
+        "selected_by": "FORGED-CLIENT-IDENTITY",
+    }
+
+    verified_headers = {
+        "Authorization": bearer(coach, tenant),
+        "X-KAIZO-Actor": "forged-actor",
+        "X-KAIZO-Role": "administrator",
+        "X-KAIZO-Tenant": "FORGED-TENANT",
+        "X-KAIZO-Resource-Owner": "FORGED-ATHLETE",
+    }
+    created = client.post(path, json=payload, headers=verified_headers)
+    assert created.status_code == 201, created.text
+    record = created.json()
+    assert record["created_by"] == coach
+    assert record["coach_actor_id"] == coach
+    assert record["tenant_id"] == tenant
+    assert record["execution_authorized"] is False
+
+    own_read = client.get(
+        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        headers={"Authorization": bearer(coach, tenant)},
+    )
+    assert own_read.status_code == 200, own_read.text
+    assert len(own_read.json()["features"]["FEAT-033"]) == 1
+
+    other_coach = bearer("auth0|other-coach-" + uuid4().hex, tenant)
+    other_tenant = bearer("auth0|foreign-tenant-coach-" + uuid4().hex,
+                          "TENANT-FOREIGN-" + uuid4().hex)
+    non_coach = bearer("auth0|athlete-" + uuid4().hex, tenant, role="athlete")
+    invalid_signature = bearer(coach, tenant, signing_key=attacker_key)
+
+    for foreign_token in (other_coach, other_tenant):
+        denied_read = client.get(
+            f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+            headers={"Authorization": foreign_token},
+        )
+        assert denied_read.status_code == 404, denied_read.text
+        denied_write = client.post(
+            path, json=payload, headers={"Authorization": foreign_token},
+        )
+        assert denied_write.status_code == 404, denied_write.text
+
+    assert client.get(
+        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        headers={"Authorization": non_coach},
+    ).status_code == 403
+    assert client.get(
+        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        headers={"Authorization": invalid_signature},
+    ).status_code == 401
