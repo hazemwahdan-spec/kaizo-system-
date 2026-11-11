@@ -371,6 +371,7 @@ def select_decision_drill(
     payload = req.model_dump()
     payload["problem_id"] = sources["problem_id"]
     payload["problem_drill_link_id"] = sources["problem_drill_link"].get("link_id")
+    payload["assessment_id"] = sources["decision"].get("assessment_id")
     return _save("FEAT-033", req.athlete_id, payload, principal, req.decision_id)
 
 
@@ -434,18 +435,13 @@ def capture_training_response(
     baseline_values = _baseline_kpi_values(baseline_snapshot)
     if not _same_keys(baseline_values, req.kpi_values):
         raise HTTPException(409, detail="training response KPI identities must match the referenced baseline snapshot")
-    decision = persistence.get_decision_record(prescription.get("decision_id")) if persistence.is_postgres_enabled() else None
-    if decision is None and not persistence.is_postgres_enabled():
-        import sys
-        core = sys.modules.get("main")
-        decision = getattr(core, "DECISION_RECORDS", {}).get(prescription.get("decision_id")) if core else None
-    if (
-        not decision
-        or decision.get("athlete_id") != req.athlete_id
-        or decision.get("coach_id") != principal.actor_id
-        or decision.get("status") != "RECORDED"
-        or decision.get("assessment_id") != baseline_snapshot.get("assessment_id")
-    ):
+    decision_link = _prior_record(
+        "FEAT-033", req.athlete_id, principal,
+        lambda r, p: r.get("decision_id") == prescription.get("decision_id"),
+    )
+    decision_payload = decision_link.get("payload") or {}
+    if isinstance(decision_payload, str): decision_payload = json.loads(decision_payload)
+    if decision_payload.get("assessment_id") != baseline_snapshot.get("assessment_id"):
         raise HTTPException(409, detail="baseline snapshot must belong to the assessment used by the linked Coach decision")
     return _save("FEAT-036", req.athlete_id, req.model_dump(), principal, decision_id=prescription.get("decision_id"), session_id=req.session_id)
 
