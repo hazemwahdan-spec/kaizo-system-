@@ -14,7 +14,7 @@ os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
 
 import persistence
 import training_workflow
-from productization import coach_decision_workflow
+from productization import coach_decision_workflow, coach_assessment_workflow
 from types import SimpleNamespace
 from productization import coach_roster
 from training_workflow import router, reset_memory_state
@@ -40,20 +40,43 @@ OTHER_COACH_HEADERS = {
 def setup_function():
     reset_memory_state()
     coach_roster.reset_memory_state()
-    # The main workflow tests isolate the later FEAT-034..040 chain; the
-    # dedicated source-validation tests exercise the real resolver below.
-    training_workflow._validate_initial_decision_drill = lambda req, principal: {
-        "decision": {"decision_id": req.decision_id, "athlete_id": req.athlete_id,
-                     "coach_id": principal.actor_id, "status": "RECORDED", "problem_id": "P1"},
-        "problem_id": "P1", "drill": {"drill_id": req.drill_id},
-        "problem_drill_link": {"link_id": "L1", "drill_id": req.drill_id},
-    }
-    global ATHLETE_ID
+    coach_assessment_workflow.reset_memory_state()
+    global ATHLETE_ID, BASELINE_ID, BASELINE_ASSESSMENT_ID, BASELINE_KPI_ID
     athlete = coach_roster.create_owned_athlete(
         tenant_id="tenant-1", coach_actor_id="coach-1",
         display_name="Owned athlete for workflow tests",
     )
     ATHLETE_ID = athlete["athlete_id"]
+    assessment = coach_assessment_workflow.create_assessment(
+        tenant_id="tenant-1", coach_actor_id="coach-1", athlete_id=ATHLETE_ID,
+        template_id="U15-BASELINE", measurements={"entry_success": 4},
+    )
+    BASELINE_ASSESSMENT_ID = assessment["assessment_id"]
+    BASELINE_KPI_ID = "ENTRY-SUCCESS"
+    definition = coach_assessment_workflow.create_kpi_definition(
+        tenant_id="tenant-1", coach_actor_id="coach-1", kpi_id=BASELINE_KPI_ID,
+        name="Entry success", metric_name="entry_success", unit="count",
+        target=None, direction="higher_is_better",
+    )
+    capture = coach_assessment_workflow.create_kpi_capture(
+        tenant_id="tenant-1", coach_actor_id="coach-1", athlete_id=ATHLETE_ID,
+        kpi_id=definition["kpi_id"], value=4, assessment_id=BASELINE_ASSESSMENT_ID,
+    )
+    baseline = coach_assessment_workflow.create_state_snapshot(
+        tenant_id="tenant-1", coach_actor_id="coach-1", athlete_id=ATHLETE_ID,
+        assessment_id=BASELINE_ASSESSMENT_ID, snapshot_type="baseline",
+        kpi_capture_ids=[capture["capture_id"]],
+    )
+    BASELINE_ID = baseline["snapshot_id"]
+    # The main workflow tests isolate the later FEAT-034..040 chain; the
+    # dedicated source-validation tests exercise the real resolver below.
+    training_workflow._validate_initial_decision_drill = lambda req, principal: {
+        "decision": {"decision_id": req.decision_id, "athlete_id": req.athlete_id,
+                     "assessment_id": BASELINE_ASSESSMENT_ID, "coach_id": principal.actor_id,
+                     "status": "RECORDED", "problem_id": "P1"},
+        "problem_id": "P1", "drill": {"drill_id": req.drill_id},
+        "problem_drill_link": {"link_id": "L1", "drill_id": req.drill_id},
+    }
 
 
 def cases(athlete_id):
@@ -70,12 +93,12 @@ def cases(athlete_id):
           "created_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-036/training-response",
          {"athlete_id":athlete_id,"session_id":"S1","response":{"quality":"GOOD"},
-          "drill_id":"DR1","prescription_record_id":"PENDING-034","execution_cue_record_id":"PENDING-035","kpi_values":{"entry_success":4},"observed_by":"spoofed-coach"}),
+          "drill_id":"DR1","prescription_record_id":"PENDING-034","execution_cue_record_id":"PENDING-035","baseline_reference":BASELINE_ID,"kpi_values":{BASELINE_KPI_ID:5},"observed_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-037/retest",
-         {"athlete_id":athlete_id,"session_id":"S1","response_record_id":"PENDING-036","baseline_reference":"FEAT-036",
-          "retest_values":{"entry_success":6},"evidence_refs":["REF-016"],"retested_by":"spoofed-coach"}),
+         {"athlete_id":athlete_id,"session_id":"S1","response_record_id":"PENDING-036","baseline_reference":BASELINE_ID,
+          "retest_values":{BASELINE_KPI_ID:6},"evidence_refs":["REF-016"],"retested_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-038/before-after",
-         {"athlete_id":athlete_id,"response_record_id":"PENDING-036","retest_record_id":"PENDING-037","baseline":{"entry_success":4},"current":{"entry_success":6},
+         {"athlete_id":athlete_id,"response_record_id":"PENDING-036","retest_record_id":"PENDING-037","baseline":{BASELINE_KPI_ID:4},"current":{BASELINE_KPI_ID:6},
           "comparison_method":"absolute_change","compared_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-039/progress-state",
          {"athlete_id":athlete_id,"comparison_record_id":"PENDING-038","state":{"status":"IMPROVING","entry_success":6},
@@ -95,11 +118,16 @@ def test_all_feat_033_to_040_writes_require_owned_coach_and_attribute_verified_a
         if feature == "036":
             payload["prescription_record_id"] = records["034"]["record_id"]
             payload["execution_cue_record_id"] = records["035"]["record_id"]
+            payload["coach_final_authority"] = False  # untrusted caller flag is ignored
         elif feature == "037":
             payload["response_record_id"] = records["036"]["record_id"]
+            forged = {**payload, "baseline_reference": records["036"]["record_id"]}
+            assert client.post(path, json=forged, headers=COACH_HEADERS).status_code == 409
         elif feature == "038":
             payload["response_record_id"] = records["036"]["record_id"]
             payload["retest_record_id"] = records["037"]["record_id"]
+            forged = {**payload, "baseline": {BASELINE_KPI_ID: 5}}
+            assert client.post(path, json=forged, headers=COACH_HEADERS).status_code == 409
         elif feature == "039":
             payload["comparison_record_id"] = records["038"]["record_id"]
         elif feature == "040":
@@ -141,10 +169,12 @@ def test_workflow_history_is_scoped_and_actor_fields_cannot_be_spoofed():
     assert client.get(f"/api/v1/training-workflow/athletes/{ATHLETE_ID}", headers=OTHER_COACH_HEADERS).status_code == 404
 
 
-def test_invalid_training_values_and_coach_final_authority_still_fail_closed():
+def test_caller_supplied_coach_final_authority_is_ignored_and_server_derives_it():
     path, payload = cases(ATHLETE_ID)[0]
     payload["coach_final_authority"] = False
-    assert client.post(path, json=payload, headers=COACH_HEADERS).status_code == 400
+    created = client.post(path, json=payload, headers=COACH_HEADERS)
+    assert created.status_code == 201, created.text
+    assert created.json()["coach_final_authority"] is True
     first_path, first_payload = cases(ATHLETE_ID)[0]
     assert client.post(first_path, json=first_payload, headers=COACH_HEADERS).status_code == 201
     invalid = {
@@ -177,7 +207,7 @@ def test_openapi_publishes_all_feat_033_to_040_routes_and_lineage_fields():
     }
     assert expected.issubset(set(schema["paths"]))
     required = {
-        "ResponseRequest": {"drill_id", "prescription_record_id", "execution_cue_record_id"},
+        "ResponseRequest": {"drill_id", "prescription_record_id", "execution_cue_record_id", "baseline_reference"},
         "RetestRequest": {"response_record_id"},
         "ComparisonRequest": {"response_record_id", "retest_record_id"},
         "ProgressRequest": {"comparison_record_id"},
