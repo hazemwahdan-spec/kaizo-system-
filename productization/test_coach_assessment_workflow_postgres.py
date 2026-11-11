@@ -68,9 +68,15 @@ def test_postgres_assessment_kpi_capture_and_snapshot_are_durable_and_scoped():
         snapshot_id=snapshot["snapshot_id"],
     )
     assert readback == snapshot
+    assert workflow.list_state_snapshots(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+    ) == [snapshot]
     assert workflow.get_state_snapshot(
         tenant_id=tenant, coach_actor_id="auth0|other-coach",
         athlete_id=athlete_id, snapshot_id=snapshot["snapshot_id"],
+    ) is None
+    assert workflow.list_state_snapshots(
+        tenant_id=tenant, coach_actor_id="auth0|other-coach", athlete_id=athlete_id,
     ) is None
 
     with persistence.connection() as conn:
