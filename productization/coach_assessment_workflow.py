@@ -178,9 +178,9 @@ def list_assessments(*, tenant_id: str, coach_actor_id: str,
                               a.recorded_by,a.assessed_at,a.created_at
                        FROM kaizo_assessments a
                        JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=a.athlete_id
-                       WHERE o.tenant_id=%s AND o.coach_actor_id=%s AND a.athlete_id=%s
+                       WHERE o.tenant_id=%s AND o.coach_actor_id=%s AND a.athlete_id=%s AND a.recorded_by=%s
                        ORDER BY a.assessed_at,a.assessment_id""",
-                    (tenant_id, coach_actor_id, athlete_id),
+                    (tenant_id, coach_actor_id, athlete_id, coach_actor_id),
                 )
                 rows = cur.fetchall()
         return [_assessment(row) for row in rows] if _owned_exists(tenant_id, coach_actor_id, athlete_id) else None
@@ -188,7 +188,8 @@ def list_assessments(*, tenant_id: str, coach_actor_id: str,
                             athlete_id=athlete_id):
         return None
     return sorted(
-        [x for x in _MEMORY_ASSESSMENTS.values() if x["athlete_id"] == athlete_id],
+        [x for x in _MEMORY_ASSESSMENTS.values()
+         if x["athlete_id"] == athlete_id and x.get("recorded_by") == coach_actor_id],
         key=lambda x: (x["assessed_at"], x["assessment_id"]),
     )
 
@@ -215,8 +216,8 @@ def get_assessment(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                        FROM kaizo_assessments a
                        JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=a.athlete_id
                        WHERE o.tenant_id=%s AND o.coach_actor_id=%s
-                         AND a.athlete_id=%s AND a.assessment_id=%s""",
-                    (tenant_id, coach_actor_id, athlete_id, assessment_id),
+                         AND a.athlete_id=%s AND a.assessment_id=%s AND a.recorded_by=%s""",
+                    (tenant_id, coach_actor_id, athlete_id, assessment_id, coach_actor_id),
                 )
                 row = cur.fetchone()
         return _assessment(row) if row else None
@@ -224,7 +225,7 @@ def get_assessment(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                             athlete_id=athlete_id):
         return None
     record = _MEMORY_ASSESSMENTS.get(assessment_id)
-    return record if record and record["athlete_id"] == athlete_id else None
+    return record if record and record["athlete_id"] == athlete_id and record.get("recorded_by") == coach_actor_id else None
 
 
 def create_kpi_definition(*, tenant_id: str, coach_actor_id: str, kpi_id: str,
@@ -324,8 +325,8 @@ def create_kpi_capture(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                 if assessment_id:
                     cur.execute(
                         """SELECT 1 FROM kaizo_assessments
-                           WHERE assessment_id=%s AND athlete_id=%s""",
-                        (assessment_id, athlete_id),
+                           WHERE assessment_id=%s AND athlete_id=%s AND recorded_by=%s""",
+                        (assessment_id, athlete_id, coach_actor_id),
                     )
                     if cur.fetchone() is None:
                         raise CoachWorkflowNotFound("assessment not found in athlete scope")
@@ -381,8 +382,8 @@ def get_kpi_capture(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                          ON k.kpi_id=c.kpi_id AND k.tenant_id=o.tenant_id
                         AND k.coach_actor_id=o.coach_actor_id
                        WHERE o.tenant_id=%s AND o.coach_actor_id=%s
-                         AND c.athlete_id=%s AND c.capture_id=%s""",
-                    (tenant_id, coach_actor_id, athlete_id, capture_id),
+                         AND c.athlete_id=%s AND c.capture_id=%s AND c.captured_by=%s""",
+                    (tenant_id, coach_actor_id, athlete_id, capture_id, coach_actor_id),
                 )
                 row = cur.fetchone()
         return _kpi_capture(row) if row else None
@@ -390,7 +391,7 @@ def get_kpi_capture(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                             athlete_id=athlete_id):
         return None
     record = _MEMORY_KPI_CAPTURES.get(capture_id)
-    if not record or record["athlete_id"] != athlete_id:
+    if not record or record["athlete_id"] != athlete_id or record.get("captured_by") != coach_actor_id:
         return None
     if get_kpi_definition(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
                           kpi_id=record["kpi_id"]) is None:
@@ -417,8 +418,8 @@ def attach_assessment_evidence(*, tenant_id: str, coach_actor_id: str,
                     return None
                 cur.execute(
                     """SELECT 1 FROM kaizo_assessments
-                       WHERE assessment_id=%s AND athlete_id=%s""",
-                    (assessment_id, athlete_id),
+                       WHERE assessment_id=%s AND athlete_id=%s AND recorded_by=%s""",
+                    (assessment_id, athlete_id, coach_actor_id),
                 )
                 if cur.fetchone() is None:
                     raise CoachWorkflowNotFound("assessment not found in athlete scope")
@@ -485,9 +486,9 @@ def list_assessment_evidence(*, tenant_id: str, coach_actor_id: str,
                          ON e.evidence_id=x.evidence_id AND e.subject_type='assessment'
                         AND e.subject_id=a.assessment_id
                        WHERE o.tenant_id=%s AND o.coach_actor_id=%s
-                         AND a.athlete_id=%s AND a.assessment_id=%s
+                         AND a.athlete_id=%s AND a.assessment_id=%s AND a.recorded_by=%s AND x.attached_by=%s
                        ORDER BY x.attached_at,x.evidence_id""",
-                    (tenant_id, coach_actor_id, athlete_id, assessment_id),
+                    (tenant_id, coach_actor_id, athlete_id, assessment_id, coach_actor_id, coach_actor_id),
                 )
                 rows = cur.fetchall()
         if get_assessment(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
@@ -501,7 +502,8 @@ def list_assessment_evidence(*, tenant_id: str, coach_actor_id: str,
                       athlete_id=athlete_id, assessment_id=assessment_id) is None:
         return None
     return sorted(
-        [v for (aid, _), v in _MEMORY_ATTACHMENTS.items() if aid == assessment_id],
+        [v for (aid, _), v in _MEMORY_ATTACHMENTS.items()
+         if aid == assessment_id and v.get("attached_by") == coach_actor_id],
         key=lambda x: (x["attached_at"], x["evidence_id"]),
     )
 
@@ -526,8 +528,8 @@ def create_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: st
                     return None
                 cur.execute(
                     """SELECT measurements FROM kaizo_assessments
-                       WHERE assessment_id=%s AND athlete_id=%s""",
-                    (assessment_id, athlete_id),
+                       WHERE assessment_id=%s AND athlete_id=%s AND recorded_by=%s""",
+                    (assessment_id, athlete_id, coach_actor_id),
                 )
                 assessment_row = cur.fetchone()
                 if assessment_row is None:
@@ -540,8 +542,8 @@ def create_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: st
                            FROM kaizo_kpi_captures c
                            JOIN kaizo_coach_kpi_definitions k
                              ON k.kpi_id=c.kpi_id AND k.tenant_id=%s AND k.coach_actor_id=%s
-                           WHERE c.capture_id=%s AND c.athlete_id=%s""",
-                        (tenant_id, coach_actor_id, capture_id, athlete_id),
+                           WHERE c.capture_id=%s AND c.athlete_id=%s AND c.captured_by=%s""",
+                        (tenant_id, coach_actor_id, capture_id, athlete_id, coach_actor_id),
                     )
                     row = cur.fetchone()
                     if row is None:
@@ -630,8 +632,8 @@ def get_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                        FROM kaizo_state_snapshots s
                        JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=s.athlete_id
                        WHERE o.tenant_id=%s AND o.coach_actor_id=%s
-                         AND s.athlete_id=%s AND s.snapshot_id=%s""",
-                    (tenant_id, coach_actor_id, athlete_id, snapshot_id),
+                         AND s.athlete_id=%s AND s.snapshot_id=%s AND s.captured_by=%s""",
+                    (tenant_id, coach_actor_id, athlete_id, snapshot_id, coach_actor_id),
                 )
                 row = cur.fetchone()
         return _snapshot(row) if row else None
@@ -639,4 +641,4 @@ def get_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
                             athlete_id=athlete_id):
         return None
     record = _MEMORY_SNAPSHOTS.get(snapshot_id)
-    return record if record and record["athlete_id"] == athlete_id else None
+    return record if record and record["athlete_id"] == athlete_id and record.get("captured_by") == coach_actor_id else None
