@@ -223,3 +223,107 @@ def test_coach_decision_workflow_ui_uses_protected_candidate_review_and_decision
     assert "No training execution was authorized." in APP
     assert "X-KAIZO-Actor" not in APP
     assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_training_plan_session_and_dosage_ui_uses_protected_draft_routes():
+    for function in (
+        "loadCoachTrainingWorkflow",
+        "createCoachTrainingPlan",
+        "createCoachTrainingSession",
+        "createCoachTrainingDosage",
+        "selectCoachTrainingPlan",
+        "selectCoachTrainingSession",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    for route in (
+        "/training-plans",
+        "/training-sessions/",
+        "/dosage",
+    ):
+        assert route in APP
+    assert "currentCoachDecisionId" in APP
+    assert "currentCoachPlanId" in APP
+    assert "currentCoachSessionId" in APP
+    assert "No training execution was authorized." in APP
+    assert "No execution was triggered." in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_problem_library_ui_uses_provenance_gated_scoped_selection():
+    for function in (
+        "loadCoachProblemLibrary",
+        "selectCoachProblemLibraryItem",
+        "createCoachProblemLibrarySelection",
+        "loadCoachProblemLibrarySelections",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    assert "/coach/problem-library" in APP
+    assert "/problem-library-selections" in APP
+    assert "currentCoachAssessmentId" in APP
+    assert "provenance-bearing APPROVED and VERIFIED" in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_progression_constraints_drill_and_problem_link_ui_is_protected():
+    for function in (
+        "createCoachProgressionRule",
+        "approveCoachProgressionRule",
+        "evaluateCoachProgressionRule",
+        "createCoachSessionConstraint",
+        "loadCoachSessionConstraints",
+        "createCoachDrill",
+        "loadCoachDrillLibrary",
+        "approveCoachDrill",
+        "createCoachProblemDrillLink",
+        "loadCoachProblemDrillLinks",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    for route in (
+        "/progression-rules",
+        "/coach-approval",
+        "/evaluations",
+        "/constraints-notes",
+        "/drill-library",
+        "/drill-links",
+    ):
+        assert route in APP
+    assert "currentCoachRuleId" in APP
+    assert "currentCoachDrillId" in APP
+    assert "currentCoachSessionId" in APP
+    assert "Coach approval is required before evaluation." in APP
+    assert "No execution was triggered." in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+    assert "X-KAIZO-Actor" not in APP
+    assert "X-KAIZO-Tenant" not in APP
+
+
+def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api():
+    for feature in ("033","034","035","036","037","038","039","040"):
+        assert f'"{feature}":' in APP
+    assert '"/feat-"+feature+"/"+COACH_WORKFLOW_STEPS[feature]' in APP
+    assert 'async function trainingWorkflowCall(path,opts={})' in APP
+    assert 'fetch(API+"/training-workflow"+path,opts)' in APP
+    assert '"Authorization":"Bearer "+token' in APP
+    assert 'function loadCoachTrainingLineage()' in APP
+    assert 'function submitCoachTrainingLineage()' in APP
+    assert 'payload.athlete_id=athleteId' in APP
+    assert 'payload.coach_final_authority=true' in APP
+    assert 'loadCoachTrainingLineage();' in APP
+    assert 'coachTrainingLineageData=data' in APP
+    assert 'r33?.decision_id' in APP
+    assert 'r34?.record_id' in APP
+    assert 'r35?.record_id' in APP
+    assert 'r36?.record_id' in APP
+    assert 'r37?.record_id' in APP
+    assert 'r38?.record_id' in APP
+    assert 'r39?.record_id' in APP
+    assert 'FEAT_034_RECORD_ID' not in APP
+    assert 'FEAT_035_RECORD_ID' not in APP
+    assert 'FEAT_036_RECORD_ID' not in APP
+    assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
+    assert '"X-KAIZO-Actor"' not in APP
+    assert '"X-KAIZO-Tenant"' not in APP
