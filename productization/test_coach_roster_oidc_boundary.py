@@ -24,7 +24,7 @@ def client():
     return TestClient(app)
 
 
-def verified(actor="auth0|coach-A", tenant="TENANT-A", role="coach"):
+def verified(actor="auth0|coach-A", tenant="TENANT-A", role="coach", permissions=("product",)):
     return Principal(
         actor_id=actor,
         role=role,
@@ -32,6 +32,7 @@ def verified(actor="auth0|coach-A", tenant="TENANT-A", role="coach"):
         resource_owner_id=None,
         verified=True,
         source="oidc_jwt",
+        permissions=frozenset(permissions),
     )
 
 
@@ -163,3 +164,19 @@ def test_navigation_uses_bearer_principal_without_client_identity_headers(monkey
     assert body["role"] == "coach"
     assert body["execution_authorized"] is False
     assert body["coach_final_authority"] is True
+
+
+def test_oidc_product_permission_is_required_for_coach_routes_and_navigation(monkeypatch):
+    monkeypatch.setattr(
+        product_api,
+        "resolve_bearer_principal",
+        lambda authorization: verified(permissions=()),
+    )
+    headers = {"Authorization": "Bearer verified-without-product"}
+    c = client()
+    coach_roster_response = c.get("/api/v1/product/coach/athletes", headers=headers)
+    navigation_response = c.get("/api/v1/product/navigation", headers=headers)
+    assert coach_roster_response.status_code == 403
+    assert coach_roster_response.json()["detail"] == "Product API permission required"
+    assert navigation_response.status_code == 403
+    assert navigation_response.json()["detail"] == "Product API permission required"
