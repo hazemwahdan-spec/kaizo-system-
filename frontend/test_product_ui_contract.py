@@ -133,6 +133,7 @@ def test_coach_ui_connects_scoped_digital_twin_state_and_history():
     assert 'loadCoachDigitalTwinState(athleteId)' in APP
     assert 'coachDigitalTwinSection' in APP
     assert 'evidence_refs:evidenceRefs' in APP
+    assert 'coach_final_authority:true' not in APP.replace(" ", "").lower()
     assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
 
 
@@ -312,7 +313,13 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
     assert 'function loadCoachTrainingLineage()' in APP
     assert 'function submitCoachTrainingLineage()' in APP
     assert 'payload.athlete_id=athleteId' in APP
-    assert 'payload.coach_final_authority=true' in APP
+    assert 'payload.coach_final_authority=true' not in APP
+    assert 'currentCoachBaselineSnapshotId' in APP
+    assert 'coachWorkflowBaselineSnapshotId' in APP
+    assert 'baseline_reference:baselineReference' in APP
+    assert 'baseline:p36.kpi_values' not in APP
+    assert 'selectCoachWorkflowBaseline' in APP
+    assert 'productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/state-snapshots/"+encodeURIComponent(value))' in APP
     assert 'loadCoachTrainingLineage();' in APP
     assert 'coachTrainingLineageData=data' in APP
     assert 'r33?.decision_id' in APP
