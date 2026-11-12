@@ -158,7 +158,7 @@ async function viewCoachAthlete(athleteId){
  }
  selectedCoachAthleteId=String(athleteId);
  currentCoachDecisionCycleId=null;
- currentCoachDecisionId=null;currentCoachSessionId=null;currentCoachDrillId=null;coachTrainingLineageData=null;
+ currentCoachDecisionId=null;currentCoachSessionId=null;currentCoachDrillId=null;coachTrainingLineageData=null;coachDecisionWorkspaceData=null;
  if(list)list.style.display="none";
  if(detail)detail.textContent="Loading athlete from your verified Coach scope…";
  if(panel)panel.innerHTML="";
@@ -331,16 +331,18 @@ async function loadCoachDecisionWorkspace(athleteId){
  try{
   const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-workspace");
   if(selectedCoachAthleteId!==String(athleteId))return;
+  coachDecisionWorkspaceData=data;
   if(data.status==="INSUFFICIENT_EVIDENCE"||data.available===false){
-   notice.textContent=data.message||"Insufficient durable evidence. Workspace data is unavailable.";return;
+   coachDecisionWorkspaceData=null;notice.textContent=data.message||"Insufficient durable evidence. Workspace data is unavailable.";return;
   }
   if(data.status==="NO_RECORDED_CYCLE"){
-   notice.textContent=data.message||"No persisted decision-cycle records exist for this athlete.";return;
+   coachDecisionWorkspaceData=null;notice.textContent=data.message||"No persisted decision-cycle records exist for this athlete.";return;
   }
   notice.textContent="Read-only workspace · persisted source records only · "+(data.missing_optional_tables||[]).length+" optional source table(s) unavailable.";
   content.innerHTML=renderCoachDecisionWorkspace(data);
  }catch(e){
   if(selectedCoachAthleteId!==String(athleteId))return;
+  coachDecisionWorkspaceData=null;
   notice.textContent="Decision workspace unavailable: "+String(e&&e.message?e.message:e);
   content.textContent="No workspace data is displayed when authentication or authorization fails.";
  }
