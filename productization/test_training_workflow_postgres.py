@@ -233,6 +233,12 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert record["payload"]["problem_drill_link_id"]
 
     athlete_id = athlete["athlete_id"]
+    bad_session = client.post("/api/v1/training-workflow/feat-034/drill-prescription", headers=headers, json={
+        "athlete_id": athlete_id, "decision_id": decision_id,
+        "session_id": "SESSION-NOT-OWNED", "drill_id": drill_id,
+        "objective": "Improve entry timing", "dosage": {"sets": 3, "reps": 5},
+    })
+    assert bad_session.status_code == 409, bad_session.text
     def post(feature, suffix, body):
         result = client.post(f"/api/v1/training-workflow/feat-{feature}/{suffix}",
                              json={"athlete_id":athlete_id, **body}, headers=headers)
@@ -255,6 +261,12 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "prescription_record_id":prescription["record_id"],
         "execution_cue_record_id":cues["record_id"],
         "response":{"quality":"GOOD"},"kpi_values":{kpi_id:4}})
+    missing_baseline = client.post("/api/v1/training-workflow/feat-037/retest",headers=headers,json={
+        "athlete_id":athlete_id,"session_id":session_id,
+        "response_record_id":training_response["record_id"],
+        "baseline_reference":"NOT-A-BASELINE",
+        "retest_values":{kpi_id:6},"evidence_refs":["REF-POSTGRES"]})
+    assert missing_baseline.status_code == 409, missing_baseline.text
     bad_retest = client.post("/api/v1/training-workflow/feat-037/retest",headers=headers,json={
         "athlete_id":athlete_id,"session_id":session_id,
         "response_record_id":training_response["record_id"],
@@ -265,6 +277,12 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "session_id":session_id,"response_record_id":training_response["record_id"],
         "baseline_reference":baseline_snapshot_id,
         "retest_values":{kpi_id:6},"evidence_refs":["REF-POSTGRES"]})
+    bad_comparison = client.post("/api/v1/training-workflow/feat-038/before-after",headers=headers,json={
+        "athlete_id":athlete_id,"response_record_id":training_response["record_id"],
+        "retest_record_id":retest["record_id"],"baseline_reference":baseline_snapshot_id,
+        "baseline":{kpi_id:99},"current":{kpi_id:6},
+        "comparison_method":"same_kpi_absolute_change"})
+    assert bad_comparison.status_code == 409, bad_comparison.text
     comparison = post("038","before-after",{
         "response_record_id":training_response["record_id"],"retest_record_id":retest["record_id"],
         "baseline_reference":baseline_snapshot_id,
@@ -342,7 +360,7 @@ def test_audit_failure_rolls_back_workflow_record():
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, _, _, _ = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
@@ -455,7 +473,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         coach_actor_id=coach,
         display_name="OIDC FEAT-033 PostgreSQL acceptance",
     )
-    decision_id, drill_id = seed_authoritative_feat033_sources(
+    decision_id, drill_id, _, _, _ = seed_authoritative_feat033_sources(
         tenant, coach, athlete["athlete_id"]
     )
     path = "/api/v1/training-workflow/feat-033/decision-drill"
