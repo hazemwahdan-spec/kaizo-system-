@@ -14,7 +14,7 @@ os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
 
 import persistence
 import training_workflow
-from productization import coach_decision_workflow
+from productization import coach_decision_workflow, coach_training_workflow, coach_assessment_workflow
 from types import SimpleNamespace
 from productization import coach_roster
 from training_workflow import router, reset_memory_state
@@ -40,11 +40,14 @@ OTHER_COACH_HEADERS = {
 def setup_function():
     reset_memory_state()
     coach_roster.reset_memory_state()
+    coach_training_workflow.reset_memory_state()
+    coach_assessment_workflow.reset_memory_state()
     # The main workflow tests isolate the later FEAT-034..040 chain; the
     # dedicated source-validation tests exercise the real resolver below.
     training_workflow._validate_initial_decision_drill = lambda req, principal: {
         "decision": {"decision_id": req.decision_id, "athlete_id": req.athlete_id,
-                     "coach_id": principal.actor_id, "status": "RECORDED", "problem_id": "P1"},
+                     "coach_id": principal.actor_id, "status": "RECORDED",
+                     "assessment_id": "ASSESSMENT-1", "problem_id": "P1"},
         "problem_id": "P1", "drill": {"drill_id": req.drill_id},
         "problem_drill_link": {"link_id": "L1", "drill_id": req.drill_id},
     }
@@ -54,6 +57,21 @@ def setup_function():
         display_name="Owned athlete for workflow tests",
     )
     ATHLETE_ID = athlete["athlete_id"]
+    plan = {"plan_id":"P1","athlete_id":ATHLETE_ID,"decision_id":"D1","created_by":"coach-1"}
+    session = {"session_id":"S1","plan_id":"P1","athlete_id":ATHLETE_ID,"created_by":"coach-1"}
+    coach_training_workflow._MEMORY_PLANS["P1"] = plan
+    coach_training_workflow._MEMORY_SESSIONS["S1"] = session
+    coach_training_workflow._MEMORY_AUDIT.extend([
+        {"tenant_id":"tenant-1","who":"coach-1","action":"COACH_TRAINING_PLAN_CREATED","new_value":plan},
+        {"tenant_id":"tenant-1","who":"coach-1","action":"COACH_TRAINING_SESSION_CREATED","new_value":session},
+    ])
+    baseline = {"snapshot_id":"BASELINE-1","athlete_id":ATHLETE_ID,
+                "assessment_id":"ASSESSMENT-1","snapshot_type":"baseline",
+                "captured_by":"coach-1","kpis":[{"kpi_id":"entry_success","value":4}]}
+    coach_assessment_workflow._MEMORY_SNAPSHOTS["BASELINE-1"] = baseline
+    coach_assessment_workflow._MEMORY_AUDIT.append({
+        "tenant_id":"tenant-1","who":"coach-1","action":"COACH_STATE_SNAPSHOT_CREATED","new_value":baseline,
+    })
 
 
 def cases(athlete_id):
@@ -72,10 +90,10 @@ def cases(athlete_id):
          {"athlete_id":athlete_id,"session_id":"S1","response":{"quality":"GOOD"},
           "drill_id":"DR1","prescription_record_id":"PENDING-034","execution_cue_record_id":"PENDING-035","kpi_values":{"entry_success":4},"observed_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-037/retest",
-         {"athlete_id":athlete_id,"session_id":"S1","response_record_id":"PENDING-036","baseline_reference":"FEAT-036",
+         {"athlete_id":athlete_id,"session_id":"S1","response_record_id":"PENDING-036","baseline_reference":"BASELINE-1",
           "retest_values":{"entry_success":6},"evidence_refs":["REF-016"],"retested_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-038/before-after",
-         {"athlete_id":athlete_id,"response_record_id":"PENDING-036","retest_record_id":"PENDING-037","baseline":{"entry_success":4},"current":{"entry_success":6},
+         {"athlete_id":athlete_id,"response_record_id":"PENDING-036","retest_record_id":"PENDING-037","baseline_reference":"BASELINE-1","baseline":{"entry_success":4},"current":{"entry_success":6},
           "comparison_method":"absolute_change","compared_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-039/progress-state",
          {"athlete_id":athlete_id,"comparison_record_id":"PENDING-038","state":{"status":"IMPROVING","entry_success":6},
@@ -141,10 +159,12 @@ def test_workflow_history_is_scoped_and_actor_fields_cannot_be_spoofed():
     assert client.get(f"/api/v1/training-workflow/athletes/{ATHLETE_ID}", headers=OTHER_COACH_HEADERS).status_code == 404
 
 
-def test_invalid_training_values_and_coach_final_authority_still_fail_closed():
+def test_caller_supplied_coach_final_authority_is_ignored_and_server_derives_it():
     path, payload = cases(ATHLETE_ID)[0]
     payload["coach_final_authority"] = False
-    assert client.post(path, json=payload, headers=COACH_HEADERS).status_code == 400
+    response = client.post(path, json=payload, headers=COACH_HEADERS)
+    assert response.status_code == 201, response.text
+    assert response.json()["coach_final_authority"] is True
     first_path, first_payload = cases(ATHLETE_ID)[0]
     assert client.post(first_path, json=first_payload, headers=COACH_HEADERS).status_code == 201
     invalid = {
@@ -161,6 +181,53 @@ def test_workflow_rejects_missing_predecessor():
     path, payload = cases(ATHLETE_ID)[1]
     assert client.post(path, json=payload, headers=COACH_HEADERS).status_code == 409
 
+
+
+def test_feat034_rejects_session_not_linked_to_the_same_recorded_decision():
+    feat033_path, feat033_payload = cases(ATHLETE_ID)[0]
+    created = client.post(feat033_path, json=feat033_payload, headers=COACH_HEADERS)
+    assert created.status_code == 201, created.text
+    path, payload = cases(ATHLETE_ID)[1]
+    payload["session_id"] = "FOREIGN-SESSION"
+    denied = client.post(path, json=payload, headers=COACH_HEADERS)
+    assert denied.status_code == 409, denied.text
+
+
+def test_retest_and_comparison_are_bound_to_the_assessed_baseline_and_retest_values():
+    records = {}
+    rows = cases(ATHLETE_ID)
+    for path, original in rows[:4]:
+        payload = dict(original)
+        feature = path.split("/feat-")[1][:3]
+        if feature == "036":
+            payload["prescription_record_id"] = records["034"]["record_id"]
+            payload["execution_cue_record_id"] = records["035"]["record_id"]
+        response = client.post(path, json=payload, headers=COACH_HEADERS)
+        assert response.status_code == 201, response.text
+        records[feature] = response.json()
+
+    retest_path, retest_body = rows[4]
+    retest_body = dict(retest_body, response_record_id=records["036"]["record_id"])
+    wrong_snapshot = dict(retest_body, baseline_reference="NOT-A-BASELINE")
+    assert client.post(retest_path, json=wrong_snapshot, headers=COACH_HEADERS).status_code == 409
+    wrong_kpi = dict(retest_body, retest_values={"other_kpi": 6})
+    assert client.post(retest_path, json=wrong_kpi, headers=COACH_HEADERS).status_code == 409
+    valid_retest = client.post(retest_path, json=retest_body, headers=COACH_HEADERS)
+    assert valid_retest.status_code == 201, valid_retest.text
+    records["037"] = valid_retest.json()
+
+    compare_path, compare_body = rows[5]
+    compare_body = dict(
+        compare_body,
+        response_record_id=records["036"]["record_id"],
+        retest_record_id=records["037"]["record_id"],
+    )
+    wrong_baseline = dict(compare_body, baseline={"entry_success": 99})
+    assert client.post(compare_path, json=wrong_baseline, headers=COACH_HEADERS).status_code == 409
+    wrong_current = dict(compare_body, current={"entry_success": 99})
+    assert client.post(compare_path, json=wrong_current, headers=COACH_HEADERS).status_code == 409
+    valid_comparison = client.post(compare_path, json=compare_body, headers=COACH_HEADERS)
+    assert valid_comparison.status_code == 201, valid_comparison.text
 
 def test_openapi_publishes_all_feat_033_to_040_routes_and_lineage_fields():
     schema = client.get("/openapi.json").json()
@@ -179,7 +246,7 @@ def test_openapi_publishes_all_feat_033_to_040_routes_and_lineage_fields():
     required = {
         "ResponseRequest": {"drill_id", "prescription_record_id", "execution_cue_record_id"},
         "RetestRequest": {"response_record_id"},
-        "ComparisonRequest": {"response_record_id", "retest_record_id"},
+        "ComparisonRequest": {"response_record_id", "retest_record_id", "baseline_reference"},
         "ProgressRequest": {"comparison_record_id"},
         "NextDecisionRequest": {"progress_record_id"},
     }
@@ -191,7 +258,7 @@ def test_openapi_publishes_all_feat_033_to_040_routes_and_lineage_fields():
 def test_feat033_resolves_authoritative_decision_published_drill_and_same_scope_problem_link(monkeypatch):
     monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: False)
     decision = {"decision_id":"D1","athlete_id":ATHLETE_ID,"coach_id":"coach-1",
-                "status":"RECORDED","problem_id":"P1"}
+                "status":"RECORDED","assessment_id":"ASSESSMENT-1","problem_id":"P1"}
     monkeypatch.setitem(sys.modules, "main", SimpleNamespace(DECISION_RECORDS={"D1":decision}))
     monkeypatch.setattr(coach_decision_workflow, "_MEMORY_AUDIT", [{
         "who":"coach-1","action":"COACH_DECISION_RECORD_RECORDED","tenant_id":"tenant-1",
@@ -229,7 +296,7 @@ def test_feat033_rejects_foreign_decision_unreviewed_drill_and_missing_problem_l
     assert denied.value.status_code == 409
 
     trusted_decision = {"decision_id":"D1","athlete_id":ATHLETE_ID,"coach_id":"coach-1",
-                        "status":"RECORDED","problem_id":"P1"}
+                        "status":"RECORDED","assessment_id":"ASSESSMENT-1","problem_id":"P1"}
     monkeypatch.setitem(sys.modules, "main", SimpleNamespace(DECISION_RECORDS={"D1":trusted_decision}))
     monkeypatch.setattr(coach_decision_workflow, "_MEMORY_AUDIT", [{
         "who":"coach-1","action":"COACH_DECISION_RECORD_RECORDED","tenant_id":"tenant-1",
