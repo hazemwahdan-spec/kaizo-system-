@@ -30,11 +30,18 @@ def get_surface() -> ProductSurface:
     return _surface
 
 
+def require_product_permission(principal):
+    """Require the Auth0 API permission before any commercial Product API access."""
+    if principal.verified and "product" not in principal.permissions:
+        raise HTTPException(status_code=403, detail="Product API permission required")
+
+
 def ctx(actor_id: str, role: str, tenant_id: str, owner: str | None, authorization: str | None = None) -> RuntimeContext:
     try:
         principal = resolve_principal(actor_id, role, tenant_id, owner, authorization)
     except IdentityNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+    require_product_permission(principal)
     return RuntimeContext(
         actor_id=principal.actor_id,
         role=principal.role,
@@ -306,6 +313,7 @@ def verified_coach_scope(
         raise HTTPException(status_code=403, detail="Coach role required")
     if not principal.actor_id or not principal.tenant_id:
         raise HTTPException(status_code=403, detail="Coach tenant scope required")
+    require_product_permission(principal)
     return principal
 
 

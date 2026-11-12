@@ -342,7 +342,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
 
     monkeypatch.setattr(identity, "PyJWKClient", LocalJWKClient)
 
-    def bearer(actor, tenant, role="coach", signing_key=trusted_key):
+    def bearer(actor, tenant, role="coach", signing_key=trusted_key, permissions=("product",)):
         now = int(time.time())
         claims = {
             "sub": actor,
@@ -350,6 +350,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
             "aud": audience,
             "iat": now,
             "exp": now + 300,
+            "permissions": list(permissions),
             "https://kaizo.system/kaizo_role": role,
             "https://kaizo.system/tenant_id": tenant,
         }
@@ -402,6 +403,13 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
     )
     assert own_read.status_code == 200, own_read.text
     assert len(own_read.json()["features"]["FEAT-033"]) == 1
+
+    no_product_permission = bearer(coach, tenant, permissions=())
+    permission_denied = client.get(
+        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        headers={"Authorization": no_product_permission},
+    )
+    assert permission_denied.status_code == 403, permission_denied.text
 
     other_coach = bearer("auth0|other-coach-" + uuid4().hex, tenant)
     other_tenant = bearer("auth0|foreign-tenant-coach-" + uuid4().hex,
