@@ -172,6 +172,11 @@ def test_oidc_product_permission_is_required_for_coach_routes_and_navigation(mon
         "resolve_bearer_principal",
         lambda authorization: verified(permissions=()),
     )
+    monkeypatch.setattr(
+        product_api,
+        "resolve_principal",
+        lambda *args, **kwargs: verified(permissions=()),
+    )
     headers = {"Authorization": "Bearer verified-without-product"}
     c = client()
     coach_roster_response = c.get("/api/v1/product/coach/athletes", headers=headers)
