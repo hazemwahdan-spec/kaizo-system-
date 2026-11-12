@@ -71,6 +71,7 @@ def _local_oidc_token(private_key, **overrides):
         "https://kaizo.system/kaizo_role": "coach",
         "https://kaizo.system/tenant_id": "TENANT-A",
         "https://kaizo.system/resource_owner_id": "ATHLETE-A",
+        "permissions": ["product"],
     }
     claims.update(overrides)
     return jwt.encode(
@@ -126,6 +127,7 @@ def test_valid_rs256_bearer_derives_verified_coach_and_ignores_forged_headers(mo
     assert principal.resource_owner_id == "ATHLETE-A"
     assert principal.verified is True
     assert principal.source == "oidc_jwt"
+    assert principal.permissions == frozenset({"product"})
 
 
 @pytest.mark.parametrize(
