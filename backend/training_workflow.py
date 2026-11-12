@@ -13,7 +13,8 @@ from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 import persistence
-from productization import coach_roster, coach_progression_workflow, coach_decision_workflow
+from productization import (coach_roster, coach_progression_workflow, coach_decision_workflow,
+                            coach_training_workflow, coach_assessment_workflow)
 from productization.product_api import verified_coach_scope
 
 router = APIRouter(prefix="/api/v1/training-workflow", tags=["training-workflow"])
@@ -25,10 +26,6 @@ _MEMORY_AUDIT: list[dict[str, Any]] = []
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-
-def _require_authority(value: bool) -> None:
-    if not value:
-        raise HTTPException(status_code=400, detail="coach_final_authority is required")
 
 
 def _coach_for_athlete(
@@ -67,6 +64,10 @@ def _save(
     principal: Any,
     decision_id: Optional[str] = None,
     session_id: Optional[str] = None,
+    expected_session_decision_id: Optional[str] = None,
+    baseline_reference: Optional[str] = None,
+    expected_assessment_id: Optional[str] = None,
+    expected_kpi_keys: Optional[set[str]] = None,
 ) -> Dict[str, Any]:
     record = {
         "record_id": str(uuid4()),
@@ -107,6 +108,17 @@ def _save(
                 )
                 if cur.fetchone() is None:
                     raise HTTPException(status_code=404, detail="athlete not found in Coach scope")
+                if session_id and expected_session_decision_id:
+                    _validate_session_parent(cur, athlete_id, session_id,
+                                             expected_session_decision_id, principal)
+                if baseline_reference:
+                    if not expected_assessment_id:
+                        raise HTTPException(status_code=409, detail="baseline assessment lineage is missing")
+                    baseline_values = _load_baseline_snapshot(
+                        cur, athlete_id, principal, baseline_reference, expected_assessment_id
+                    )
+                    if expected_kpi_keys is not None and set(baseline_values) != set(expected_kpi_keys):
+                        raise HTTPException(status_code=409, detail="workflow KPI identities must exactly match the referenced baseline snapshot")
                 cur.execute(
                     """INSERT INTO kaizo_training_workflow_records
                     (record_id,feature_id,athlete_id,decision_id,session_id,payload,
@@ -132,6 +144,17 @@ def _save(
     else:
         # Explicitly development/test-only adapter. Production OIDC is refused
         # above unless durable PostgreSQL is active.
+        if session_id and expected_session_decision_id:
+            _validate_session_parent(None, athlete_id, session_id,
+                                     expected_session_decision_id, principal)
+        if baseline_reference:
+            if not expected_assessment_id:
+                raise HTTPException(status_code=409, detail="baseline assessment lineage is missing")
+            baseline_values = _load_baseline_snapshot(
+                None, athlete_id, principal, baseline_reference, expected_assessment_id
+            )
+            if expected_kpi_keys is not None and set(baseline_values) != set(expected_kpi_keys):
+                raise HTTPException(status_code=409, detail="workflow KPI identities must exactly match the referenced baseline snapshot")
         _MEMORY_RECORDS.append(record)
         _MEMORY_AUDIT.append(audit)
     return record
@@ -190,6 +213,201 @@ def _prior_record(feature_id: str, athlete_id: str, principal: Any, predicate):
 
 def _same_keys(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
     return bool(left) and set(left.keys()) == set(right.keys())
+
+
+def _audit_event_matches(events, principal, action: str, expected: Dict[str, Any]) -> bool:
+    for event in events:
+        value = event.get("new_value") or {}
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                continue
+        if (
+            event.get("action") == action
+            and event.get("who") == principal.actor_id
+            and event.get("tenant_id") == principal.tenant_id
+            and isinstance(value, dict)
+            and all(value.get(key) == expected_value for key, expected_value in expected.items())
+        ):
+            return True
+    return False
+
+
+def _validate_session_parent(cur, athlete_id: str, session_id: str,
+                             decision_id: str, principal: Any) -> None:
+    """Require an audited FEAT-027 session under the same decision and owner."""
+    if persistence.is_postgres_enabled():
+        if cur is None:
+            with persistence.connection() as conn:
+                with conn.cursor() as read_cur:
+                    return _validate_session_parent(
+                        read_cur, athlete_id, session_id, decision_id, principal
+                    )
+        cur.execute(
+            """SELECT s.plan_id
+               FROM kaizo_training_sessions s
+               JOIN kaizo_training_plans p
+                 ON p.plan_id=s.plan_id AND p.athlete_id=s.athlete_id
+               JOIN kaizo_decision_records d
+                 ON d.decision_id=p.decision_id AND d.athlete_id=p.athlete_id
+               JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=s.athlete_id
+               WHERE s.session_id=%s AND s.athlete_id=%s
+                 AND p.decision_id=%s AND d.coach_id=%s AND d.status='RECORDED'
+                 AND o.tenant_id=%s AND o.coach_actor_id=%s
+               FOR SHARE OF s,p,d""",
+            (session_id, athlete_id, decision_id, principal.actor_id,
+             principal.tenant_id, principal.actor_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=409,
+                detail="session_id must reference an audited session under this athlete's linked decision and Coach scope",
+            )
+        plan_id = row[0]
+        cur.execute(
+            """SELECT 1 FROM kaizo_audit_logs
+               WHERE tenant_id=%s AND who=%s
+                 AND action='COACH_TRAINING_PLAN_CREATED'
+                 AND new_value->>'plan_id'=%s
+                 AND new_value->>'decision_id'=%s
+                 AND new_value->>'athlete_id'=%s""",
+            (principal.tenant_id, principal.actor_id, plan_id, decision_id, athlete_id),
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=409, detail="training plan lacks its authoritative tenant audit event")
+        cur.execute(
+            """SELECT 1 FROM kaizo_audit_logs
+               WHERE tenant_id=%s AND who=%s
+                 AND action='COACH_TRAINING_SESSION_CREATED'
+                 AND new_value->>'session_id'=%s
+                 AND new_value->>'plan_id'=%s
+                 AND new_value->>'athlete_id'=%s""",
+            (principal.tenant_id, principal.actor_id, session_id, plan_id, athlete_id),
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=409, detail="training session lacks its authoritative tenant audit event")
+        return
+
+    session = coach_training_workflow._MEMORY_SESSIONS.get(session_id)
+    if not session or session.get("athlete_id") != athlete_id:
+        raise HTTPException(status_code=409, detail="session_id is not a persisted session for this athlete")
+    plan_id = session.get("plan_id")
+    plan = coach_training_workflow._MEMORY_PLANS.get(plan_id)
+    if (
+        not plan or plan.get("athlete_id") != athlete_id
+        or plan.get("decision_id") != decision_id
+        or plan.get("created_by") != principal.actor_id
+        or session.get("created_by") != principal.actor_id
+    ):
+        raise HTTPException(status_code=409, detail="session is not linked to this Coach-owned decision and athlete")
+    events = coach_training_workflow._MEMORY_AUDIT
+    if not _audit_event_matches(events, principal, "COACH_TRAINING_PLAN_CREATED", {
+        "plan_id": plan_id, "decision_id": decision_id, "athlete_id": athlete_id,
+    }):
+        raise HTTPException(status_code=409, detail="training plan lacks its authoritative tenant audit event")
+    if not _audit_event_matches(events, principal, "COACH_TRAINING_SESSION_CREATED", {
+        "session_id": session_id, "plan_id": plan_id, "athlete_id": athlete_id,
+    }):
+        raise HTTPException(status_code=409, detail="training session lacks its authoritative tenant audit event")
+
+
+def _load_baseline_snapshot(cur, athlete_id: str, principal: Any,
+                            snapshot_id: str, expected_assessment_id: str) -> Dict[str, Any]:
+    """Load a Coach-authored FEAT-015 baseline and return KPI-ID/value pairs."""
+    if persistence.is_postgres_enabled():
+        if cur is None:
+            with persistence.connection() as conn:
+                with conn.cursor() as read_cur:
+                    return _load_baseline_snapshot(
+                        read_cur, athlete_id, principal, snapshot_id, expected_assessment_id
+                    )
+        cur.execute(
+            """SELECT s.assessment_id,s.snapshot_type,s.kpis,s.captured_by
+               FROM kaizo_state_snapshots s
+               JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=s.athlete_id
+               WHERE s.snapshot_id=%s AND s.athlete_id=%s
+                 AND o.tenant_id=%s AND o.coach_actor_id=%s
+               FOR SHARE OF s""",
+            (snapshot_id, athlete_id, principal.tenant_id, principal.actor_id),
+        )
+        row = cur.fetchone()
+        if (
+            row is None or row[0] != expected_assessment_id
+            or row[1] != "baseline" or row[3] != principal.actor_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="baseline_reference must be a Coach-authored FEAT-015 baseline for this decision assessment and athlete",
+            )
+        cur.execute(
+            """SELECT 1 FROM kaizo_audit_logs
+               WHERE tenant_id=%s AND who=%s
+                 AND action='COACH_STATE_SNAPSHOT_CREATED'
+                 AND new_value->>'snapshot_id'=%s
+                 AND new_value->>'athlete_id'=%s
+                 AND new_value->>'assessment_id'=%s
+                 AND new_value->>'snapshot_type'='baseline'""",
+            (principal.tenant_id, principal.actor_id, snapshot_id,
+             athlete_id, expected_assessment_id),
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=409, detail="baseline snapshot lacks its authoritative tenant audit event")
+        kpis = row[2]
+    else:
+        snapshot = coach_assessment_workflow._MEMORY_SNAPSHOTS.get(snapshot_id)
+        if (
+            not snapshot or snapshot.get("athlete_id") != athlete_id
+            or snapshot.get("assessment_id") != expected_assessment_id
+            or snapshot.get("snapshot_type") != "baseline"
+            or snapshot.get("captured_by") != principal.actor_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="baseline_reference must be a Coach-authored FEAT-015 baseline for this decision assessment and athlete",
+            )
+        if not _audit_event_matches(coach_assessment_workflow._MEMORY_AUDIT, principal,
+                                    "COACH_STATE_SNAPSHOT_CREATED", {
+            "snapshot_id": snapshot_id, "athlete_id": athlete_id,
+            "assessment_id": expected_assessment_id, "snapshot_type": "baseline",
+        }):
+            raise HTTPException(status_code=409, detail="baseline snapshot lacks its authoritative tenant audit event")
+        kpis = snapshot.get("kpis")
+
+    if isinstance(kpis, str):
+        try:
+            kpis = json.loads(kpis)
+        except (TypeError, ValueError):
+            kpis = None
+    if not isinstance(kpis, list) or not kpis:
+        raise HTTPException(status_code=409, detail="baseline snapshot has no persisted KPI identity/value records")
+    values: Dict[str, Any] = {}
+    for item in kpis:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=409, detail="baseline snapshot contains an invalid KPI record")
+        kpi_id = str(item.get("kpi_id") or "").strip()
+        if not kpi_id or kpi_id in values or "value" not in item:
+            raise HTTPException(status_code=409, detail="baseline snapshot contains duplicate or incomplete KPI identities")
+        values[kpi_id] = item["value"]
+    return values
+
+
+def _feat033_assessment_id(athlete_id: str, decision_id: str, principal: Any) -> str:
+    source = _prior_record(
+        "FEAT-033", athlete_id, principal,
+        lambda record, payload: record.get("decision_id") == decision_id,
+    )
+    payload = source.get("payload") or {}
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (TypeError, ValueError):
+            payload = {}
+    assessment_id = str(payload.get("assessment_id") or "").strip()
+    if not assessment_id:
+        raise HTTPException(status_code=409, detail="FEAT-033 lacks authoritative assessment lineage for KPI baseline validation")
+    return assessment_id
 
 
 
@@ -263,7 +481,6 @@ class DecisionDrillRequest(BaseModel):
     drill_id: str
     rationale: str
     evidence_refs: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 class DrillPrescriptionRequest(BaseModel):
@@ -274,7 +491,6 @@ class DrillPrescriptionRequest(BaseModel):
     objective: str
     dosage: Dict[str, Any]
     constraints: List[str] = Field(default_factory=list)
-    coach_final_authority: bool = True
 
 
 class ExecutionCueRequest(BaseModel):
@@ -283,7 +499,6 @@ class ExecutionCueRequest(BaseModel):
     drill_id: str
     cues: List[str] = Field(min_length=1)
     checklist: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 class ResponseRequest(BaseModel):
@@ -294,7 +509,6 @@ class ResponseRequest(BaseModel):
     execution_cue_record_id: str
     response: Dict[str, Any]
     kpi_values: Dict[str, Any]
-    coach_final_authority: bool = True
 
 
 class RetestRequest(BaseModel):
@@ -304,17 +518,16 @@ class RetestRequest(BaseModel):
     baseline_reference: str
     retest_values: Dict[str, Any]
     evidence_refs: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 class ComparisonRequest(BaseModel):
     athlete_id: str
     response_record_id: str
     retest_record_id: str
+    baseline_reference: str
     baseline: Dict[str, Any]
     current: Dict[str, Any]
     comparison_method: str
-    coach_final_authority: bool = True
 
 
 class ProgressRequest(BaseModel):
@@ -322,7 +535,6 @@ class ProgressRequest(BaseModel):
     comparison_record_id: str
     state: Dict[str, Any]
     evidence_refs: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 class NextDecisionRequest(BaseModel):
@@ -332,7 +544,6 @@ class NextDecisionRequest(BaseModel):
     trigger_type: str
     trigger_reason: str
     required_evidence: List[str] = Field(min_length=1)
-    coach_final_authority: bool = True
 
 
 def _headers(
@@ -352,11 +563,13 @@ def select_decision_drill(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.rationale.strip() or not req.drill_id.strip():
         raise HTTPException(400, "drill_id and rationale are required")
     sources = _validate_initial_decision_drill(req, principal)
     payload = req.model_dump()
+    payload["assessment_id"] = str(sources["decision"].get("assessment_id") or "")
+    if not payload["assessment_id"]:
+        raise HTTPException(status_code=409, detail="recorded decision has no authoritative assessment_id")
     payload["problem_id"] = sources["problem_id"]
     payload["problem_drill_link_id"] = sources["problem_drill_link"].get("link_id")
     return _save("FEAT-033", req.athlete_id, payload, principal, req.decision_id)
@@ -372,7 +585,6 @@ def prescribe_drill(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     predecessor = _prior_record("FEAT-033", req.athlete_id, principal,
         lambda r, p: r.get("decision_id") == req.decision_id and p.get("drill_id") == req.drill_id)
     d = req.dosage
@@ -380,7 +592,9 @@ def prescribe_drill(
         raise HTTPException(400, "dosage requires sets and reps")
     if not isinstance(d["sets"], int) or d["sets"] <= 0 or not isinstance(d["reps"], int) or d["reps"] <= 0:
         raise HTTPException(400, "sets and reps must be positive integers")
-    return _save("FEAT-034", req.athlete_id, req.model_dump(), principal, req.decision_id, req.session_id)
+    return _save("FEAT-034", req.athlete_id, req.model_dump(), principal,
+                 req.decision_id, req.session_id,
+                 expected_session_decision_id=req.decision_id)
 
 
 @router.post("/feat-035/execution-cues", status_code=status.HTTP_201_CREATED)
@@ -393,13 +607,13 @@ def record_execution_cues(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if any(not item.strip() for item in req.cues + req.checklist):
         raise HTTPException(400, "cues and checklist items must be non-empty")
     predecessor = _prior_record("FEAT-034", req.athlete_id, principal,
         lambda r, p: r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
     return _save("FEAT-035", req.athlete_id, req.model_dump(), principal,
-        decision_id=predecessor.get("decision_id"), session_id=req.session_id)
+        decision_id=predecessor.get("decision_id"), session_id=req.session_id,
+        expected_session_decision_id=predecessor.get("decision_id"))
 
 
 @router.post("/feat-036/training-response", status_code=status.HTTP_201_CREATED)
@@ -412,7 +626,6 @@ def capture_training_response(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.response or not req.kpi_values:
         raise HTTPException(400, "response and kpi_values are required")
     prescription = _prior_record("FEAT-034", req.athlete_id, principal,
@@ -421,7 +634,9 @@ def capture_training_response(
         lambda r, p: r.get("record_id") == req.execution_cue_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
     if cues.get("decision_id") != prescription.get("decision_id"):
         raise HTTPException(409, detail="prescription and execution cues do not share the same decision lineage")
-    return _save("FEAT-036", req.athlete_id, req.model_dump(), principal, decision_id=prescription.get("decision_id"), session_id=req.session_id)
+    return _save("FEAT-036", req.athlete_id, req.model_dump(), principal,
+        decision_id=prescription.get("decision_id"), session_id=req.session_id,
+        expected_session_decision_id=prescription.get("decision_id"))
 
 
 @router.post("/feat-037/retest", status_code=status.HTTP_201_CREATED)
@@ -434,17 +649,37 @@ def capture_retest(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.baseline_reference.strip() or not req.retest_values:
         raise HTTPException(400, "baseline_reference and retest_values are required")
     response_record = _prior_record("FEAT-036", req.athlete_id, principal,
         lambda r, p: r.get("record_id") == req.response_record_id and r.get("session_id") == req.session_id)
     response_payload = response_record.get("payload") or {}
-    if isinstance(response_payload, str): response_payload = json.loads(response_payload)
-    if not _same_keys(response_payload.get("kpi_values", {}), req.retest_values):
-        raise HTTPException(409, detail="retest KPI keys must exactly match the linked training response baseline")
-    return _save("FEAT-037", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=req.session_id)
-
+    if isinstance(response_payload, str):
+        response_payload = json.loads(response_payload)
+    assessment_id = _feat033_assessment_id(
+        req.athlete_id, response_record.get("decision_id"), principal
+    )
+    baseline_values = _load_baseline_snapshot(
+        None, req.athlete_id, principal, req.baseline_reference, assessment_id
+    )
+    response_values = response_payload.get("kpi_values", {})
+    if (
+        not isinstance(response_values, dict)
+        or set(response_values) != set(baseline_values)
+        or set(req.retest_values) != set(baseline_values)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="training response and retest KPI IDs must exactly match the linked FEAT-015 baseline KPI IDs",
+        )
+    return _save(
+        "FEAT-037", req.athlete_id, req.model_dump(), principal,
+        decision_id=response_record.get("decision_id"), session_id=req.session_id,
+        expected_session_decision_id=response_record.get("decision_id"),
+        baseline_reference=req.baseline_reference,
+        expected_assessment_id=assessment_id,
+        expected_kpi_keys=set(req.retest_values),
+    )
 
 @router.post("/feat-038/before-after", status_code=status.HTTP_201_CREATED)
 def compare_before_after(
@@ -456,23 +691,45 @@ def compare_before_after(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.baseline or not req.current or not req.comparison_method.strip():
         raise HTTPException(400, "baseline, current and comparison_method are required")
-    response_record = _prior_record("FEAT-036", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.response_record_id)
-    retest_record = _prior_record("FEAT-037", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.retest_record_id and r.get("session_id") == response_record.get("session_id"))
-    response_payload = response_record.get("payload") or {}
+    response_record = _prior_record(
+        "FEAT-036", req.athlete_id, principal,
+        lambda r, p: r.get("record_id") == req.response_record_id,
+    )
+    retest_record = _prior_record(
+        "FEAT-037", req.athlete_id, principal,
+        lambda r, p: r.get("record_id") == req.retest_record_id
+        and r.get("session_id") == response_record.get("session_id"),
+    )
     retest_payload = retest_record.get("payload") or {}
-    if isinstance(response_payload, str): response_payload = json.loads(response_payload)
-    if isinstance(retest_payload, str): retest_payload = json.loads(retest_payload)
-    if req.baseline != response_payload.get("kpi_values") or req.current != retest_payload.get("retest_values"):
-        raise HTTPException(409, detail="comparison baseline/current must equal the linked response/retest KPI values")
-    if not _same_keys(req.baseline, req.current):
-        raise HTTPException(409, detail="comparison KPI keys must match exactly")
+    if isinstance(retest_payload, str):
+        retest_payload = json.loads(retest_payload)
     if retest_record.get("decision_id") != response_record.get("decision_id"):
-        raise HTTPException(409, detail="response and retest do not share the same decision lineage")
-    return _save("FEAT-038", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=response_record.get("session_id"))
-
+        raise HTTPException(status_code=409, detail="response and retest do not share the same decision lineage")
+    if retest_payload.get("baseline_reference") != req.baseline_reference:
+        raise HTTPException(status_code=409, detail="comparison baseline_reference must match the linked retest baseline")
+    assessment_id = _feat033_assessment_id(
+        req.athlete_id, response_record.get("decision_id"), principal
+    )
+    baseline_values = _load_baseline_snapshot(
+        None, req.athlete_id, principal, req.baseline_reference, assessment_id
+    )
+    if req.baseline != baseline_values or req.current != retest_payload.get("retest_values"):
+        raise HTTPException(
+            status_code=409,
+            detail="comparison baseline/current must equal the referenced FEAT-015 baseline and linked retest KPI values",
+        )
+    if not _same_keys(req.baseline, req.current):
+        raise HTTPException(status_code=409, detail="comparison KPI keys must match exactly")
+    return _save(
+        "FEAT-038", req.athlete_id, req.model_dump(), principal,
+        decision_id=response_record.get("decision_id"), session_id=response_record.get("session_id"),
+        expected_session_decision_id=response_record.get("decision_id"),
+        baseline_reference=req.baseline_reference,
+        expected_assessment_id=assessment_id,
+        expected_kpi_keys=set(req.baseline),
+    )
 
 @router.post("/feat-039/progress-state", status_code=status.HTTP_201_CREATED)
 def update_progress_state(
@@ -484,12 +741,12 @@ def update_progress_state(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.state:
         raise HTTPException(400, "state is required")
     comparison = _prior_record("FEAT-038", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.comparison_record_id)
     return _save("FEAT-039", req.athlete_id, req.model_dump(), principal,
-        decision_id=comparison.get("decision_id"), session_id=comparison.get("session_id"))
+        decision_id=comparison.get("decision_id"), session_id=comparison.get("session_id"),
+        expected_session_decision_id=comparison.get("decision_id"))
 
 
 @router.post("/feat-040/next-decision-trigger", status_code=status.HTTP_201_CREATED)
@@ -502,14 +759,14 @@ def create_next_decision_trigger(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
-    _require_authority(req.coach_final_authority)
     if not req.trigger_type.strip() or not req.trigger_reason.strip():
         raise HTTPException(400, "trigger_type and trigger_reason are required")
     progress = _prior_record("FEAT-039", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.progress_record_id)
     if progress.get("session_id") != req.session_id:
         raise HTTPException(409, detail="next-decision trigger session does not match the linked progress record")
     return _save("FEAT-040", req.athlete_id, req.model_dump(), principal,
-        decision_id=progress.get("decision_id"), session_id=req.session_id)
+        decision_id=progress.get("decision_id"), session_id=req.session_id,
+        expected_session_decision_id=progress.get("decision_id"))
 
 
 @router.get("/athletes/{athlete_id}")
