@@ -388,7 +388,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         coach_actor_id=coach,
         display_name="OIDC FEAT-033 PostgreSQL acceptance",
     )
-    decision_id, drill_id = seed_authoritative_feat033_sources(
+    decision_id, drill_id, _baseline_snapshot_id, _kpi_id = seed_authoritative_feat033_sources(
         tenant, coach, athlete["athlete_id"]
     )
     path = "/api/v1/training-workflow/feat-033/decision-drill"
