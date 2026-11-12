@@ -170,7 +170,7 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, baseline_snapshot_id, session_id, kpi_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
@@ -233,7 +233,6 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert record["payload"]["problem_drill_link_id"]
 
     athlete_id = athlete["athlete_id"]
-    session_id = "SESSION-" + uuid4().hex
     def post(feature, suffix, body):
         result = client.post(f"/api/v1/training-workflow/feat-{feature}/{suffix}",
                              json={"athlete_id":athlete_id, **body}, headers=headers)
@@ -255,20 +254,21 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "session_id":session_id,"drill_id":drill_id,
         "prescription_record_id":prescription["record_id"],
         "execution_cue_record_id":cues["record_id"],
-        "response":{"quality":"GOOD"},"kpi_values":{"entry_success":4}})
+        "response":{"quality":"GOOD"},"kpi_values":{kpi_id:4}})
     bad_retest = client.post("/api/v1/training-workflow/feat-037/retest",headers=headers,json={
         "athlete_id":athlete_id,"session_id":session_id,
         "response_record_id":training_response["record_id"],
-        "baseline_reference":training_response["record_id"],
-        "retest_values":{"different_kpi":6},"evidence_refs":["REF-POSTGRES"]})
+        "baseline_reference":baseline_snapshot_id,
+        "retest_values":{"DIFFERENT-KPI":6},"evidence_refs":["REF-POSTGRES"]})
     assert bad_retest.status_code == 409, bad_retest.text
     retest = post("037","retest",{
         "session_id":session_id,"response_record_id":training_response["record_id"],
-        "baseline_reference":training_response["record_id"],
-        "retest_values":{"entry_success":6},"evidence_refs":["REF-POSTGRES"]})
+        "baseline_reference":baseline_snapshot_id,
+        "retest_values":{kpi_id:6},"evidence_refs":["REF-POSTGRES"]})
     comparison = post("038","before-after",{
         "response_record_id":training_response["record_id"],"retest_record_id":retest["record_id"],
-        "baseline":{"entry_success":4},"current":{"entry_success":6},
+        "baseline_reference":baseline_snapshot_id,
+        "baseline":{kpi_id:4},"current":{kpi_id:6},
         "comparison_method":"same_kpi_absolute_change"})
     progress = post("039","progress-state",{
         "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"},"evidence_refs":["REF-POSTGRES"]})
