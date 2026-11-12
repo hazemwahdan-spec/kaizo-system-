@@ -32,15 +32,76 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
     assessment = "ASSESS-" + uuid4().hex
     drill = "DRILL-" + uuid4().hex
     link = "LINK-" + uuid4().hex
+    plan = "PLAN-" + uuid4().hex
+    session = "SESSION-" + uuid4().hex
+    baseline = "BASELINE-" + uuid4().hex
+    capture = "CAPTURE-" + uuid4().hex
+    kpi_id = "KPI-ENTRY-SUCCESS-" + uuid4().hex
     now = "2026-11-10T00:00:00+00:00"
+    snapshot_kpis = [{
+        "capture_id": capture, "kpi_id": kpi_id, "value": 4,
+        "assessment_id": assessment, "name": "Entry success",
+        "metric_name": "entry_success", "unit": "count",
+        "target": None, "direction": "higher_is_better",
+    }]
+    snapshot = {
+        "snapshot_id": baseline, "athlete_id": athlete_id,
+        "assessment_id": assessment, "snapshot_type": "baseline",
+        "measurements": {"entry_quality": 7}, "kpis": snapshot_kpis,
+        "captured_by": coach, "captured_at": now, "created_at": now,
+    }
+    plan_record = {
+        "plan_id": plan, "athlete_id": athlete_id, "decision_id": decision,
+        "title": "Decision-linked plan", "objective": "Improve entry timing",
+        "constraints": {}, "status": "DRAFT", "created_by": coach, "created_at": now,
+        "coach_final_authority": True, "execution_authorized": False,
+    }
+    session_record = {
+        "session_id": session, "plan_id": plan, "athlete_id": athlete_id,
+        "title": "Decision-linked session", "duration_minutes": 20,
+        "blocks": [{"name": "Entry timing", "duration_minutes": 20}],
+        "status": "DRAFT", "created_by": coach, "created_at": now,
+        "coach_final_authority": True, "execution_authorized": False,
+    }
     with persistence.connection() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_assessments
+                   (assessment_id,athlete_id,template_id,measurements,recorded_by,assessed_at,created_at)
+                   VALUES (%s,%s,'FEAT-015-BASELINE','{"entry_quality":7}'::jsonb,%s,%s,%s)""",
+                (assessment, athlete_id, coach, now, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_coach_kpi_definitions
+                   (tenant_id,coach_actor_id,kpi_id,name,metric_name,unit,target,direction,status,created_at,updated_at)
+                   VALUES (%s,%s,%s,'Entry success','entry_success','count',NULL,'higher_is_better','ACTIVE',%s,%s)""",
+                (tenant, coach, kpi_id, now, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_kpi_captures
+                   (capture_id,athlete_id,kpi_id,value,captured_by,assessment_id,captured_at,created_at)
+                   VALUES (%s,%s,%s,4,%s,%s,%s,%s)""",
+                (capture, athlete_id, kpi_id, coach, assessment, now, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_state_snapshots
+                   (snapshot_id,athlete_id,assessment_id,snapshot_type,measurements,kpis,captured_by,captured_at,created_at)
+                   VALUES (%s,%s,%s,'baseline','{"entry_quality":7}'::jsonb,%s::jsonb,%s,%s,%s)""",
+                (baseline, athlete_id, assessment, json.dumps(snapshot_kpis), coach, now, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_audit_logs
+                   (timestamp,who,action,old_value,new_value,why,tenant_id)
+                   VALUES (%s,%s,'COACH_STATE_SNAPSHOT_CREATED',NULL,%s::jsonb,
+                           'FEAT-015 baseline fixture for FEAT-033..040',%s)""",
+                (now, coach, json.dumps(snapshot), tenant),
+            )
             cur.execute("""INSERT INTO kaizo_problem_statements
                 (problem_id,athlete_id,assessment_id,statement,problem_type,impact,
                  context,structured_fields,status,created_by,created_at,updated_at)
                 VALUES (%s,%s,%s,'Entry timing problem','TECHNICAL','MEDIUM',
                         '{}'::jsonb,'{}'::jsonb,'ACTIVE',%s,%s,%s)""",
-                (problem,athlete_id,assessment,coach,now,now))
+                (problem, athlete_id, assessment, coach, now, now))
             cur.execute("""INSERT INTO kaizo_decision_records
                 (decision_id,candidate_id,diagnosis_id,problem_id,athlete_id,assessment_id,
                  candidate_type,coach_action,coach_id,decision_summary,outcome_intent,status,recorded_at)
@@ -60,15 +121,40 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
                  assessment_id,rationale,evidence_ids,created_by,created_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,'Targets recorded decision','["REF-POSTGRES"]'::jsonb,%s,%s)""",
                 (link,tenant,coach,problem,drill,athlete_id,assessment,coach,now))
-            cur.execute("""INSERT INTO kaizo_audit_logs
-                (timestamp,who,action,old_value,new_value,why,tenant_id)
-                VALUES (%s,%s,'COACH_DECISION_RECORD_RECORDED',NULL,%s::jsonb,
-                        'Protected Coach decision source for FEAT-033',%s)""",
+            cur.execute(
+                """INSERT INTO kaizo_audit_logs
+                   (timestamp,who,action,old_value,new_value,why,tenant_id)
+                   VALUES (%s,%s,'COACH_DECISION_RECORD_RECORDED',NULL,%s::jsonb,
+                           'Protected Coach decision source for FEAT-033',%s)""",
                 (now,coach,json.dumps({"decision_id":decision,"athlete_id":athlete_id,
-                                       "coach_id":coach,"problem_id":problem,"status":"RECORDED"}),tenant))
+                                       "coach_id":coach,"problem_id":problem,
+                                       "assessment_id":assessment,"status":"RECORDED"}),tenant),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_training_plans
+                   (plan_id,athlete_id,decision_id,title,objective,constraints,status,created_by,created_at)
+                   VALUES (%s,%s,%s,%s,%s,'{}'::jsonb,'DRAFT',%s,%s)""",
+                (plan, athlete_id, decision, plan_record["title"], plan_record["objective"], coach, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_training_sessions
+                   (session_id,plan_id,athlete_id,title,duration_minutes,blocks,status,created_by,created_at)
+                   VALUES (%s,%s,%s,%s,20,%s::jsonb,'DRAFT',%s,%s)""",
+                (session, plan, athlete_id, session_record["title"],
+                 json.dumps(session_record["blocks"]), coach, now),
+            )
+            for action, value in (
+                ("COACH_TRAINING_PLAN_CREATED", plan_record),
+                ("COACH_TRAINING_SESSION_CREATED", session_record),
+            ):
+                cur.execute(
+                    """INSERT INTO kaizo_audit_logs
+                       (timestamp,who,action,old_value,new_value,why,tenant_id)
+                       VALUES (%s,%s,%s,NULL,%s::jsonb,'FEAT-027 parent fixture',%s)""",
+                    (now, coach, action, json.dumps(value), tenant),
+                )
         conn.commit()
-    return decision, drill
-
+    return decision, drill, baseline, session, kpi_id
 
 def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert persistence.is_postgres_enabled()
