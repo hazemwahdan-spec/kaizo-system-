@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS kaizo_academy_coach_memberships (
     created_by TEXT NOT NULL,
     UNIQUE (tenant_id, academy_id, coach_actor_id),
     UNIQUE (tenant_id, academy_id, membership_id),
+    UNIQUE (tenant_id, academy_id, coach_actor_id, membership_id),
     FOREIGN KEY (tenant_id, academy_id)
         REFERENCES kaizo_tenant_academies (tenant_id, academy_id) ON DELETE RESTRICT
 );
@@ -77,10 +78,9 @@ CREATE TABLE IF NOT EXISTS kaizo_academy_athlete_coach_assignments (
     PRIMARY KEY (tenant_id, academy_id, athlete_id, coach_actor_id),
     FOREIGN KEY (tenant_id, academy_id, athlete_id)
         REFERENCES kaizo_academy_athletes (tenant_id, academy_id, athlete_id) ON DELETE RESTRICT,
-    FOREIGN KEY (tenant_id, academy_id, coach_actor_id)
-        REFERENCES kaizo_academy_coach_memberships (tenant_id, academy_id, coach_actor_id) ON DELETE RESTRICT,
-    FOREIGN KEY (tenant_id, academy_id, membership_id)
-        REFERENCES kaizo_academy_coach_memberships (tenant_id, academy_id, membership_id) ON DELETE RESTRICT
+    FOREIGN KEY (tenant_id, academy_id, coach_actor_id, membership_id)
+        REFERENCES kaizo_academy_coach_memberships
+                   (tenant_id, academy_id, coach_actor_id, membership_id) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_academy_assignment_coach_scope
     ON kaizo_academy_athlete_coach_assignments
@@ -168,6 +168,14 @@ def assign_coach(
             row = cur.fetchone()
             if row is None:
                 raise AcademyContractConflict("active Coach membership is required")
+            cur.execute(
+                """SELECT 1 FROM kaizo_academy_athletes
+                   WHERE tenant_id=%s AND academy_id=%s AND athlete_id=%s AND status='ACTIVE'
+                   FOR UPDATE""",
+                (tenant_id, academy_id, athlete_id),
+            )
+            if cur.fetchone() is None:
+                raise AcademyContractConflict("active athlete enrolment is required")
             cur.execute(
                 """INSERT INTO kaizo_academy_athlete_coach_assignments
                    (tenant_id,academy_id,athlete_id,coach_actor_id,membership_id,
