@@ -140,7 +140,14 @@ def test_academy_cannot_be_rebound_to_a_different_tenant():
 def test_assignment_requires_active_membership_and_enrollment():
     f = _fixture()
     try:
-        tenant, _other_tenant, academy_a, _academy_b, _coach_a, coach_b, *_rest = f
+        tenant, _other_tenant, academy_a, _academy_b, _coach_a, coach_b, coach_c, athlete = f
+        # coach_c is a real member, but only in academy_b: cross-academy assignment is denied.
+        with pytest.raises(contract.AcademyContractConflict):
+            contract.assign_coach(
+                tenant_id=tenant, academy_id=academy_a, athlete_id=athlete,
+                coach_actor_id=coach_c, actor_id=coach_c, now=_now()
+            )
+        # coach_b is a member of academy_a, but an athlete must be enrolled before assignment.
         with pytest.raises(contract.AcademyContractConflict):
             contract.assign_coach(
                 tenant_id=tenant, academy_id=academy_a, athlete_id=_id("UNKNOWN"),
