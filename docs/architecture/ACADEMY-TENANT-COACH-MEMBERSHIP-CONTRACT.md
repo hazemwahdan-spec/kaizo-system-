@@ -34,7 +34,7 @@ The existing Coach ownership row remains the primary ownership anchor and is not
 
 ## 4. Verified Principal service boundary now implemented
 
-The additive service layer accepts a Principal-like object only when `verified=true`, `source=oidc_jwt`, the role is `academy` or `coach`, and its tenant matches the operation scope. Tenant binding requires the signed `academy` role. Membership creation, athlete enrolment, assignment, and membership lifecycle changes require either that Academy role or an active `OWNER`/`ADMIN`/`HEAD_COACH` membership. Delegation is hierarchical: `OWNER` may grant `ADMIN`/`HEAD_COACH`/`COACH`/`ASSISTANT`; `ADMIN` may grant `HEAD_COACH`/`COACH`/`ASSISTANT`; `HEAD_COACH` may grant only `COACH`/`ASSISTANT`. Coach actors cannot create or revoke `OWNER` memberships; only the signed Academy role can do so. Athlete access checks require a verified Coach Principal and an active membership plus active enrolment and assignment. Development-header principals are rejected. These service-level checks remain the authorization foundation for the narrow read endpoint described below.
+The additive service layer accepts a Principal-like object only when `verified=true`, `source=oidc_jwt`, the role is `academy` or `coach`, and its tenant matches the operation scope. Administrative authorization is separate from role identity: the standard Auth0 `permissions` array is copied into the Principal only after JWT signature/issuer/audience/expiry verification, and exact permission matching is required for every Academy operation. Tenant binding requires the signed `academy` role. Membership creation, athlete enrolment, assignment, and membership lifecycle changes require the exact corresponding verified Auth0 `permissions` entry, plus either the signed Academy role or an active `OWNER`/`ADMIN`/`HEAD_COACH` membership. Delegation is hierarchical: `OWNER` may grant `ADMIN`/`HEAD_COACH`/`COACH`/`ASSISTANT`; `ADMIN` may grant `HEAD_COACH`/`COACH`/`ASSISTANT`; `HEAD_COACH` may grant only `COACH`/`ASSISTANT`. Coach actors cannot create or revoke `OWNER` memberships; only the signed Academy role can do so. Athlete access checks require a verified Coach Principal and an active membership plus active enrolment and assignment. Development-header principals are rejected. These service-level checks remain the authorization foundation for the narrow read endpoint described below.
 
 Every authenticated mutation wrapper writes `append_tenant_audit` inside the same `persistence.atomic_transaction`. The existing persistence connection context joins nested helpers to the outer transaction, so audit failure rolls back the relationship write. PostgreSQL integration tests exercise this rollback behavior. Manager membership and target membership are re-read under row locks inside that same transaction, closing the check-then-write race. Lifecycle changes use the same delegation matrix as grants: OWNER may manage ADMIN/HEAD_COACH/COACH/ASSISTANT; ADMIN may manage HEAD_COACH/COACH/ASSISTANT; HEAD_COACH may manage COACH/ASSISTANT. A Coach cannot suspend, revoke, or reactivate a peer or higher role. The signed Academy role remains the only path to OWNER lifecycle administration.
 
@@ -44,7 +44,7 @@ The branch now exposes two read-only routes:
 - `GET /api/v1/product/coach/academies`: lists only active Academy memberships of the verified Coach.
 - `GET /api/v1/product/coach/academies/{academy_id}/athletes`: lists only active athlete assignments for that Coach in the selected Academy.
 
-- The handler obtains its Coach Principal through the existing Coach identity boundary and additionally requires `verified=true` and `source=oidc_jwt`; development/header identities are rejected.
+- The handler obtains its Coach Principal through the existing Coach identity boundary and additionally requires `verified=true`, `source=oidc_jwt`, and exact `academy:read` permission; development/header identities are rejected.
 - `tenant_id` and `coach_actor_id` are taken only from the verified Principal. Caller-supplied identity headers are not used as authority.
 - The SQL query joins tenant binding, active membership, active athlete enrolment, active assignment, and athlete profile. All joins and filters are scoped by the verified tenant, requested academy, and verified Coach subject.
 - The response contains only minimal roster fields and explicitly reports `longitudinal_access_granted=false`.
@@ -67,7 +67,7 @@ For every Academy read/write:
 - Never allow a caller-supplied `coach_final_authority` boolean to grant authority; authority comes from the server-verified Principal and permission policy.
 - Keep `execution_authorized=false`; Academy membership never overrides Coach Final Authority.
 
-Suggested permission vocabulary (must be aligned with the Auth0 API contract before use): `academy:read`, `academy:manage`, `academy:assign_coach`, `academy:manage_athlete`. Do not infer permissions from display role strings alone.
+Enforced Auth0 permission vocabulary: `academy:read`, `academy:tenant:bind`, `academy:membership:manage`, `academy:athlete:enroll`, and `academy:coach:assign`. Auth0 API RBAC and Add Permissions in Access Token must both be enabled. The live Auth0 dashboard is not changed by this PR; see `productization/OIDC-AUTHENTICATION-INTEGRATION-BOUNDARY.md` for the exact configuration checklist.
 
 ## 7. Migration and rollout
 
@@ -75,7 +75,7 @@ Suggested permission vocabulary (must be aligned with the Auth0 API contract bef
 - Existing Academy rows remain unbound until an authorized, reviewed mapping operation supplies the true tenant.
 - Existing JSONB multi-coach assignments are not auto-converted: their tenant and Coach identity provenance are insufficient.
 - Existing Coach ownership rows are retained. Academy enrolment uses a composite FK to the existing (tenant_id, coach_actor_id, athlete_id) unique key and does not create any new uniqueness assumption.
-- Keep FEAT-061–065 routes disabled (410) until mapping, identity permissions, atomic audit, and runtime tests are accepted.
+- Keep FEAT-061–065 routes disabled (410) until mapping, Auth0 permissions, atomic audit, and runtime tests are accepted.
 - The read-only assigned-roster endpoint is the only mounted Academy-aware Product API surface; Academy management and all athlete writes remain disabled.
 - No production migration, secret mutation, data backfill, or deployment is included in this branch.
 
