@@ -209,3 +209,190 @@ def coach_can_access_athlete(*, tenant_id: str, academy_id: str,
                 (tenant_id, academy_id, coach_actor_id, athlete_id),
             )
             return bool(cur.fetchone()[0])
+
+
+def _require_verified_principal(principal: Any, tenant_id: str) -> None:
+    """Reject development/header identities; tenant and actor come from verified JWT claims."""
+    if (
+        principal is None
+        or getattr(principal, "verified", False) is not True
+        or getattr(principal, "source", None) != "oidc_jwt"
+        or not getattr(principal, "actor_id", None)
+        or getattr(principal, "tenant_id", None) != tenant_id
+        or getattr(principal, "role", None) not in {"academy", "coach"}
+    ):
+        raise AcademyContractConflict("verified Academy/Coach OIDC principal with matching tenant is required")
+
+
+def _membership_role(*, tenant_id: str, academy_id: str, coach_actor_id: str) -> str | None:
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT role FROM kaizo_academy_coach_memberships
+                   WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s
+                     AND status='ACTIVE'""",
+                (tenant_id, academy_id, coach_actor_id),
+            )
+            row = cur.fetchone()
+            return str(row[0]) if row else None
+
+
+def _require_academy_manager(principal: Any, tenant_id: str, academy_id: str) -> None:
+    _require_verified_principal(principal, tenant_id)
+    if principal.role == "academy":
+        return
+    role = _membership_role(
+        tenant_id=tenant_id, academy_id=academy_id, coach_actor_id=principal.actor_id
+    )
+    if role not in {"OWNER", "ADMIN", "HEAD_COACH"}:
+        raise AcademyContractConflict("active Academy manager membership is required")
+
+
+def _append_principal_audit(
+    *, principal: Any, tenant_id: str, action: str,
+    old_value: Any, new_value: Any, now: str,
+) -> None:
+    # Called inside atomic_transaction: persistence.connection() joins the outer
+    # transaction, so an audit failure rolls back the relationship write.
+    persistence.append_tenant_audit(
+        tenant_id=tenant_id, timestamp=now, who=principal.actor_id,
+        action=action, old_value=old_value, new_value=new_value,
+        why="Authorized by verified OIDC Principal and Academy membership policy",
+    )
+
+
+def bind_academy_for_principal(*, principal: Any, academy_id: str, now: str) -> None:
+    _require_verified_principal(principal, principal.tenant_id if principal else "")
+    if principal.role != "academy":
+        raise AcademyContractConflict("Academy OIDC role is required to bind a tenant")
+    with persistence.atomic_transaction():
+        bind_academy(
+            tenant_id=principal.tenant_id, academy_id=academy_id,
+            actor_id=principal.actor_id, now=now,
+        )
+        _append_principal_audit(
+            principal=principal, tenant_id=principal.tenant_id,
+            action="ACADEMY_TENANT_BOUND", old_value=None,
+            new_value={"academy_id": academy_id}, now=now,
+        )
+
+
+def add_coach_membership_for_principal(
+    *, principal: Any, academy_id: str, coach_actor_id: str,
+    role: str, now: str,
+) -> str:
+    _require_academy_manager(principal, principal.tenant_id, academy_id)
+    with persistence.atomic_transaction():
+        membership_id = add_coach_membership(
+            tenant_id=principal.tenant_id, academy_id=academy_id,
+            coach_actor_id=coach_actor_id, role=role,
+            actor_id=principal.actor_id, now=now,
+        )
+        _append_principal_audit(
+            principal=principal, tenant_id=principal.tenant_id,
+            action="ACADEMY_COACH_MEMBERSHIP_CREATED", old_value=None,
+            new_value={"academy_id": academy_id, "coach_actor_id": coach_actor_id,
+                       "membership_id": membership_id, "role": role}, now=now,
+        )
+        return membership_id
+
+
+def enroll_athlete_for_principal(
+    *, principal: Any, academy_id: str, athlete_id: str, now: str,
+) -> None:
+    _require_academy_manager(principal, principal.tenant_id, academy_id)
+    with persistence.atomic_transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT coach_actor_id FROM kaizo_coach_athlete_ownership
+                   WHERE tenant_id=%s AND athlete_id=%s""",
+                (principal.tenant_id, athlete_id),
+            )
+            owners = [str(row[0]) for row in cur.fetchall()]
+        if len(owners) != 1:
+            raise AcademyContractConflict(
+                "athlete must have exactly one unambiguous primary Coach ownership row in this tenant"
+            )
+        enroll_athlete(
+            tenant_id=principal.tenant_id, academy_id=academy_id,
+            athlete_id=athlete_id, owner_coach_actor_id=owners[0],
+            actor_id=principal.actor_id, now=now,
+        )
+        _append_principal_audit(
+            principal=principal, tenant_id=principal.tenant_id,
+            action="ACADEMY_ATHLETE_ENROLLED", old_value=None,
+            new_value={"academy_id": academy_id, "athlete_id": athlete_id,
+                       "primary_owner_coach_actor_id": owners[0]}, now=now,
+        )
+
+
+def assign_coach_for_principal(
+    *, principal: Any, academy_id: str, athlete_id: str,
+    coach_actor_id: str, now: str,
+) -> None:
+    _require_academy_manager(principal, principal.tenant_id, academy_id)
+    with persistence.atomic_transaction():
+        assign_coach(
+            tenant_id=principal.tenant_id, academy_id=academy_id,
+            athlete_id=athlete_id, coach_actor_id=coach_actor_id,
+            actor_id=principal.actor_id, now=now,
+        )
+        _append_principal_audit(
+            principal=principal, tenant_id=principal.tenant_id,
+            action="ACADEMY_ATHLETE_COACH_ASSIGNED", old_value=None,
+            new_value={"academy_id": academy_id, "athlete_id": athlete_id,
+                       "coach_actor_id": coach_actor_id}, now=now,
+        )
+
+
+def principal_can_access_athlete(
+    *, principal: Any, academy_id: str, athlete_id: str,
+) -> bool:
+    """Verified Coach-only authorization for academy-scoped Product API reads/writes."""
+    if principal is None or getattr(principal, "role", None) != "coach":
+        return False
+    if (
+        getattr(principal, "verified", False) is not True
+        or getattr(principal, "source", None) != "oidc_jwt"
+        or not getattr(principal, "actor_id", None)
+        or not getattr(principal, "tenant_id", None)
+    ):
+        return False
+    return coach_can_access_athlete(
+        tenant_id=principal.tenant_id, academy_id=academy_id,
+        coach_actor_id=principal.actor_id, athlete_id=athlete_id,
+    )
+
+
+def set_membership_status_for_principal(
+    *, principal: Any, academy_id: str, coach_actor_id: str,
+    status: str, now: str,
+) -> None:
+    if status not in {"ACTIVE", "SUSPENDED", "REVOKED"}:
+        raise AcademyContractConflict("invalid membership status")
+    _require_academy_manager(principal, principal.tenant_id, academy_id)
+    with persistence.atomic_transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT status FROM kaizo_academy_coach_memberships
+                   WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s
+                   FOR UPDATE""",
+                (principal.tenant_id, academy_id, coach_actor_id),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise AcademyContractConflict("Coach membership not found")
+            old_status = str(row[0])
+            cur.execute(
+                """UPDATE kaizo_academy_coach_memberships SET status=%s
+                   WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s""",
+                (status, principal.tenant_id, academy_id, coach_actor_id),
+            )
+        _append_principal_audit(
+            principal=principal, tenant_id=principal.tenant_id,
+            action="ACADEMY_COACH_MEMBERSHIP_STATUS_CHANGED",
+            old_value={"academy_id": academy_id, "coach_actor_id": coach_actor_id,
+                       "status": old_status},
+            new_value={"academy_id": academy_id, "coach_actor_id": coach_actor_id,
+                       "status": status}, now=now,
+        )
