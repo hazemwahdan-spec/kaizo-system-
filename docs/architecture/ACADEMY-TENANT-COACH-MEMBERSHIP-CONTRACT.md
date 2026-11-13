@@ -34,11 +34,25 @@ The existing Coach ownership row remains the primary ownership anchor and is not
 
 ## 4. Verified Principal service boundary now implemented
 
-The additive service layer accepts a Principal-like object only when `verified=true`, `source=oidc_jwt`, the role is `academy` or `coach`, and its tenant matches the operation scope. Tenant binding requires the signed `academy` role. Membership creation, athlete enrolment, assignment, and membership lifecycle changes require either that Academy role or an active `OWNER`/`ADMIN`/`HEAD_COACH` membership. Delegation is hierarchical: `OWNER` may grant `ADMIN`/`HEAD_COACH`/`COACH`/`ASSISTANT`; `ADMIN` may grant `HEAD_COACH`/`COACH`/`ASSISTANT`; `HEAD_COACH` may grant only `COACH`/`ASSISTANT`. Coach actors cannot create or revoke `OWNER` memberships; only the signed Academy role can do so. Athlete access checks require a verified Coach Principal and an active membership plus active enrolment and assignment. Development-header principals are rejected. These are service-level checks; no Academy API routes are mounted by this PR.
+The additive service layer accepts a Principal-like object only when `verified=true`, `source=oidc_jwt`, the role is `academy` or `coach`, and its tenant matches the operation scope. Tenant binding requires the signed `academy` role. Membership creation, athlete enrolment, assignment, and membership lifecycle changes require either that Academy role or an active `OWNER`/`ADMIN`/`HEAD_COACH` membership. Delegation is hierarchical: `OWNER` may grant `ADMIN`/`HEAD_COACH`/`COACH`/`ASSISTANT`; `ADMIN` may grant `HEAD_COACH`/`COACH`/`ASSISTANT`; `HEAD_COACH` may grant only `COACH`/`ASSISTANT`. Coach actors cannot create or revoke `OWNER` memberships; only the signed Academy role can do so. Athlete access checks require a verified Coach Principal and an active membership plus active enrolment and assignment. Development-header principals are rejected. These service-level checks remain the authorization foundation for the narrow read endpoint described below.
 
 Every authenticated mutation wrapper writes `append_tenant_audit` inside the same `persistence.atomic_transaction`. The existing persistence connection context joins nested helpers to the outer transaction, so audit failure rolls back the relationship write. PostgreSQL integration tests exercise this rollback behavior.
 
-## 5. Required authorization contract before routes are enabled
+## 5. Narrow Product API integration
+
+The branch now exposes one read-only route:
+`GET /api/v1/product/coach/academies/{academy_id}/athletes`.
+
+- The handler obtains its Coach Principal through the existing Coach identity boundary and additionally requires `verified=true` and `source=oidc_jwt`; development/header identities are rejected.
+- `tenant_id` and `coach_actor_id` are taken only from the verified Principal. Caller-supplied identity headers are not used as authority.
+- The SQL query joins tenant binding, active membership, active athlete enrolment, active assignment, and athlete profile. All joins and filters are scoped by the verified tenant, requested academy, and verified Coach subject.
+- The response contains only minimal roster fields and explicitly reports `longitudinal_access_granted=false`.
+- PostgreSQL is mandatory; if persistence is unavailable, the route returns 503 rather than falling back to memory.
+- Existing `/coach/athletes` and longitudinal Product API routes remain primary-owner scoped. No write route or secondary-Coach access to decisions, assessments, training, KPI, audit, or Digital Twin data is introduced.
+
+This is a deliberately narrow first integration, not activation of the legacy Academy Ops router and not completion of the full Academy feature surface.
+
+## 6. Remaining authorization contract before additional routes are enabled
 
 For every Academy read/write:
 - Require a verified Bearer OIDC Principal; reject development headers in production.
@@ -53,16 +67,17 @@ For every Academy read/write:
 
 Suggested permission vocabulary (must be aligned with the Auth0 API contract before use): `academy:read`, `academy:manage`, `academy:assign_coach`, `academy:manage_athlete`. Do not infer permissions from display role strings alone.
 
-## 6. Migration and rollout
+## 7. Migration and rollout
 
 - Additive DDL only; no backfill or automatic tenant inference.
 - Existing Academy rows remain unbound until an authorized, reviewed mapping operation supplies the true tenant.
 - Existing JSONB multi-coach assignments are not auto-converted: their tenant and Coach identity provenance are insufficient.
 - Existing Coach ownership rows are retained. Academy enrolment uses a composite FK to the existing (tenant_id, coach_actor_id, athlete_id) unique key and does not create any new uniqueness assumption.
 - Keep FEAT-061–065 routes disabled (410) until mapping, identity permissions, atomic audit, and runtime tests are accepted.
+- The read-only assigned-roster endpoint is the only mounted Academy-aware Product API surface; Academy management and all athlete writes remain disabled.
 - No production migration, secret mutation, data backfill, or deployment is included in this branch.
 
-## 7. PostgreSQL acceptance matrix
+## 8. PostgreSQL acceptance matrix
 
 - Same tenant + same academy + active membership + explicit athlete assignment: allow.
 - Same tenant + same academy + different Coach without assignment: deny.
@@ -75,6 +90,6 @@ Suggested permission vocabulary (must be aligned with the Auth0 API contract bef
 - Revoked/suspended membership or assignment: deny.
 - Audit failure: business write rolls back in the verified Principal service wrappers.
 
-## 8. Current implementation boundary
+## 9. Current implementation boundary
 
-This branch adds the normalized schema helper and PostgreSQL integration tests only. It intentionally does not activate the legacy Academy router, mutate Auth0, change existing Coach ownership semantics, or access production databases.
+This branch adds the normalized schema helper, PostgreSQL isolation tests, and one verified read-only Academy-assigned roster endpoint. It intentionally does not activate the legacy Academy router, mutate Auth0, change existing Coach ownership semantics, enable secondary-Coach longitudinal access, or access production databases.
