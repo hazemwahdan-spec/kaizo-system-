@@ -7,6 +7,8 @@ not change the existing single-primary-Coach ownership boundary.
 from __future__ import annotations
 
 from typing import Any
+
+from productization.identity import principal_has_permission
 from uuid import uuid4
 
 import persistence
@@ -238,6 +240,13 @@ def _membership_role(*, tenant_id: str, academy_id: str, coach_actor_id: str) ->
             return str(row[0]) if row else None
 
 
+def _require_oidc_permission(principal: Any, permission: str) -> None:
+    if not principal_has_permission(principal, permission):
+        raise AcademyContractConflict(
+            f"verified OIDC permission is required: {permission}"
+        )
+
+
 def _require_academy_manager(principal: Any, tenant_id: str, academy_id: str) -> None:
     _require_verified_principal(principal, tenant_id)
     if principal.role == "academy":
@@ -264,6 +273,7 @@ def _append_principal_audit(
 
 def bind_academy_for_principal(*, principal: Any, academy_id: str, now: str) -> None:
     _require_verified_principal(principal, principal.tenant_id if principal else "")
+    _require_oidc_permission(principal, "academy:tenant:bind")
     if principal.role != "academy":
         raise AcademyContractConflict("Academy OIDC role is required to bind a tenant")
     with persistence.atomic_transaction():
@@ -282,6 +292,7 @@ def add_coach_membership_for_principal(
     *, principal: Any, academy_id: str, coach_actor_id: str,
     role: str, now: str,
 ) -> str:
+    _require_oidc_permission(principal, "academy:membership:manage")
     with persistence.atomic_transaction():
         # Re-check manager authority under the same transaction as the write.
         _require_academy_manager(principal, principal.tenant_id, academy_id)
@@ -316,6 +327,7 @@ def add_coach_membership_for_principal(
 def enroll_athlete_for_principal(
     *, principal: Any, academy_id: str, athlete_id: str, now: str,
 ) -> None:
+    _require_oidc_permission(principal, "academy:athlete:enroll")
     with persistence.atomic_transaction() as conn:
         _require_academy_manager(principal, principal.tenant_id, academy_id)
         with conn.cursor() as cur:
@@ -346,6 +358,7 @@ def assign_coach_for_principal(
     *, principal: Any, academy_id: str, athlete_id: str,
     coach_actor_id: str, now: str,
 ) -> None:
+    _require_oidc_permission(principal, "academy:coach:assign")
     with persistence.atomic_transaction():
         _require_academy_manager(principal, principal.tenant_id, academy_id)
         assign_coach(
@@ -386,6 +399,7 @@ def set_membership_status_for_principal(
 ) -> None:
     if status not in {"ACTIVE", "SUSPENDED", "REVOKED"}:
         raise AcademyContractConflict("invalid membership status")
+    _require_oidc_permission(principal, "academy:membership:manage")
     with persistence.atomic_transaction() as conn:
         # Authority and target role are both revalidated while the transaction is open.
         _require_academy_manager(principal, principal.tenant_id, academy_id)
