@@ -167,3 +167,12 @@ def test_academy_roster_requires_product_and_academy_read_permissions(monkeypatc
             )
         assert exc.value.status_code == 403
         assert expected in str(exc.value.detail)
+
+
+def test_academy_selector_requires_product_and_academy_read_permissions(monkeypatch):
+    for permissions in (frozenset({"product"}), frozenset({"academy:read"})):
+        principal = _principal(permissions=permissions)
+        monkeypatch.setattr(product_api, "_coach_scope", lambda *_args, principal=principal: principal)
+        with pytest.raises(HTTPException) as exc:
+            product_api.list_coach_academies(authorization="Bearer verified")
+        assert exc.value.status_code == 403
