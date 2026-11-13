@@ -4,7 +4,7 @@ os.environ["KAIZO_IDENTITY_MODE"]="development"
 
 from fastapi.testclient import TestClient
 from main import app
-from productization import coach_roster
+from productization import coach_decision_workflow, coach_roster
 from state_cycle import reset_memory_state
 
 client=TestClient(app)
@@ -16,10 +16,25 @@ TENANT={"X-KAIZO-Actor":"coach-1","X-KAIZO-Role":"coach","X-KAIZO-Tenant":"tenan
 def setup_function():
     reset_memory_state()
     coach_roster.reset_memory_state()
+    coach_decision_workflow.reset_memory_state()
     global ATHLETE
     ATHLETE=coach_roster.create_owned_athlete(
         tenant_id="tenant-1",coach_actor_id="coach-1",display_name="State cycle test athlete"
     )["athlete_id"]
+    decision = {
+        "decision_id":"DEC-1","candidate_id":"CAND-1","diagnosis_id":"DIAG-1",
+        "problem_id":"PROB-1","athlete_id":ATHLETE,"assessment_id":"ASSESS-1",
+        "candidate_type":"TECHNICAL_ADAPTATION","coach_action":"CONFIRM",
+        "coach_id":"coach-1","decision_summary":"Recorded Coach decision",
+        "outcome_intent":"Retest and compare","status":"RECORDED",
+        "recorded_at":"2026-11-12T00:00:00+00:00",
+    }
+    coach_decision_workflow._MEMORY_DECISIONS["DEC-1"] = decision
+    coach_decision_workflow._MEMORY_AUDIT.append({
+        "tenant_id":"tenant-1","who":"coach-1",
+        "action":"COACH_DECISION_RECORD_RECORDED","new_value":decision,
+        "timestamp":decision["recorded_at"],"why":"Trusted state-cycle test fixture",
+    })
 
 
 def update_payload():
@@ -84,8 +99,11 @@ def test_all_state_cycle_reads_and_writes_require_ownership():
         json={"athlete_id":ATHLETE}).status_code==401
 
 
-def test_version_conflict_and_coach_authority_fail_closed():
+def test_version_conflict_and_caller_authority_boolean_cannot_override_verified_coach():
     assert client.post("/api/v1/state-cycle/feat-042/digital-twin-state",
         json={**update_payload(),"expected_version":9},headers=COACH).status_code==409
-    assert client.post("/api/v1/state-cycle/feat-042/digital-twin-state",
-        json={**update_payload(),"coach_final_authority":False},headers=COACH).status_code==409
+    accepted=client.post("/api/v1/state-cycle/feat-042/digital-twin-state",
+        json={**update_payload(),"coach_final_authority":False},headers=COACH)
+    assert accepted.status_code==201,accepted.text
+    assert accepted.json()["state"]["coach_final_authority"] is True
+    assert accepted.json()["state"]["execution_authorized"] is False

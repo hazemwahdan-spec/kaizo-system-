@@ -17,7 +17,7 @@ from productization.identity import Principal
 
 def _principal(actor: str, tenant: str) -> Principal:
     return Principal(actor_id=actor, role="coach", tenant_id=tenant,
-                     resource_owner_id=None, verified=True, source="oidc_jwt")
+                     resource_owner_id=None, verified=True, source="oidc_jwt", permissions=frozenset({"product"}))
 
 
 def _setup(monkeypatch):
