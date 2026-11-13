@@ -355,7 +355,9 @@ def list_academy_assigned_coach_athletes(
     """
     principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
     if principal.verified is not True or principal.source != "oidc_jwt":
-        raise HTTPException(status_code=403, detail="verified OIDC Coach identity required")
+        raise HTTPException(status_code=403, detail="verified OIDC Coach identity required")    if not principal_has_permission(principal, "academy:read"):
+        raise HTTPException(status_code=403, detail="academy:read permission required")
+
     try:
         athletes = academy_tenant_contract.list_assigned_athletes_for_coach(
             tenant_id=principal.tenant_id,
