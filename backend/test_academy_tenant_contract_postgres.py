@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
+os.environ.setdefault("KAIZO_PERSISTENCE_MODE", "postgres")
 
 import persistence
 import academy_ops_runtime
@@ -17,8 +17,8 @@ import academy_tenant_contract as contract
 
 
 pytestmark = pytest.mark.skipif(
-    not persistence.is_postgres_enabled(),
-    reason="requires disposable PostgreSQL",
+    not os.getenv("DATABASE_URL") or not persistence.is_postgres_enabled(),
+    reason="requires disposable PostgreSQL via DATABASE_URL",
 )
 
 
@@ -62,12 +62,12 @@ def _fixture():
             )
         conn.commit()
     contract.bind_academy(tenant_id=tenant_a, academy_id=academy_a, actor_id=coach_a, now=now)
-    contract.bind_academy(tenant_id=tenant_a, academy_id=academy_b, actor_id=coach_a, now=now)
+    contract.bind_academy(tenant_id=tenant_b, academy_id=academy_b, actor_id=coach_a, now=now)
     contract.add_coach_membership(tenant_id=tenant_a, academy_id=academy_a,
                                   coach_actor_id=coach_a, role="HEAD_COACH", actor_id=coach_a, now=now)
     contract.add_coach_membership(tenant_id=tenant_a, academy_id=academy_a,
                                   coach_actor_id=coach_b, role="COACH", actor_id=coach_a, now=now)
-    contract.add_coach_membership(tenant_id=tenant_a, academy_id=academy_b,
+    contract.add_coach_membership(tenant_id=tenant_b, academy_id=academy_b,
                                   coach_actor_id=coach_c, role="COACH", actor_id=coach_a, now=now)
     contract.enroll_athlete(tenant_id=tenant_a, academy_id=academy_a,
                             athlete_id=athlete, actor_id=coach_a, now=now)
@@ -97,7 +97,7 @@ def _cleanup(f):
 def test_cross_coach_and_cross_academy_isolation():
     f = _fixture()
     try:
-        tenant, _other_tenant, academy_a, academy_b, coach_a, coach_b, coach_c, athlete = f
+        tenant, other_tenant, academy_a, academy_b, coach_a, coach_b, coach_c, athlete = f
         assert contract.coach_can_access_athlete(
             tenant_id=tenant, academy_id=academy_a, coach_actor_id=coach_a, athlete_id=athlete
         )
@@ -105,7 +105,7 @@ def test_cross_coach_and_cross_academy_isolation():
             tenant_id=tenant, academy_id=academy_a, coach_actor_id=coach_b, athlete_id=athlete
         )
         assert not contract.coach_can_access_athlete(
-            tenant_id=tenant, academy_id=academy_b, coach_actor_id=coach_c, athlete_id=athlete
+            tenant_id=other_tenant, academy_id=academy_b, coach_actor_id=coach_c, athlete_id=athlete
         )
     finally:
         _cleanup(f)
@@ -114,9 +114,9 @@ def test_cross_coach_and_cross_academy_isolation():
 def test_cross_tenant_and_wrong_academy_are_denied():
     f = _fixture()
     try:
-        tenant, other_tenant, academy_a, academy_b, coach_a, _coach_b, _coach_c, athlete = f
+        tenant, other_tenant, academy_a, academy_b, coach_a, _coach_b, coach_c, athlete = f
         assert not contract.coach_can_access_athlete(
-            tenant_id=other_tenant, academy_id=academy_a, coach_actor_id=coach_a, athlete_id=athlete
+            tenant_id=other_tenant, academy_id=academy_b, coach_actor_id=coach_c, athlete_id=athlete
         )
         assert not contract.coach_can_access_athlete(
             tenant_id=tenant, academy_id=academy_b, coach_actor_id=coach_a, athlete_id=athlete
