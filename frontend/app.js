@@ -86,6 +86,7 @@ let currentCoachProblemId=null;
 let currentCoachDiagnosisId=null;
 let currentCoachCandidateId=null;
 let currentCoachDecisionId=null;
+let currentCoachTwinStateVersion=null;
 let currentCoachPlanId=null;
 let currentCoachSessionId=null;
 let currentCoachLibraryItemId=null;
@@ -158,7 +159,7 @@ async function viewCoachAthlete(athleteId){
  }
  selectedCoachAthleteId=String(athleteId);
  currentCoachDecisionCycleId=null;
- currentCoachDecisionId=null;currentCoachSessionId=null;currentCoachDrillId=null;coachTrainingLineageData=null;coachDecisionWorkspaceData=null;
+ currentCoachDecisionId=null;currentCoachTwinStateVersion=null;currentCoachSessionId=null;currentCoachDrillId=null;coachTrainingLineageData=null;coachDecisionWorkspaceData=null;
  if(list)list.style.display="none";
  if(detail)detail.textContent="Loading athlete from your verified Coach scope…";
  if(panel)panel.innerHTML="";
@@ -188,7 +189,7 @@ async function viewCoachAthlete(athleteId){
    '<section id="athleteStatusHistorySection" hidden><h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div></section>'+
    '<section id="athleteDecisionCyclesSection" hidden><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div></section>'+
    '<section id="athleteDecisionExecutionSection" hidden><h4>Coach decision and adaptation</h4><p class="muted">This creates a durable, athlete-scoped decision cycle and records adaptation against its exact ID. Coach Final Authority remains active; execution is not authorized.</p><form id="coachDecisionCycleForm" class="coach-roster-form" onsubmit="createCoachDecisionCycle(event)"><label for="coachDecisionCaseId">Case reference</label><input id="coachDecisionCaseId" maxlength="120" required placeholder="e.g. U15-CASE-001"><label for="coachDecisionChoice">Coach decision</label><input id="coachDecisionChoice" maxlength="500" required placeholder="Describe the selected coaching decision"><label for="coachIntervention">Planned intervention</label><input id="coachIntervention" maxlength="500" required placeholder="Describe the intervention"><label for="coachResponseKpi">Response / KPI observation</label><input id="coachResponseKpi" maxlength="500" required placeholder="Record the observed response"><label for="coachRetest">Retest result</label><input id="coachRetest" maxlength="500" required placeholder="Record the retest result"><button type="submit">Save decision cycle</button></form><div id="coachDecisionCycleNotice" class="notice">Select an athlete and record the Coach decision.</div><pre id="coachDecisionCycleReadback" class="output"></pre><form id="coachAdaptationForm" class="coach-roster-form" hidden onsubmit="adaptCoachDecisionCycle(event)"><h5>Record adaptation for the saved cycle</h5><label for="coachAdaptationCommonCore">Common Core to preserve</label><input id="coachAdaptationCommonCore" maxlength="500" required placeholder="Principle that must remain unchanged"><label for="coachAdaptationBasis">Dynamic input / adaptation basis</label><input id="coachAdaptationBasis" maxlength="500" required placeholder="Current readiness or performance evidence"><label for="coachAdaptationChange">Individual adjustment</label><input id="coachAdaptationChange" maxlength="500" required placeholder="Specific adjustment"><button type="submit">Save adaptation</button></form></section>'+
-   '<section id="coachDigitalTwinSection" hidden><h4>Digital Twin state (FEAT-042/043)</h4><p class="muted">Versioned state for this athlete, protected by verified Coach ownership and evidence references. Execution remains disabled.</p><form id="coachDigitalTwinForm" class="coach-roster-form" onsubmit="saveCoachDigitalTwinState(event)"><label for="coachTwinCaseId">Case reference</label><input id="coachTwinCaseId" maxlength="120" required placeholder="e.g. U15-CASE-001"><label for="coachTwinSourceEvent">Source event</label><input id="coachTwinSourceEvent" maxlength="120" required placeholder="e.g. RETEST_COMPLETED"><label for="coachTwinEvidenceRefs">Evidence references (comma-separated)</label><input id="coachTwinEvidenceRefs" maxlength="500" required placeholder="REF-001, REF-002"><label for="coachTwinState">State data (JSON)</label><textarea id="coachTwinState" rows="4" required>{\"readiness\":\"medium\",\"kpi\":{}}</textarea><button type="submit">Save Digital Twin state</button></form><div id="coachDigitalTwinNotice" class="notice">Select an athlete to load its scoped Digital Twin state.</div><pre id="coachDigitalTwinReadback" class="output"></pre><h5>State history</h5><div id="coachDigitalTwinHistory"></div></section>'+
+   '<section id="coachDigitalTwinSection" hidden><h4>Digital Twin state and decision linkage (FEAT-042–045)</h4><p class="muted">Versioned state for this athlete, protected by verified Coach ownership and evidence references. Execution remains disabled.</p><form id="coachDigitalTwinForm" class="coach-roster-form" onsubmit="saveCoachDigitalTwinState(event)"><label for="coachTwinCaseId">Case reference</label><input id="coachTwinCaseId" maxlength="120" required placeholder="e.g. U15-CASE-001"><label for="coachTwinSourceEvent">Source event</label><input id="coachTwinSourceEvent" maxlength="120" required placeholder="e.g. RETEST_COMPLETED"><label for="coachTwinEvidenceRefs">Evidence references (comma-separated)</label><input id="coachTwinEvidenceRefs" maxlength="500" required placeholder="REF-001, REF-002"><label for="coachTwinState">State data (JSON)</label><textarea id="coachTwinState" rows="4" required>{\"readiness\":\"medium\",\"kpi\":{}}</textarea><button type="submit">Save Digital Twin state</button></form><div class="coach-roster-form"><button type="button" onclick="linkCoachDecisionToDigitalTwinState()">Link current Coach decision to this state (FEAT-044)</button><button type="button" class="secondary" onclick="loadCoachNextState()">Load linked next-state context (FEAT-045)</button></div><div id="coachDigitalTwinLinkNotice" class="notice">Record a Coach decision and save a Digital Twin state before linking.</div><pre id="coachDigitalTwinLinkReadback" class="output" aria-live="polite"></pre><div id="coachDigitalTwinNotice" class="notice">Select an athlete to load its scoped Digital Twin state.</div><pre id="coachDigitalTwinReadback" class="output"></pre><h5>State history</h5><div id="coachDigitalTwinHistory"></div></section>'+
    '<section id="athleteDecisionWorkspaceSection" hidden><h4>Decision-cycle workspace</h4><p class="muted">Read-only view of persisted assessments, attached evidence, diagnosis, Coach decisions, training and retest records.</p><div id="athleteDecisionWorkspaceNotice" class="notice">Loading persisted decision-cycle evidence…</div><div id="athleteDecisionWorkspaceContent"></div></section>'+
    '<section id="athleteActionHistorySection" hidden><h4>Coach action history</h4><p class="muted">Only tenant-scoped events attributable to this verified Coach are shown. FEAT-044 state links are related lineage; their actor is not verified.</p><div id="athleteActionHistoryNotice" class="notice">Loading recorded actions…</div><div id="athleteActionHistoryContent"></div></section>'+
    '<section id="athleteAuditReviewSection" hidden><h4>Coach-scoped audit review</h4><p class="muted">Search is restricted to this selected athlete and the verified Coach/tenant scope.</p><label for="coachAuditQuery">Search term</label><input id="coachAuditQuery" maxlength="200" placeholder="Enter an action, decision, or reason"><button type="button" onclick="loadCoachAthleteAuditReview()">Search verified audit</button><div id="athleteAuditReviewNotice" class="notice">Enter a search term to review this athlete’s verified audit events.</div><div id="athleteAuditReviewContent"></div></section>';
@@ -212,8 +213,8 @@ async function loadCoachDigitalTwinState(athleteId){
  if(!notice||!readback||!history)return;
  notice.textContent="Loading Digital Twin state in verified Coach scope…";readback.textContent="";history.textContent="";
  try{const state=await stateCycleCall("/state-cycle/feat-042/digital-twin-state/"+encodeURIComponent(athleteId));
-  if(selectedCoachAthleteId!==String(athleteId))return;readback.textContent=pretty(state);notice.textContent="Scoped Digital Twin state loaded · version "+state.version+". Execution remains disabled.";
- }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;notice.textContent=String(e&&e.message?e.message:e).includes("404")?"No Digital Twin state recorded yet.":"Digital Twin read unavailable: "+String(e&&e.message?e.message:e)}
+  if(selectedCoachAthleteId!==String(athleteId))return;currentCoachTwinStateVersion=Number.isInteger(Number(state.version))?Number(state.version):null;readback.textContent=pretty(state);notice.textContent="Scoped Digital Twin state loaded · version "+state.version+". Execution remains disabled.";
+ }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;currentCoachTwinStateVersion=null;notice.textContent=String(e&&e.message?e.message:e).includes("404")?"No Digital Twin state recorded yet.":"Digital Twin read unavailable: "+String(e&&e.message?e.message:e)}
  try{const data=await stateCycleCall("/state-cycle/feat-043/state-history/"+encodeURIComponent(athleteId));
   if(selectedCoachAthleteId!==String(athleteId))return;const rows=Array.isArray(data.versions)?data.versions:[];
   history.innerHTML=rows.length?rows.map(x=>"<p><strong>Version "+escapeHtml(x.version)+"</strong> · "+escapeHtml(x.source_event||"")+" · "+escapeHtml(x.recorded_at||"")+"</p>").join(""):"<p class=\"muted\">No recorded state history.</p>";
@@ -231,6 +232,35 @@ async function saveCoachDigitalTwinState(event){
  try{const result=await stateCycleCall("/state-cycle/feat-042/digital-twin-state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entity_id:athleteId,state,source_event:sourceEvent,case_id:caseId,evidence_refs:evidenceRefs})});
   if(selectedCoachAthleteId!==String(athleteId))return;notice.textContent="Digital Twin state saved · version "+result.state.version+". Coach Final Authority retained; execution disabled.";readback.textContent=pretty(result);await loadCoachDigitalTwinState(athleteId);
  }catch(e){notice.textContent="Digital Twin state was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function linkCoachDecisionToDigitalTwinState(){
+ const athleteId=selectedCoachAthleteId,decisionId=currentCoachDecisionId,notice=document.getElementById("coachDigitalTwinLinkNotice"),readback=document.getElementById("coachDigitalTwinLinkReadback");
+ if(!notice||!readback)return;
+ if(!athleteId){notice.textContent="Select an athlete from your verified Coach roster first.";return}
+ if(!decisionId){notice.textContent="Record or select a Coach decision (FEAT-025) for this athlete before linking.";return}
+ const version=Number(currentCoachTwinStateVersion);
+ if(!Number.isInteger(version)||version<1){notice.textContent="Save or load a persisted Digital Twin state before linking.";return}
+ const stateRef=athleteId+":v"+version;
+ notice.textContent="Linking the recorded Coach decision to the current owned Digital Twin state…";readback.textContent="";
+ try{
+  const created=await stateCycleCall("/state-cycle/feat-044/decision-state-link",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entity_id:athleteId,decision_id:decisionId,state_version:version,state_ref:stateRef})});
+  const verified=await stateCycleCall("/state-cycle/feat-044/decision-state-link/"+encodeURIComponent(decisionId)+"?athlete_id="+encodeURIComponent(athleteId));
+  if(selectedCoachAthleteId!==String(athleteId)||currentCoachDecisionId!==String(decisionId))return;
+  notice.textContent="Decision linked to the verified Digital Twin state · version "+version+". Execution remains disabled.";
+  readback.textContent=pretty({created,verified,execution_authorized:false});
+ }catch(e){notice.textContent="Decision-state link was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function loadCoachNextState(){
+ const athleteId=selectedCoachAthleteId,decisionId=currentCoachDecisionId,notice=document.getElementById("coachDigitalTwinLinkNotice"),readback=document.getElementById("coachDigitalTwinLinkReadback");
+ if(!notice||!readback)return;
+ if(!athleteId||!decisionId){notice.textContent="Select an owned athlete and a recorded Coach decision first.";return}
+ notice.textContent="Loading the next-state context from the owned Digital Twin and linked decision…";readback.textContent="";
+ try{
+  const result=await stateCycleCall("/state-cycle/feat-045/next-state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({athlete_id:athleteId,decision_id:decisionId})});
+  if(selectedCoachAthleteId!==String(athleteId)||currentCoachDecisionId!==String(decisionId))return;
+  notice.textContent="Next-state context loaded from verified Coach scope. Execution remains disabled.";
+  readback.textContent=pretty(result);
+ }catch(e){notice.textContent="Next-state context was not loaded: "+String(e&&e.message?e.message:e)}
 }
 async function createCoachDecisionCycle(event){
  event.preventDefault();
