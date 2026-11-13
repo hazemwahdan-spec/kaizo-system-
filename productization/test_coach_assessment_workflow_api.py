@@ -8,24 +8,28 @@ from productization import coach_assessment_workflow, coach_roster, product_api
 from productization.identity import Principal
 
 
-def _principal(actor: str, tenant: str) -> Principal:
+def _principal(actor: str, tenant: str, *, verified: bool = False) -> Principal:
     return Principal(
-        actor_id=actor, role="coach", tenant_id=tenant,
-        resource_owner_id=None, verified=True, source="oidc_jwt",
-    permissions=frozenset({"product"}),
+        actor_id=actor,
+        role="coach",
+        tenant_id=tenant,
+        resource_owner_id=None,
+        verified=verified,
+        source="oidc_jwt" if verified else "development_headers",
+        permissions=frozenset({"product"}),
     )
 
 
-def _setup(monkeypatch):
+def _setup(monkeypatch, *, verified: bool = False):
     monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
     monkeypatch.setenv("KAIZO_PERSISTENCE_MODE", "memory")
     monkeypatch.delenv("KAIZO_ALLOW_UNSCOPED_LEGACY_ROUTES_FOR_TESTS", raising=False)
     coach_roster.reset_memory_state()
     coach_assessment_workflow.reset_memory_state()
     principals = {
-        "coach-a": _principal("auth0|coach-a", "ACADEMY-A"),
-        "coach-b": _principal("auth0|coach-b", "ACADEMY-A"),
-        "coach-c": _principal("auth0|coach-c", "ACADEMY-B"),
+        "coach-a": _principal("auth0|coach-a", "ACADEMY-A", verified=verified),
+        "coach-b": _principal("auth0|coach-b", "ACADEMY-A", verified=verified),
+        "coach-c": _principal("auth0|coach-c", "ACADEMY-B", verified=verified),
     }
 
     def resolve(authorization):
@@ -273,7 +277,7 @@ def test_anonymous_invalid_and_duplicate_requests_fail_without_execution(monkeyp
     assert all(event["tenant_id"] == "ACADEMY-A" for event in coach_assessment_workflow._MEMORY_AUDIT)
 
 def test_verified_coach_requires_postgres_for_product_and_state_cycle_routes(monkeypatch):
-    c, ha, _hb, _hc, athlete, _b, _other_tenant = _setup(monkeypatch)
+    c, ha, _hb, _hc, athlete, _b, _other_tenant = _setup(monkeypatch, verified=True)
     # Simulate a valid OIDC principal while durable storage is unavailable.
     # Production must fail closed instead of silently using the memory adapter.
     monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: False)
