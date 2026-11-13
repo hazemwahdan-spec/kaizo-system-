@@ -17,9 +17,6 @@ class AcademyContractConflict(ValueError):
 
 
 SCHEMA_SQL = """
-CREATE UNIQUE INDEX IF NOT EXISTS uq_coach_ownership_tenant_athlete
-    ON kaizo_coach_athlete_ownership (tenant_id, athlete_id);
-
 CREATE TABLE IF NOT EXISTS kaizo_tenant_academies (
     academy_id TEXT PRIMARY KEY REFERENCES kaizo_academies(academy_id) ON DELETE RESTRICT,
     tenant_id TEXT NOT NULL,
@@ -54,14 +51,16 @@ CREATE TABLE IF NOT EXISTS kaizo_academy_athletes (
     tenant_id TEXT NOT NULL,
     academy_id TEXT NOT NULL,
     athlete_id TEXT NOT NULL,
+    owner_coach_actor_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'INACTIVE', 'LEFT')),
     created_at TEXT NOT NULL,
     created_by TEXT NOT NULL,
     PRIMARY KEY (tenant_id, academy_id, athlete_id),
     FOREIGN KEY (tenant_id, academy_id)
         REFERENCES kaizo_tenant_academies (tenant_id, academy_id) ON DELETE RESTRICT,
-    FOREIGN KEY (tenant_id, athlete_id)
-        REFERENCES kaizo_coach_athlete_ownership (tenant_id, athlete_id) ON DELETE RESTRICT
+    FOREIGN KEY (tenant_id, owner_coach_actor_id, athlete_id)
+        REFERENCES kaizo_coach_athlete_ownership (tenant_id, coach_actor_id, athlete_id)
+        ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_academy_athlete_scope
     ON kaizo_academy_athletes (tenant_id, academy_id, status, athlete_id);
@@ -141,15 +140,16 @@ def add_coach_membership(
 
 
 def enroll_athlete(
-    *, tenant_id: str, academy_id: str, athlete_id: str, actor_id: str, now: str,
+    *, tenant_id: str, academy_id: str, athlete_id: str, owner_coach_actor_id: str,
+    actor_id: str, now: str,
 ) -> None:
     with persistence.atomic_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO kaizo_academy_athletes
-                   (tenant_id,academy_id,athlete_id,status,created_at,created_by)
-                   VALUES (%s,%s,%s,'ACTIVE',%s,%s)""",
-                (tenant_id, academy_id, athlete_id, now, actor_id),
+                   (tenant_id,academy_id,athlete_id,owner_coach_actor_id,status,created_at,created_by)
+                   VALUES (%s,%s,%s,%s,'ACTIVE',%s,%s)""",
+                (tenant_id, academy_id, athlete_id, owner_coach_actor_id, now, actor_id),
             )
 
 
