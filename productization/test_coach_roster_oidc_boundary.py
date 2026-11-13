@@ -85,9 +85,9 @@ def test_stubbed_principal_ignores_spoofed_identity_headers(monkeypatch):
 
 def test_stubbed_principal_cannot_read_another_coach_or_tenant(monkeypatch):
     principals = {
-        "Bearer coach-A": test_principal("auth0|coach-A", "TENANT-A"),
-        "Bearer coach-B": test_principal("auth0|coach-B", "TENANT-A"),
-        "Bearer coach-C": test_principal("auth0|coach-C", "TENANT-B"),
+        "Bearer coach-A": _test_principal("auth0|coach-A", "TENANT-A"),
+        "Bearer coach-B": _test_principal("auth0|coach-B", "TENANT-A"),
+        "Bearer coach-C": _test_principal("auth0|coach-C", "TENANT-B"),
     }
     monkeypatch.setattr(
         product_api,
@@ -144,7 +144,7 @@ def test_stubbed_coach_principal_uses_server_scope_without_client_identity_heade
     monkeypatch.setattr(
         product_api,
         "resolve_bearer_principal",
-        lambda authorization: test_principal(),
+        lambda authorization: _test_principal(),
     )
     response = client().get(
         "/api/v1/product/coach/athletes",
@@ -162,7 +162,7 @@ def test_navigation_uses_stubbed_bearer_principal_without_client_identity_header
         assert role == ""
         assert tenant_id == ""
         assert authorization == "Bearer verified-coach-token"
-        return test_principal()
+        return _test_principal()
 
     monkeypatch.setattr(product_api, "resolve_principal", resolve)
     response = client().get(
