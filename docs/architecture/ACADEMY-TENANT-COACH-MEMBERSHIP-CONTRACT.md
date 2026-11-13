@@ -72,7 +72,7 @@ For every Academy read/write:
 - Never allow a caller-supplied `coach_final_authority` boolean to grant authority; authority comes from the server-verified Principal and permission policy.
 - Keep `execution_authorized=false`; Academy membership never overrides Coach Final Authority.
 
-Suggested permission vocabulary (must be aligned with the Auth0 API contract before use): `academy:read`, `academy:manage`, `academy:assign_coach`, `academy:manage_athlete`. Do not infer permissions from display role strings alone.
+Required Auth0 API permissions for this boundary: `product` plus `academy:read` for the two GET endpoints; `academy:manage`, `academy:assign_coach`, and `academy:manage_athlete` for the corresponding future mutation operations. The API checks these permissions from the verified token's `permissions` claim. Do not infer permissions from display role strings alone.
 
 ## 7. Migration and rollout
 
@@ -81,7 +81,7 @@ Suggested permission vocabulary (must be aligned with the Auth0 API contract bef
 - Existing JSONB multi-coach assignments are not auto-converted: their tenant and Coach identity provenance are insufficient.
 - Existing Coach ownership rows are retained. Academy enrolment uses a composite FK to the existing (tenant_id, coach_actor_id, athlete_id) unique key and does not create any new uniqueness assumption.
 - Keep FEAT-061–065 routes disabled (410) until mapping, identity permissions, atomic audit, and runtime tests are accepted.
-- The read-only assigned-roster endpoint is the only mounted Academy-aware Product API surface; Academy management and all athlete writes remain disabled.
+- The Academy selector and assigned-roster GET endpoints are the only mounted Academy-aware Product API surfaces; Academy management and all Academy athlete writes remain disabled.
 - No production migration, secret mutation, data backfill, or deployment is included in this branch.
 
 ## 8. PostgreSQL acceptance matrix
@@ -103,4 +103,4 @@ Suggested permission vocabulary (must be aligned with the Auth0 API contract bef
 
 ## 9. Current implementation boundary
 
-This branch adds the normalized schema helper, PostgreSQL isolation tests, and one verified read-only Academy-assigned roster endpoint. It intentionally does not activate the legacy Academy router or Academy management routes, mutate Auth0 or issue the new Academy permissions/claim, change existing Coach ownership semantics, enable secondary-Coach longitudinal access, wire the roster route into the Coach UI, or access production databases.
+This branch adds the normalized schema helper, PostgreSQL isolation tests, and two verified read-only Academy Product API endpoints (Academy selector and assigned-athlete roster). It intentionally does not activate the legacy Academy router or Academy management routes, mutate Auth0 or issue the new Academy permissions/claim, change existing Coach ownership semantics, enable secondary-Coach longitudinal access, wire these Academy endpoints into the Coach UI, or access production databases.
