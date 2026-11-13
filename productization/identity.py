@@ -100,12 +100,14 @@ def _claims_to_principal(claims: dict[str, Any]) -> Principal:
 
 def principal_has_permission(principal: Principal, permission: str) -> bool:
     """Return true only for an exact permission present in a verified OIDC token."""
+    permissions = getattr(principal, "permissions", None)
     return (
-        principal.verified is True
-        and principal.source == "oidc_jwt"
+        getattr(principal, "verified", False) is True
+        and getattr(principal, "source", None) == "oidc_jwt"
         and isinstance(permission, str)
         and bool(permission)
-        and permission in principal.permissions
+        and isinstance(permissions, (set, frozenset))
+        and permission in permissions
     )
 
 
