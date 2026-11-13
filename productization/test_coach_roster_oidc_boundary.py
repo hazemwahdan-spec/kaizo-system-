@@ -1,9 +1,9 @@
-"""OIDC route-boundary tests for the Coach-owned athlete roster.
+"""Memory-only Coach scope tests and fail-closed OIDC permission tests.
 
-The resolver is stubbed only at the verified-principal boundary. These tests
-prove that the API uses claims returned by the verifier and ignores caller
-identity headers; JWT signature/issuer/audience verification is covered by
-productization.identity and the live Auth0 workflow.
+Successful memory-adapter requests use explicitly unverified test principals.
+Verified Coach API requests require PostgreSQL and are exercised separately by
+the disposable-PostgreSQL route integration test. JWT signature/issuer/audience
+verification is covered by productization.identity tests.
 """
 import sys
 from pathlib import Path
@@ -35,6 +35,16 @@ def verified(actor="auth0|coach-A", tenant="TENANT-A", role="coach", permissions
         permissions=frozenset(permissions),
     )
 
+def test_principal(actor="auth0|coach-A", tenant="TENANT-A", role="coach"):
+    return Principal(
+        actor_id=actor,
+        role=role,
+        tenant_id=tenant,
+        resource_owner_id=None,
+        verified=False,
+        source="development_headers",
+    )
+
 
 @pytest.fixture(autouse=True)
 def isolated_identity_and_roster(monkeypatch):
@@ -43,11 +53,11 @@ def isolated_identity_and_roster(monkeypatch):
     coach_roster.reset_memory_state()
 
 
-def test_oidc_claims_override_spoofed_identity_headers(monkeypatch):
+def test_stubbed_principal_ignores_spoofed_identity_headers(monkeypatch):
     monkeypatch.setattr(
         product_api,
         "resolve_bearer_principal",
-        lambda authorization: verified(),
+        lambda authorization: test_principal(),
     )
     response = client().post(
         "/api/v1/product/coach/athletes",
@@ -73,11 +83,11 @@ def test_oidc_claims_override_spoofed_identity_headers(monkeypatch):
     assert listing.json()["athletes"][0]["display_name"] == "OIDC-owned athlete"
 
 
-def test_oidc_principal_cannot_read_another_coach_or_tenant(monkeypatch):
+def test_stubbed_principal_cannot_read_another_coach_or_tenant(monkeypatch):
     principals = {
-        "Bearer coach-A": verified("auth0|coach-A", "TENANT-A"),
-        "Bearer coach-B": verified("auth0|coach-B", "TENANT-A"),
-        "Bearer coach-C": verified("auth0|coach-C", "TENANT-B"),
+        "Bearer coach-A": test_principal("auth0|coach-A", "TENANT-A"),
+        "Bearer coach-B": test_principal("auth0|coach-B", "TENANT-A"),
+        "Bearer coach-C": test_principal("auth0|coach-C", "TENANT-B"),
     }
     monkeypatch.setattr(
         product_api,
@@ -130,11 +140,11 @@ def test_oidc_missing_or_invalid_bearer_fails_closed(monkeypatch):
     )
     assert response.status_code == 401
 
-def test_oidc_coach_route_uses_verified_claims_without_client_identity_headers(monkeypatch):
+def test_stubbed_coach_principal_uses_server_scope_without_client_identity_headers(monkeypatch):
     monkeypatch.setattr(
         product_api,
         "resolve_bearer_principal",
-        lambda authorization: verified(),
+        lambda authorization: test_principal(),
     )
     response = client().get(
         "/api/v1/product/coach/athletes",
@@ -146,13 +156,13 @@ def test_oidc_coach_route_uses_verified_claims_without_client_identity_headers(m
     assert body["coach_final_authority"] is True
     assert body["execution_authorized"] is False
     
-def test_navigation_uses_bearer_principal_without_client_identity_headers(monkeypatch):
+def test_navigation_uses_stubbed_bearer_principal_without_client_identity_headers(monkeypatch):
     def resolve(actor_id, role, tenant_id, owner, authorization=None):
         assert actor_id == ""
         assert role == ""
         assert tenant_id == ""
         assert authorization == "Bearer verified-coach-token"
-        return verified()
+        return test_principal()
 
     monkeypatch.setattr(product_api, "resolve_principal", resolve)
     response = client().get(
