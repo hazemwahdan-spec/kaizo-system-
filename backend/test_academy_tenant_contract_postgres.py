@@ -273,3 +273,20 @@ def test_enrollment_rejects_ambiguous_primary_owner_mapping():
             )
     finally:
         _cleanup(f)
+
+
+def test_head_coach_cannot_escalate_membership_to_admin_or_owner():
+    f = _fixture()
+    try:
+        tenant, _other_tenant, academy_a, _academy_b, coach_a, coach_b, _coach_c, _athlete = f
+        principal = _principal(coach_a, tenant)
+        for elevated_role in ("OWNER", "ADMIN"):
+            with pytest.raises(
+                contract.AcademyContractConflict, match="delegation authority"
+            ):
+                contract.add_coach_membership_for_principal(
+                    principal=principal, academy_id=academy_a,
+                    coach_actor_id=_id("NEWCOACH"), role=elevated_role, now=_now(),
+                )
+    finally:
+        _cleanup(f)
