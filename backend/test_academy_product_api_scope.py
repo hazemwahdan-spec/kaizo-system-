@@ -170,9 +170,13 @@ def test_academy_roster_requires_product_and_academy_read_permissions(monkeypatc
 
 
 def test_academy_selector_requires_product_and_academy_read_permissions(monkeypatch):
+    monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
     for permissions in (frozenset({"product"}), frozenset({"academy:read"})):
         principal = _principal(permissions=permissions)
-        monkeypatch.setattr(product_api, "_coach_scope", lambda *_args, principal=principal: principal)
+        monkeypatch.setattr(
+            product_api, "resolve_bearer_principal",
+            lambda _authorization, principal=principal: principal,
+        )
         with pytest.raises(HTTPException) as exc:
             product_api.list_coach_academies(authorization="Bearer verified")
         assert exc.value.status_code == 403
