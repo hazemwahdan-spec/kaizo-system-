@@ -151,6 +151,15 @@ def test_permissions_are_exact_and_require_verified_oidc_principal():
                         permissions=frozenset({"academy:membership:manage"})),
         "academy:membership:manage",
     )
+    assert not principal_has_permission(
+        SimpleNamespace(verified=True, source="oidc_jwt",
+                        permissions="academy:membership:manage"),
+        "academy:membership:manage",
+    )
+    assert not principal_has_permission(
+        SimpleNamespace(verified=True, source="oidc_jwt"),
+        "academy:membership:manage",
+    )
 
 
 @pytest.mark.parametrize("permissions", ["academy:read", [1], [""], None])
