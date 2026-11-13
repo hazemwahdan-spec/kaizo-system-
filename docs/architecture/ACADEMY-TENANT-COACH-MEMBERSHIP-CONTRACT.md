@@ -40,15 +40,17 @@ Every authenticated mutation wrapper writes `append_tenant_audit` inside the sam
 
 ## 5. Narrow Product API integration
 
-The branch now exposes one read-only route:
-`GET /api/v1/product/coach/academies/{academy_id}/athletes`.
+The branch exposes two read-only routes:
+- `GET /api/v1/product/coach/academies` lists only Academies where the verified Coach has an active membership.
+- `GET /api/v1/product/coach/academies/{academy_id}/athletes` lists only athletes explicitly assigned to that Coach in the selected Academy.
 
-- The handler obtains its Coach Principal through the existing Coach identity boundary, which requires a verified Bearer token and the Auth0 `product` permission; it additionally requires `verified=true`, `source=oidc_jwt`, and `academy:read`. Development/header identities are rejected.
+- Both handlers obtain their Coach Principal through the existing Coach identity boundary, which requires a verified Bearer token and the Auth0 `product` permission; they additionally require `verified=true`, `source=oidc_jwt`, and `academy:read`. Development/header identities are rejected.
 - `tenant_id` and `coach_actor_id` are taken only from the verified Principal. Caller-supplied identity headers are not used as authority.
 - The requested `academy_id` is a resource selector, not proof of access; the SQL membership and assignment joins must independently authorize the exact Academy.
+- The Academy selector uses the same verified tenant/actor and lists only active tenant bindings plus active memberships; it cannot be used to enumerate another tenant's Academy names.
 - The SQL query joins tenant binding, active membership, active athlete enrolment, active assignment, and athlete profile. All joins and filters are scoped by the verified tenant, requested academy, and verified Coach subject.
 - The response contains only minimal roster fields and explicitly reports `longitudinal_access_granted=false`.
-- The roster query locks active tenant, membership, enrolment, and assignment rows for the duration of the read so a concurrent suspension/revocation cannot race the response.
+- The selector locks active tenant and membership rows; the roster query locks active tenant, membership, enrolment, and assignment rows for the duration of the read so a concurrent suspension/revocation cannot race the response.
 - PostgreSQL is mandatory; if persistence is unavailable, the route returns 503 rather than falling back to memory.
 - The route is not yet wired into `frontend/app.js`; it is an API-only boundary and must not be counted as Coach UI integration.
 - Existing `/coach/athletes` and longitudinal Product API routes remain primary-owner scoped. No write route or secondary-Coach access to decisions, assessments, training, KPI, audit, or Digital Twin data is introduced.
