@@ -12,6 +12,8 @@ on:
       - fix/coach-digital-twin-state-cycle-ownership
       - fix/coach-retire-unscoped-feature-routes
       - fix/coach-retire-unscoped-main-api
+      - fix/coach-baseline-kpi-digital-twin-lineage-20261112
+      - fix/coach-feat040-required-evidence-lineage-20261113
   pull_request:
     branches:
       - main
@@ -34,6 +36,7 @@ on:
       - fix/coach-digital-twin-state-cycle-ownership
       - fix/coach-retire-unscoped-feature-routes
       - fix/coach-retire-unscoped-main-api
+      - fix/coach-baseline-kpi-digital-twin-lineage-20261112
 
 jobs:
   validate-persistence-adapter:
