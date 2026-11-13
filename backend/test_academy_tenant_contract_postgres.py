@@ -150,5 +150,17 @@ def test_assignment_requires_active_membership_and_enrollment():
             tenant_id=tenant, academy_id=academy_a, coach_actor_id=coach_b,
             athlete_id=f[-1]
         )
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE kaizo_academy_coach_memberships SET status='SUSPENDED' "
+                    "WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s",
+                    (tenant, academy_a, coach_b),
+                )
+            conn.commit()
+        assert not contract.coach_can_access_athlete(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=coach_b,
+            athlete_id=f[-1]
+        )
     finally:
         _cleanup(f)
