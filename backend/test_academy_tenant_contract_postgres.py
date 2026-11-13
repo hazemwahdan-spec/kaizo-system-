@@ -14,7 +14,7 @@ os.environ.setdefault("KAIZO_PERSISTENCE_MODE", "postgres")
 import persistence
 import academy_ops_runtime
 import academy_tenant_contract as contract
-from productization.identity import Principal
+from types import SimpleNamespace
 
 
 pytestmark = pytest.mark.skipif(
@@ -177,7 +177,7 @@ def test_assignment_requires_active_membership_and_enrollment():
 
 
 def _principal(actor_id, tenant_id, role="coach", verified=True, source="oidc_jwt"):
-    return Principal(
+    return SimpleNamespace(
         actor_id=actor_id, role=role, tenant_id=tenant_id,
         resource_owner_id=None, verified=verified, source=source,
     )
