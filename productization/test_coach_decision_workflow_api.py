@@ -16,8 +16,18 @@ from productization.identity import Principal
 
 
 def _principal(actor: str, tenant: str) -> Principal:
-    return Principal(actor_id=actor, role="coach", tenant_id=tenant,
-                     resource_owner_id=None, verified=True, source="oidc_jwt", permissions=frozenset({"product"}))
+    # These memory-adapter API tests exercise resource scoping with a stubbed
+    # principal. Verified OIDC routes must use PostgreSQL and are covered by
+    # the disposable-PostgreSQL integration suite.
+    return Principal(
+        actor_id=actor,
+        role="coach",
+        tenant_id=tenant,
+        resource_owner_id=None,
+        verified=False,
+        source="development_headers",
+        permissions=frozenset({"product"}),
+    )
 
 
 def _setup(monkeypatch):
