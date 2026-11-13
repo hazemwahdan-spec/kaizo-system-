@@ -13,7 +13,8 @@ from fastapi import HTTPException
 from productization import product_api
 
 
-def _principal(*, verified=True, source="oidc_jwt"):
+def _principal(*, verified=True, source="oidc_jwt",
+               permissions=frozenset({"academy:read"})):
     return SimpleNamespace(
         actor_id="coach-from-token",
         role="coach",
@@ -21,6 +22,7 @@ def _principal(*, verified=True, source="oidc_jwt"):
         resource_owner_id=None,
         verified=verified,
         source=source,
+        permissions=permissions,
     )
 
 
@@ -143,3 +145,19 @@ def test_academy_selector_rejects_unverified_identity(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         product_api.list_coach_academies(authorization=None)
     assert exc.value.status_code == 403
+
+
+@pytest.mark.parametrize("endpoint", ["selector", "roster"])
+def test_academy_read_routes_require_explicit_oidc_permission(monkeypatch, endpoint):
+    monkeypatch.setattr(product_api, "_coach_scope", lambda *_args: _principal(
+        permissions=frozenset()
+    ))
+    with pytest.raises(HTTPException) as exc:
+        if endpoint == "selector":
+            product_api.list_coach_academies(authorization="Bearer verified")
+        else:
+            product_api.list_academy_assigned_coach_athletes(
+                "academy-request", authorization="Bearer verified"
+            )
+    assert exc.value.status_code == 403
+    assert "academy:read" in exc.value.detail
