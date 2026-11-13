@@ -319,3 +319,31 @@ def test_assigned_roster_query_isolated_by_coach_academy_and_tenant():
         ) == []
     finally:
         _cleanup(f)
+
+
+def test_active_academy_membership_listing_is_tenant_and_coach_scoped():
+    f = _fixture()
+    try:
+        tenant, other_tenant, academy_a, academy_b, coach_a, _coach_b, coach_c, _athlete = f
+        assert contract.list_active_academies_for_coach(
+            tenant_id=tenant, coach_actor_id=coach_a,
+        ) == [{"academy_id": academy_a, "academy_name": academy_a}]
+        assert contract.list_active_academies_for_coach(
+            tenant_id=tenant, coach_actor_id=coach_c,
+        ) == [{"academy_id": academy_b, "academy_name": academy_b}]
+        assert contract.list_active_academies_for_coach(
+            tenant_id=other_tenant, coach_actor_id=coach_a,
+        ) == []
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE kaizo_academy_coach_memberships SET status='REVOKED' "
+                    "WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s",
+                    (tenant, academy_a, coach_a),
+                )
+            conn.commit()
+        assert contract.list_active_academies_for_coach(
+            tenant_id=tenant, coach_actor_id=coach_a,
+        ) == []
+    finally:
+        _cleanup(f)
