@@ -205,6 +205,13 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "comparison_method":"same_kpi_absolute_change"})
     progress = post("039","progress-state",{
         "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"},"evidence_refs":["REF-POSTGRES"]})
+    unlinked_trigger = client.post("/api/v1/training-workflow/feat-040/next-decision-trigger",
+        headers=headers,json={
+            "athlete_id":athlete_id,"session_id":session_id,
+            "progress_record_id":progress["record_id"],
+            "trigger_type":"RETEST_COMPLETE","trigger_reason":"Coach reviewed progress",
+            "required_evidence":["REF-POSTGRES"]})
+    assert unlinked_trigger.status_code == 409, unlinked_trigger.text
     trigger = post("040","next-decision-trigger",{
         "session_id":session_id,"progress_record_id":progress["record_id"],
         "trigger_type":"RETEST_COMPLETE","trigger_reason":"Coach reviewed progress",
