@@ -281,22 +281,23 @@ def add_coach_membership_for_principal(
     *, principal: Any, academy_id: str, coach_actor_id: str,
     role: str, now: str,
 ) -> str:
-    _require_academy_manager(principal, principal.tenant_id, academy_id)
-    if principal.role != "academy":
-        actor_membership_role = _membership_role(
-            tenant_id=principal.tenant_id, academy_id=academy_id,
-            coach_actor_id=principal.actor_id,
-        )
-        permitted_roles = {
-            "OWNER": {"ADMIN", "HEAD_COACH", "COACH", "ASSISTANT"},
-            "ADMIN": {"HEAD_COACH", "COACH", "ASSISTANT"},
-            "HEAD_COACH": {"COACH", "ASSISTANT"},
-        }
-        if role not in permitted_roles.get(actor_membership_role, set()):
-            raise AcademyContractConflict(
-                "membership role exceeds the authenticated Coach's delegation authority"
-            )
     with persistence.atomic_transaction():
+        # Re-check manager authority under the same transaction as the write.
+        _require_academy_manager(principal, principal.tenant_id, academy_id)
+        if principal.role != "academy":
+            actor_membership_role = _membership_role(
+                tenant_id=principal.tenant_id, academy_id=academy_id,
+                coach_actor_id=principal.actor_id,
+            )
+            permitted_roles = {
+                "OWNER": {"ADMIN", "HEAD_COACH", "COACH", "ASSISTANT"},
+                "ADMIN": {"HEAD_COACH", "COACH", "ASSISTANT"},
+                "HEAD_COACH": {"COACH", "ASSISTANT"},
+            }
+            if role not in permitted_roles.get(actor_membership_role, set()):
+                raise AcademyContractConflict(
+                    "membership role exceeds the authenticated Coach's delegation authority"
+                )
         membership_id = add_coach_membership(
             tenant_id=principal.tenant_id, academy_id=academy_id,
             coach_actor_id=coach_actor_id, role=role,
@@ -314,8 +315,8 @@ def add_coach_membership_for_principal(
 def enroll_athlete_for_principal(
     *, principal: Any, academy_id: str, athlete_id: str, now: str,
 ) -> None:
-    _require_academy_manager(principal, principal.tenant_id, academy_id)
     with persistence.atomic_transaction() as conn:
+        _require_academy_manager(principal, principal.tenant_id, academy_id)
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT coach_actor_id FROM kaizo_coach_athlete_ownership
@@ -344,8 +345,8 @@ def assign_coach_for_principal(
     *, principal: Any, academy_id: str, athlete_id: str,
     coach_actor_id: str, now: str,
 ) -> None:
-    _require_academy_manager(principal, principal.tenant_id, academy_id)
     with persistence.atomic_transaction():
+        _require_academy_manager(principal, principal.tenant_id, academy_id)
         assign_coach(
             tenant_id=principal.tenant_id, academy_id=academy_id,
             athlete_id=athlete_id, coach_actor_id=coach_actor_id,
@@ -384,11 +385,12 @@ def set_membership_status_for_principal(
 ) -> None:
     if status not in {"ACTIVE", "SUSPENDED", "REVOKED"}:
         raise AcademyContractConflict("invalid membership status")
-    _require_academy_manager(principal, principal.tenant_id, academy_id)
     with persistence.atomic_transaction() as conn:
+        # Authority and target role are both revalidated while the transaction is open.
+        _require_academy_manager(principal, principal.tenant_id, academy_id)
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT status FROM kaizo_academy_coach_memberships
+                """SELECT status, role FROM kaizo_academy_coach_memberships
                    WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s
                    FOR UPDATE""",
                 (principal.tenant_id, academy_id, coach_actor_id),
@@ -396,20 +398,18 @@ def set_membership_status_for_principal(
             row = cur.fetchone()
             if row is None:
                 raise AcademyContractConflict("Coach membership not found")
-            old_status = str(row[0])
-            cur.execute(
-                """SELECT role FROM kaizo_academy_coach_memberships
-                   WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s""",
-                (principal.tenant_id, academy_id, coach_actor_id),
-            )
-            target_role_row = cur.fetchone()
-            target_role = str(target_role_row[0]) if target_role_row else ""
+            old_status, target_role = str(row[0]), str(row[1])
             if principal.role != "academy":
                 actor_role = _membership_role(
                     tenant_id=principal.tenant_id, academy_id=academy_id,
                     coach_actor_id=principal.actor_id,
                 )
-                if target_role == "OWNER" or actor_role == "HEAD_COACH" and target_role not in {"COACH", "ASSISTANT"}:
+                permitted_targets = {
+                    "OWNER": {"ADMIN", "HEAD_COACH", "COACH", "ASSISTANT"},
+                    "ADMIN": {"HEAD_COACH", "COACH", "ASSISTANT"},
+                    "HEAD_COACH": {"COACH", "ASSISTANT"},
+                }
+                if target_role not in permitted_targets.get(actor_role, set()):
                     raise AcademyContractConflict(
                         "Coach membership role is outside the authenticated actor's management scope"
                     )
