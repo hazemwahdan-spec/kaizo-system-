@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "backend/academy_tenant_contract.py"
+      - "productization/product_api.py"
+      - "backend/test_academy_product_api_scope.py"
       - "backend/test_academy_tenant_contract_postgres.py"
       - "docs/architecture/ACADEMY-TENANT-COACH-MEMBERSHIP-CONTRACT.md"
       - ".github/workflows/academy-tenant-contract-postgres.yml"
@@ -37,6 +39,6 @@ jobs:
       - name: Install project dependencies
         run: pip install -r requirements.txt pytest
       - name: Compile contract
-        run: python -m py_compile backend/academy_tenant_contract.py backend/test_academy_tenant_contract_postgres.py
+        run: python -m py_compile backend/academy_tenant_contract.py backend/test_academy_tenant_contract_postgres.py backend/test_academy_product_api_scope.py productization/product_api.py
       - name: Run PostgreSQL isolation tests
-        run: pytest -q backend/test_academy_tenant_contract_postgres.py
+        run: pytest -q backend/test_academy_tenant_contract_postgres.py backend/test_academy_product_api_scope.py
