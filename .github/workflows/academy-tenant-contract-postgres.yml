@@ -30,7 +30,7 @@ jobs:
     env:
       KAIZO_PERSISTENCE_MODE: postgres
       DATABASE_URL: postgresql://kaizo:kaizo_test@localhost:5432/kaizo_test
-      PYTHONPATH: backend
+      PYTHONPATH: backend:.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
