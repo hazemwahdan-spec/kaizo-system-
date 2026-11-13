@@ -34,7 +34,7 @@ The existing Coach ownership row remains the primary ownership anchor and is not
 
 ## 4. Verified Principal service boundary now implemented
 
-The additive service layer accepts a Principal-like object only when `verified=true`, `source=oidc_jwt`, the role is `academy` or `coach`, and its tenant matches the operation scope. Tenant binding requires the signed `academy` role. Membership creation, athlete enrolment, assignment, and membership lifecycle changes require either that Academy role or an active `OWNER`/`ADMIN`/`HEAD_COACH` membership. Delegation is hierarchical: `OWNER` may grant `ADMIN`/`HEAD_COACH`/`COACH`/`ASSISTANT`; `ADMIN` may grant `HEAD_COACH`/`COACH`/`ASSISTANT`; `HEAD_COACH` may grant only `COACH`/`ASSISTANT`. Coach actors cannot create or revoke `OWNER` memberships; only the signed Academy role can do so. Athlete access checks require a verified Coach Principal and an active membership plus active enrolment and assignment. Development-header principals are rejected. These are service-level checks; no Academy API routes are mounted by this PR.
+The additive service layer accepts a Principal-like object only when `verified=true`, `source=oidc_jwt`, the role is `academy` or `coach`, and its tenant matches the operation scope. An `academy` Principal must also carry the signed namespaced `https://kaizo.system/academy_id` claim; that claim must exactly match the target Academy, so a tenant with multiple academies does not imply tenant-wide Academy administrator access. Tenant binding requires this scoped Academy Principal. Membership creation, athlete enrolment, assignment, and membership lifecycle changes require either that exact Academy Principal or an active `OWNER`/`ADMIN`/`HEAD_COACH` membership. Delegation is hierarchical for both membership creation and lifecycle changes: `OWNER` may manage `ADMIN`/`HEAD_COACH`/`COACH`/`ASSISTANT`; `ADMIN` may manage `HEAD_COACH`/`COACH`/`ASSISTANT`; `HEAD_COACH` may manage only `COACH`/`ASSISTANT`. Manager memberships and target memberships are row-locked inside the same transaction as each mutation. Athlete access checks require a verified Coach Principal and an active membership plus active enrolment and assignment. The in-transaction access helper locks all relevant scope rows and must be used in the same transaction as the protected resource read. Development-header principals are rejected. These are service-level checks; no Academy API routes are mounted by this PR.
 
 Every authenticated mutation wrapper writes `append_tenant_audit` inside the same `persistence.atomic_transaction`. The existing persistence connection context joins nested helpers to the outer transaction, so audit failure rolls back the relationship write. PostgreSQL integration tests exercise this rollback behavior.
 
@@ -43,8 +43,9 @@ Every authenticated mutation wrapper writes `append_tenant_audit` inside the sam
 For every Academy read/write:
 - Require a verified Bearer OIDC Principal; reject development headers in production.
 - Derive `coach_actor_id` from verified `sub`; ignore actor/role/tenant/academy IDs supplied as authority by the browser.
-- Derive tenant from verified claims and verify active `kaizo_tenant_academies` mapping.
-- Verify active membership for the exact (tenant, academy, actor) tuple and enforce role-specific permissions.
+- Derive tenant from verified claims; for Academy-role operations, derive `academy_id` from the signed namespaced claim and require an exact match with the target.
+- Verify active `kaizo_tenant_academies` mapping.
+- Verify active membership for the exact (tenant, academy, actor) tuple and enforce role-specific permissions. Recheck and lock manager/target membership rows inside the mutation transaction.
 - For athlete operations, verify active Academy enrolment and active assignment to that authenticated Coach.
 - Recheck relationships inside the same PostgreSQL transaction as every write; use row locks where lifecycle changes can race.
 - Write an append-only tenant-attributed audit event in the same transaction. Audit failure must roll back the business write.
@@ -66,14 +67,17 @@ Suggested permission vocabulary (must be aligned with the Auth0 API contract bef
 
 - Same tenant + same academy + active membership + explicit athlete assignment: allow.
 - Same tenant + same academy + different Coach without assignment: deny.
-- Same tenant + different academy: deny.
+- Same tenant + different academy: deny for Coaches without an active assignment and for Academy Principals whose signed `academy_id` names another Academy.
 - Different tenant, even with matching Coach/Athlete identifiers: deny.
+- Missing or mismatched signed `academy_id` for Academy-role mutation: deny.
+- ADMIN cannot manage OWNER/ADMIN membership lifecycle; HEAD_COACH cannot manage ADMIN/OWNER.
 - Academy rebound to another tenant: reject.
 - Assignment without active membership: reject.
 - Assignment without Academy enrolment: reject by FK.
 - Athlete enrolment without matching tenant ownership: reject by FK.
 - Revoked/suspended membership or assignment: deny.
-- Audit failure: business write rolls back in the verified Principal service wrappers.
+- Audit failure: Academy binding, membership creation, enrolment, assignment, and membership lifecycle writes all roll back in their verified Principal service wrappers.
+- Concurrent manager revocation/demotion cannot race a mutation because the manager membership is locked in the same transaction.
 
 ## 8. Current implementation boundary
 
