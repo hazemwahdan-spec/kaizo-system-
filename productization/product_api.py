@@ -314,6 +314,29 @@ def _coach_scope(authorization, actor_id, role, tenant_id, owner):
     return verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
 
 
+@router.get("/coach/academies")
+def list_coach_academies(
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    """List Academy choices only for active memberships of the verified Coach."""
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    if principal.verified is not True or principal.source != "oidc_jwt":
+        raise HTTPException(status_code=403, detail="verified OIDC Coach identity required")
+    try:
+        academies = academy_tenant_contract.list_active_academies_for_coach(
+            tenant_id=principal.tenant_id,
+            coach_actor_id=principal.actor_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Academy roster persistence is unavailable") from exc
+    return {"total": len(academies), "academies": academies,
+            "coach_final_authority": True, "execution_authorized": False}
+
+
 @router.get("/coach/academies/{academy_id}/athletes")
 def list_academy_assigned_coach_athletes(
     academy_id: str,
