@@ -1,0 +1,48 @@
+name: Academy Tenant Coach Membership PostgreSQL Contract
+
+on:
+  pull_request:
+    paths:
+      - "backend/academy_tenant_contract.py"
+      - "productization/identity.py"
+      - "productization/product_api.py"
+      - "productization/OIDC-AUTHENTICATION-INTEGRATION-BOUNDARY.md"
+      - "productization/identity-rbac-boundary.json"
+      - "productization/test_identity.py"
+      - "backend/test_academy_product_api_scope.py"
+      - "backend/test_academy_tenant_contract_postgres.py"
+      - "docs/architecture/ACADEMY-TENANT-COACH-MEMBERSHIP-CONTRACT.md"
+      - ".github/workflows/academy-tenant-contract-postgres.yml"
+
+jobs:
+  academy-tenant-contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: kaizo_test
+          POSTGRES_USER: kaizo
+          POSTGRES_PASSWORD: kaizo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kaizo -d kaizo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KAIZO_PERSISTENCE_MODE: postgres
+      DATABASE_URL: postgresql://kaizo:kaizo_test@localhost:5432/kaizo_test
+      PYTHONPATH: backend:.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install project dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Compile contract
+        run: python -m py_compile backend/academy_tenant_contract.py backend/test_academy_tenant_contract_postgres.py backend/test_academy_product_api_scope.py productization/product_api.py
+      - name: Run PostgreSQL isolation tests
+        run: pytest -q backend/test_academy_tenant_contract_postgres.py backend/test_academy_product_api_scope.py

@@ -327,3 +327,25 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
     assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
     assert '"X-KAIZO-Actor"' not in APP
     assert '"X-KAIZO-Tenant"' not in APP
+
+
+def test_coach_academy_roster_uses_verified_membership_and_assignment_apis():
+    assert 'productCall("/coach/academies")' in APP
+    assert 'productCall("/coach/academies/"+encodeURIComponent(academyId)+"/athletes")' in APP
+    assert "coachAcademySelect" in APP
+    assert "coachAcademyRosterList" in APP
+    assert "longitudinal_access_granted!==false" in APP
+    assert "Longitudinal access is not granted by this roster." in APP
+
+
+def test_academy_assigned_roster_does_not_link_into_primary_owner_longitudinal_workspace():
+    assert "loadCoachAcademyAssignedRoster" in APP
+    assert 'viewCoachAthlete(a.athlete_id)' not in APP
+    assert 'productCall("/coach/academies/"+encodeURIComponent(academyId)+"/athletes")' in APP
+
+
+def test_auth0_requests_product_and_academy_read_for_each_token_flow():
+    auth = (ROOT / "frontend" / "auth.js").read_text()
+    assert 'scope: "product academy:read"' in auth
+    assert 'getTokenSilently({ authorizationParams: authorizationParams() })' in auth
+    assert 'loginWithRedirect({ authorizationParams: authorizationParams() })' in auth
