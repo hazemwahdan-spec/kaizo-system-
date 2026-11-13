@@ -280,3 +280,42 @@ def test_head_coach_cannot_escalate_membership_to_admin_or_owner():
                 )
     finally:
         _cleanup(f)
+
+
+def test_assigned_roster_query_isolated_by_coach_academy_and_tenant():
+    f = _fixture()
+    try:
+        tenant, other_tenant, academy_a, academy_b, coach_a, coach_b, coach_c, athlete = f
+        contract.assign_coach(
+            tenant_id=tenant, academy_id=academy_a, athlete_id=athlete,
+            coach_actor_id=coach_b, actor_id=coach_a, now=_now(),
+        )
+        rows_a = contract.list_assigned_athletes_for_coach(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=coach_a,
+        )
+        rows_b = contract.list_assigned_athletes_for_coach(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=coach_b,
+        )
+        rows_wrong_academy = contract.list_assigned_athletes_for_coach(
+            tenant_id=tenant, academy_id=academy_b, coach_actor_id=coach_c,
+        )
+        rows_wrong_tenant = contract.list_assigned_athletes_for_coach(
+            tenant_id=other_tenant, academy_id=academy_a, coach_actor_id=coach_a,
+        )
+        assert [row["athlete_id"] for row in rows_a] == [athlete]
+        assert [row["athlete_id"] for row in rows_b] == [athlete]
+        assert rows_wrong_academy == []
+        assert rows_wrong_tenant == []
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE kaizo_academy_coach_memberships SET status='SUSPENDED' "
+                    "WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s",
+                    (tenant, academy_a, coach_b),
+                )
+            conn.commit()
+        assert contract.list_assigned_athletes_for_coach(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=coach_b,
+        ) == []
+    finally:
+        _cleanup(f)
