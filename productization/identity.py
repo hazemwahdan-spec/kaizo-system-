@@ -32,6 +32,7 @@ class Principal:
     verified: bool
     source: str
     permissions: frozenset[str] = frozenset()
+    academy_id: str | None = None
 
 
 VALID_ROLES = {"academy", "coach", "athlete", "parent", "publisher"}
@@ -73,6 +74,7 @@ def _claims_to_principal(claims: dict[str, Any]) -> Principal:
         or claims.get("kaizo_tenant_id")
     )
     owner = claims.get(f"{namespace}resource_owner_id") or claims.get("resource_owner_id")
+    academy_id = claims.get(f"{namespace}academy_id") or claims.get("academy_id")
     raw_permissions = claims.get("permissions", [])
     if not isinstance(raw_permissions, list):
         raw_permissions = []
@@ -92,6 +94,7 @@ def _claims_to_principal(claims: dict[str, Any]) -> Principal:
         verified=True,
         source="oidc_jwt",
         permissions=permissions,
+        academy_id=str(academy_id) if academy_id is not None else None,
     )
 
 
