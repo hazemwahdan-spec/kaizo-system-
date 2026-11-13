@@ -545,6 +545,23 @@ def create_next_decision_trigger(
     progress = _prior_record("FEAT-039", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.progress_record_id)
     if progress.get("session_id") != req.session_id:
         raise HTTPException(409, detail="next-decision trigger session does not match the linked progress record")
+    progress_payload = progress.get("payload") or {}
+    if isinstance(progress_payload, str):
+        try:
+            progress_payload = json.loads(progress_payload)
+        except (TypeError, ValueError):
+            raise HTTPException(409, detail="linked progress record has invalid comparison lineage")
+    comparison_id = str(progress_payload.get("comparison_record_id") or "").strip() if isinstance(progress_payload, dict) else ""
+    if not comparison_id:
+        raise HTTPException(409, detail="linked progress record has no comparison evidence")
+    _prior_record(
+        "FEAT-038", req.athlete_id, principal,
+        lambda r, p: r.get("record_id") == comparison_id
+        and r.get("decision_id") == progress.get("decision_id")
+        and r.get("session_id") == req.session_id,
+    )
+    if comparison_id not in req.required_evidence:
+        raise HTTPException(409, detail="required_evidence must include the linked FEAT-038 comparison record")
     return _save("FEAT-040", req.athlete_id, req.model_dump(), principal,
         decision_id=progress.get("decision_id"), session_id=req.session_id)
 
