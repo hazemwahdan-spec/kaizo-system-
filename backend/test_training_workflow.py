@@ -123,6 +123,11 @@ def test_all_feat_033_to_040_writes_require_owned_coach_and_attribute_verified_a
             payload["comparison_record_id"] = records["038"]["record_id"]
         elif feature == "040":
             payload["progress_record_id"] = records["039"]["record_id"]
+            invalid_evidence = dict(payload)
+            invalid_evidence["required_evidence"] = ["REF-016"]
+            denied = client.post(path, json=invalid_evidence, headers=COACH_HEADERS)
+            assert denied.status_code == 409, denied.text
+            payload["required_evidence"] = [records["038"]["record_id"]]
         response = client.post(path, json=payload, headers=COACH_HEADERS)
         assert response.status_code == 201, (path, response.text)
         body = response.json()
