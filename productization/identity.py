@@ -31,6 +31,7 @@ class Principal:
     resource_owner_id: str | None
     verified: bool
     source: str
+    academy_id: str | None = None
 
 
 VALID_ROLES = {"academy", "coach", "athlete", "parent", "publisher"}
@@ -72,6 +73,7 @@ def _claims_to_principal(claims: dict[str, Any]) -> Principal:
         or claims.get("kaizo_tenant_id")
     )
     owner = claims.get(f"{namespace}resource_owner_id") or claims.get("resource_owner_id")
+    academy_id = claims.get(f"{namespace}academy_id") or claims.get("academy_id")
     if not actor_id or role not in VALID_ROLES or not tenant_id:
         raise IdentityNotConfiguredError(
             "verified identity is missing required KAIZO claims: sub, role, tenant_id"
@@ -83,6 +85,7 @@ def _claims_to_principal(claims: dict[str, Any]) -> Principal:
         resource_owner_id=str(owner) if owner is not None else None,
         verified=True,
         source="oidc_jwt",
+        academy_id=str(academy_id) if academy_id is not None else None,
     )
 
 
