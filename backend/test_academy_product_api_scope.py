@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 import pytest
 from fastapi import HTTPException
 
+from main import app
 from productization import product_api
 
 
@@ -180,3 +181,11 @@ def test_academy_selector_requires_product_and_academy_read_permissions(monkeypa
         with pytest.raises(HTTPException) as exc:
             product_api.list_coach_academies(authorization="Bearer verified")
         assert exc.value.status_code == 403
+
+
+def test_academy_read_routes_are_in_the_mounted_openapi_contract():
+    paths = app.openapi()["paths"]
+    selector = paths["/api/v1/product/coach/academies"]
+    roster = paths["/api/v1/product/coach/academies/{academy_id}/athletes"]
+    assert set(selector) == {"get"}
+    assert set(roster) == {"get"}
