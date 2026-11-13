@@ -35,7 +35,7 @@ def verified(actor="auth0|coach-A", tenant="TENANT-A", role="coach", permissions
         permissions=frozenset(permissions),
     )
 
-def __test_principal(actor="auth0|coach-A", tenant="TENANT-A", role="coach"):
+def _test_principal(actor="auth0|coach-A", tenant="TENANT-A", role="coach"):
     return Principal(
         actor_id=actor,
         role=role,
