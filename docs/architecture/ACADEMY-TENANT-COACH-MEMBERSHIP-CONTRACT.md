@@ -30,9 +30,15 @@ The Academy P03 charter explicitly excluded production authentication/RBAC and d
 3. `kaizo_academy_athletes`: explicit athlete enrolment in an academy, FK constrained to the athlete's existing Coach-ownership tenant.
 4. `kaizo_academy_athlete_coach_assignments`: normalized multi-Coach assignment; every assigned Coach must have an active membership in that same tenant and academy.
 
-The existing Coach ownership row remains the primary ownership anchor and is not replaced by Academy membership. An Academy assignment grants only the Academy-scoped relationship represented here; it does not silently broaden Product API access. Product API integration must explicitly require both the verified Principal and an active assignment (or a separately approved primary-owner rule).
+The existing Coach ownership row remains the primary ownership anchor and is not replaced by Academy membership. Academy enrolment stores the explicit primary-owner Coach and uses a composite FK to the existing (tenant_id, coach_actor_id, athlete_id) ownership key. This deliberately avoids assuming that (tenant_id, athlete_id) is globally unique: the existing ownership table permits multiple Coach rows. If the tenant has zero or multiple candidate primary-owner rows for an athlete, the authenticated enrolment service fails closed rather than guessing. An Academy assignment grants only the Academy-scoped relationship represented here; it does not silently broaden Product API access.
 
-## 4. Required authorization contract before routes are enabled
+## 4. Verified Principal service boundary now implemented
+
+The additive service layer accepts a Principal-like object only when `verified=true`, `source=oidc_jwt`, the role is `academy` or `coach`, and its tenant matches the operation scope. Tenant binding requires the signed `academy` role. Membership creation, athlete enrolment, assignment, and membership lifecycle changes require either that Academy role or an active `OWNER`/`ADMIN`/`HEAD_COACH` membership. Athlete access checks require a verified Coach Principal and an active membership plus active enrolment and assignment. Development-header principals are rejected. These are service-level checks; no Academy API routes are mounted by this PR.
+
+Every authenticated mutation wrapper writes `append_tenant_audit` inside the same `persistence.atomic_transaction`. The existing persistence connection context joins nested helpers to the outer transaction, so audit failure rolls back the relationship write. PostgreSQL integration tests exercise this rollback behavior.
+
+## 5. Required authorization contract before routes are enabled
 
 For every Academy read/write:
 - Require a verified Bearer OIDC Principal; reject development headers in production.
@@ -47,16 +53,16 @@ For every Academy read/write:
 
 Suggested permission vocabulary (must be aligned with the Auth0 API contract before use): `academy:read`, `academy:manage`, `academy:assign_coach`, `academy:manage_athlete`. Do not infer permissions from display role strings alone.
 
-## 5. Migration and rollout
+## 6. Migration and rollout
 
 - Additive DDL only; no backfill or automatic tenant inference.
 - Existing Academy rows remain unbound until an authorized, reviewed mapping operation supplies the true tenant.
 - Existing JSONB multi-coach assignments are not auto-converted: their tenant and Coach identity provenance are insufficient.
-- Existing Coach ownership rows are retained; a unique (tenant_id, athlete_id) key supports an FK from academy enrolment.
+- Existing Coach ownership rows are retained. Academy enrolment uses a composite FK to the existing (tenant_id, coach_actor_id, athlete_id) unique key; it does not add a potentially invalid uniqueness assumption on (tenant_id, athlete_id).
 - Keep FEAT-061–065 routes disabled (410) until mapping, identity permissions, atomic audit, and runtime tests are accepted.
 - No production migration, secret mutation, data backfill, or deployment is included in this branch.
 
-## 6. PostgreSQL acceptance matrix
+## 7. PostgreSQL acceptance matrix
 
 - Same tenant + same academy + active membership + explicit athlete assignment: allow.
 - Same tenant + same academy + different Coach without assignment: deny.
@@ -67,8 +73,8 @@ Suggested permission vocabulary (must be aligned with the Auth0 API contract bef
 - Assignment without Academy enrolment: reject by FK.
 - Athlete enrolment without matching tenant ownership: reject by FK.
 - Revoked/suspended membership or assignment: deny.
-- Audit failure: business write rolls back (must be added with the route/audit integration phase).
+- Audit failure: business write rolls back in the verified Principal service wrappers.
 
-## 7. Current implementation boundary
+## 8. Current implementation boundary
 
 This branch adds the normalized schema helper and PostgreSQL integration tests only. It intentionally does not activate the legacy Academy router, mutate Auth0, change existing Coach ownership semantics, or access production databases.
