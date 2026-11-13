@@ -31,6 +31,12 @@ def test_academy_roster_route_is_registered_as_read_only_get():
     ]
     assert len(matches) == 1
     assert matches[0].methods == {"GET"}
+    academy_choices = [
+        route for route in product_api.router.routes
+        if getattr(route, "path", None) == "/api/v1/product/coach/academies"
+    ]
+    assert len(academy_choices) == 1
+    assert academy_choices[0].methods == {"GET"}
 
 
 def test_academy_roster_rejects_unverified_development_identity(monkeypatch):
@@ -100,3 +106,40 @@ def test_academy_roster_fails_closed_without_postgres(monkeypatch):
             "academy-request", authorization="Bearer verified",
         )
     assert exc.value.status_code == 503
+
+
+
+def test_academy_selector_uses_verified_principal_scope(monkeypatch):
+    principal = _principal()
+    captured = {}
+    monkeypatch.setattr(product_api, "_coach_scope", lambda *_args: principal)
+
+    def list_academies(**kwargs):
+        captured.update(kwargs)
+        return [{"academy_id": "academy-a", "academy_name": "Academy A"}]
+
+    monkeypatch.setattr(
+        product_api.academy_tenant_contract,
+        "list_active_academies_for_coach",
+        list_academies,
+    )
+    result = product_api.list_coach_academies(
+        authorization="Bearer verified", actor_id="spoofed",
+        role="academy", tenant_id="spoofed-tenant",
+    )
+    assert captured == {
+        "tenant_id": "tenant-from-token",
+        "coach_actor_id": "coach-from-token",
+    }
+    assert result["academies"] == [
+        {"academy_id": "academy-a", "academy_name": "Academy A"}
+    ]
+
+
+def test_academy_selector_rejects_unverified_identity(monkeypatch):
+    monkeypatch.setattr(product_api, "_coach_scope", lambda *_args: _principal(
+        verified=False, source="development_headers"
+    ))
+    with pytest.raises(HTTPException) as exc:
+        product_api.list_coach_academies(authorization=None)
+    assert exc.value.status_code == 403
