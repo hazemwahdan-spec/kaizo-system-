@@ -4,7 +4,11 @@ on:
   pull_request:
     paths:
       - "backend/academy_tenant_contract.py"
+      - "productization/identity.py"
       - "productization/product_api.py"
+      - "productization/OIDC-AUTHENTICATION-INTEGRATION-BOUNDARY.md"
+      - "productization/identity-rbac-boundary.json"
+      - "productization/test_identity.py"
       - "backend/test_academy_product_api_scope.py"
       - "backend/test_academy_tenant_contract_postgres.py"
       - "docs/architecture/ACADEMY-TENANT-COACH-MEMBERSHIP-CONTRACT.md"
