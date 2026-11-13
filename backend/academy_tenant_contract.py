@@ -550,3 +550,28 @@ def list_assigned_athletes_for_coach(
         }
         for row in rows
     ]
+
+
+
+def list_active_academies_for_coach(
+    *, tenant_id: str, coach_actor_id: str,
+) -> list[dict[str, str]]:
+    """List only active academies where this Coach has active membership."""
+    if not persistence.is_postgres_enabled():
+        raise RuntimeError("Academy roster requires PostgreSQL")
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT ta.academy_id, ac.name
+                   FROM kaizo_tenant_academies ta
+                   JOIN kaizo_academy_coach_memberships m
+                     ON m.tenant_id=ta.tenant_id AND m.academy_id=ta.academy_id
+                   JOIN kaizo_academies ac ON ac.academy_id=ta.academy_id
+                   WHERE ta.tenant_id=%s AND m.coach_actor_id=%s
+                     AND ta.status='ACTIVE' AND m.status='ACTIVE'
+                   ORDER BY ac.name, ta.academy_id
+                   FOR SHARE OF ta,m""",
+                (tenant_id, coach_actor_id),
+            )
+            rows = cur.fetchall()
+    return [{"academy_id": row[0], "academy_name": row[1]} for row in rows]
