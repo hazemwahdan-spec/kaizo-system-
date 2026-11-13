@@ -27,6 +27,43 @@ In Auth0 API Settings, enable both **RBAC** and **Add Permissions in the Access 
 
 The role and tenant custom claims must be populated only from trusted Auth0 server-side data (for example, protected `app_metadata`) by a Post Login Action. Do not source them from `user_metadata`, request headers, query parameters, or client-editable profile fields. Do not accept an ID token as an API bearer token.
 
+### Example Auth0 Post Login Action for trusted identity claims
+
+The following illustrates the claim contract. It deliberately reads only protected `app_metadata`; populate that metadata through an approved administrative provisioning process, never from a self-service profile field. Auth0's RBAC engine, not this Action, emits the standard `permissions` claim.
+
+```javascript
+exports.onExecutePostLogin = async (event, api) => {
+  const metadata = event.user.app_metadata || {};
+  const allowedRoles = new Set([
+    "academy", "coach", "athlete", "parent", "publisher"
+  ]);
+  const role = metadata.kaizo_role;
+  const tenantId = metadata.tenant_id;
+
+  if (!allowedRoles.has(role) || typeof tenantId !== "string" || !tenantId) {
+    // No KAIZO identity claims: the API rejects the token for KAIZO access.
+    return;
+  }
+
+  api.accessToken.setCustomClaim(
+    "https://kaizo.system/kaizo_role", role
+  );
+  api.accessToken.setCustomClaim(
+    "https://kaizo.system/tenant_id", tenantId
+  );
+
+  if (typeof metadata.resource_owner_id === "string" &&
+      metadata.resource_owner_id) {
+    api.accessToken.setCustomClaim(
+      "https://kaizo.system/resource_owner_id",
+      metadata.resource_owner_id
+    );
+  }
+};
+```
+
+Do not add permissions in this Action, do not accept requested scopes as proof of grant, and do not copy values from `event.user.user_metadata`. Auth0 API RBAC and role/user permission assignments remain the source of the access-token `permissions` array.
+
 ## Academy permission vocabulary
 
 These exact, case-sensitive identifiers are enforced by KAIZO:
