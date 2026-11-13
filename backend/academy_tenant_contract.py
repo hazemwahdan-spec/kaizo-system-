@@ -230,7 +230,8 @@ def _membership_role(*, tenant_id: str, academy_id: str, coach_actor_id: str) ->
             cur.execute(
                 """SELECT role FROM kaizo_academy_coach_memberships
                    WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s
-                     AND status='ACTIVE'""",
+                     AND status='ACTIVE'
+                   FOR UPDATE""",
                 (tenant_id, academy_id, coach_actor_id),
             )
             row = cur.fetchone()
