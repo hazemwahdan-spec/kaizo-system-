@@ -7,6 +7,7 @@ from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
 from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow, coach_problem_workflow, coach_diagnostic_workflow, coach_decision_workflow, coach_training_workflow, coach_problem_library_workflow, coach_progression_workflow
+from backend import academy_tenant_contract
 
 router = APIRouter(prefix="/api/v1/product", tags=["Commercial Product"])
 
@@ -311,6 +312,43 @@ def verified_coach_scope(
 
 def _coach_scope(authorization, actor_id, role, tenant_id, owner):
     return verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
+
+
+@router.get("/coach/academies/{academy_id}/athletes")
+def list_academy_assigned_coach_athletes(
+    academy_id: str,
+    authorization: str | None = Header(None, alias="Authorization"),
+    actor_id: str | None = Header(None, alias="X-KAIZO-Actor"),
+    role: str | None = Header(None, alias="X-KAIZO-Role"),
+    tenant_id: str | None = Header(None, alias="X-KAIZO-Tenant"),
+    owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
+):
+    """Read-only Academy roster limited to the verified Coach's active assignments.
+
+    This endpoint does not grant access to longitudinal Product API resources;
+    those remain protected by the existing primary-owner checks.
+    """
+    principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
+    if principal.verified is not True or principal.source != "oidc_jwt":
+        raise HTTPException(status_code=403, detail="verified OIDC Coach identity required")
+    try:
+        athletes = academy_tenant_contract.list_assigned_athletes_for_coach(
+            tenant_id=principal.tenant_id,
+            academy_id=academy_id,
+            coach_actor_id=principal.actor_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Academy roster persistence is unavailable") from exc
+    return {
+        "academy_id": academy_id,
+        "total": len(athletes),
+        "athletes": athletes,
+        "access_scope": "active_academy_assignment",
+        "longitudinal_access_granted": False,
+        "coach_final_authority": True,
+        "execution_authorized": False,
+    }
+
 
 
 @router.post("/coach/athletes", status_code=201)
