@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import main
+import persistence
 from productization import coach_assessment_workflow, coach_roster, product_api
 from productization.identity import Principal
 
@@ -270,3 +271,25 @@ def test_anonymous_invalid_and_duplicate_requests_fail_without_execution(monkeyp
     actions = [event["action"] for event in coach_assessment_workflow._MEMORY_AUDIT]
     assert "COACH_ASSESSMENT_RECORDED" in actions
     assert all(event["tenant_id"] == "ACADEMY-A" for event in coach_assessment_workflow._MEMORY_AUDIT)
+
+def test_verified_coach_requires_postgres_for_product_and_state_cycle_routes(monkeypatch):
+    c, ha, _hb, _hc, athlete, _b, _other_tenant = _setup(monkeypatch)
+    # Simulate a valid OIDC principal while durable storage is unavailable.
+    # Production must fail closed instead of silently using the memory adapter.
+    monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: False)
+
+    roster_read = c.get("/api/v1/product/coach/athletes", headers=ha)
+    athlete_write = c.post(
+        "/api/v1/product/coach/athletes",
+        headers=ha,
+        json={"display_name": "Must not be stored in memory"},
+    )
+    twin_read = c.get(
+        f"/api/v1/state-cycle/feat-042/digital-twin-state/{athlete['athlete_id']}",
+        headers=ha,
+    )
+
+    assert roster_read.status_code == 503, roster_read.text
+    assert athlete_write.status_code == 503, athlete_write.text
+    assert twin_read.status_code == 503, twin_read.text
+
