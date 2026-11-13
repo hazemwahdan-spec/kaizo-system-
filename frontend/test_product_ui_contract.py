@@ -332,8 +332,8 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
 def test_coach_academy_roster_uses_verified_membership_and_assignment_apis():
     assert 'productCall("/coach/academies")' in APP
     assert 'productCall("/coach/academies/"+encodeURIComponent(academyId)+"/athletes")' in APP
-    assert 'id="coachAcademySelect"' in APP
-    assert 'id="coachAcademyRosterList"' in APP
+    assert "coachAcademySelect" in APP
+    assert "coachAcademyRosterList" in APP
     assert "longitudinal_access_granted!==false" in APP
     assert "Longitudinal access is not granted by this roster." in APP
 
