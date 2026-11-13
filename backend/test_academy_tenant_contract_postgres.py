@@ -82,6 +82,7 @@ def _cleanup(f):
     tenant_a, tenant_b, academy_a, academy_b, coach_a, coach_b, coach_c, athlete = f
     with persistence.connection() as conn:
         with conn.cursor() as cur:
+            cur.execute("DELETE FROM kaizo_audit_logs WHERE tenant_id IN (%s,%s)", (tenant_a, tenant_b))
             cur.execute("DELETE FROM kaizo_academy_athlete_coach_assignments WHERE academy_id IN (%s,%s)",
                         (academy_a, academy_b))
             cur.execute("DELETE FROM kaizo_academy_athletes WHERE tenant_id=%s AND academy_id IN (%s,%s)",
