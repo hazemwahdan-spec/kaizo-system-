@@ -71,6 +71,10 @@ def _local_oidc_token(private_key, **overrides):
         "https://kaizo.system/kaizo_role": "coach",
         "https://kaizo.system/tenant_id": "TENANT-A",
         "https://kaizo.system/resource_owner_id": "ATHLETE-A",
+        "permissions": [
+            "academy:read", "academy:tenant:bind", "academy:membership:manage",
+            "academy:athlete:enroll", "academy:coach:assign",
+        ],
     }
     claims.update(overrides)
     return jwt.encode(
@@ -126,6 +130,40 @@ def test_valid_rs256_bearer_derives_verified_coach_and_ignores_forged_headers(mo
     assert principal.resource_owner_id == "ATHLETE-A"
     assert principal.verified is True
     assert principal.source == "oidc_jwt"
+    assert principal.permissions == frozenset({
+        "academy:read", "academy:tenant:bind", "academy:membership:manage",
+        "academy:athlete:enroll", "academy:coach:assign",
+    })
+
+
+def test_permissions_are_exact_and_require_verified_oidc_principal():
+    from types import SimpleNamespace
+    from productization.identity import principal_has_permission
+
+    principal = SimpleNamespace(
+        verified=True, source="oidc_jwt",
+        permissions=frozenset({"academy:membership:manage"}),
+    )
+    assert principal_has_permission(principal, "academy:membership:manage")
+    assert not principal_has_permission(principal, "academy:manage")
+    assert not principal_has_permission(
+        SimpleNamespace(verified=False, source="development_headers",
+                        permissions=frozenset({"academy:membership:manage"})),
+        "academy:membership:manage",
+    )
+
+
+@pytest.mark.parametrize("permissions", ["academy:read", [1], [""], None])
+def test_malformed_oidc_permissions_claim_is_rejected(permissions):
+    from productization.identity import IdentityNotConfiguredError, _claims_to_principal
+
+    with pytest.raises(IdentityNotConfiguredError, match="permissions claim"):
+        _claims_to_principal({
+            "sub": "auth0|coach",
+            "https://kaizo.system/kaizo_role": "coach",
+            "https://kaizo.system/tenant_id": "tenant-a",
+            "permissions": permissions,
+        })
 
 
 @pytest.mark.parametrize(
