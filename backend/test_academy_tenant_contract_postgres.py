@@ -347,3 +347,50 @@ def test_active_academy_membership_listing_is_tenant_and_coach_scoped():
         ) == []
     finally:
         _cleanup(f)
+
+def test_membership_lifecycle_enforces_full_delegation_hierarchy():
+    f = _fixture()
+    try:
+        tenant, _other_tenant, academy_a, _academy_b, head_coach, _coach_b, _coach_c, _athlete = f
+        admin_actor, admin_peer = _id("ADMIN"), _id("ADMIN")
+        contract.add_coach_membership(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=admin_actor,
+            role="ADMIN", actor_id=head_coach, now=_now(),
+        )
+        contract.add_coach_membership(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=admin_peer,
+            role="ADMIN", actor_id=head_coach, now=_now(),
+        )
+
+        # HEAD_COACH may manage COACH/ASSISTANT only, not ADMIN.
+        with pytest.raises(
+            contract.AcademyContractConflict, match="management scope"
+        ):
+            contract.set_membership_status_for_principal(
+                principal=_principal(head_coach, tenant),
+                academy_id=academy_a, coach_actor_id=admin_actor,
+                status="SUSPENDED", now=_now(),
+            )
+
+        # ADMIN may manage HEAD_COACH/COACH/ASSISTANT, not a peer ADMIN.
+        with pytest.raises(
+            contract.AcademyContractConflict, match="management scope"
+        ):
+            contract.set_membership_status_for_principal(
+                principal=_principal(admin_actor, tenant),
+                academy_id=academy_a, coach_actor_id=admin_peer,
+                status="REVOKED", now=_now(),
+            )
+
+        # A valid lower-level lifecycle action remains available.
+        contract.set_membership_status_for_principal(
+            principal=_principal(admin_actor, tenant),
+            academy_id=academy_a, coach_actor_id=head_coach,
+            status="SUSPENDED", now=_now(),
+        )
+        assert contract._membership_role(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=head_coach
+        ) is None
+    finally:
+        _cleanup(f)
+
