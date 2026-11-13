@@ -15,7 +15,7 @@ A tenant may own multiple academies. Each academy is bound to exactly one tenant
 
 ## 2. Existing evidence and root cause
 
-Current `kaizo_coach_athlete_ownership` stores one primary Coach per athlete with `athlete_id` as its primary key and `tenant_id + coach_actor_id` as ownership attributes. The current Coach API correctly scopes its roster by tenant, actor, and athlete.
+Current `kaizo_coach_athlete_ownership` stores one primary Coach per athlete: `athlete_id` is the primary key, with `tenant_id + coach_actor_id` as ownership attributes and a composite unique key. The current Coach API correctly scopes its roster by tenant, actor, and athlete.
 
 Current Academy Operations creates separate `kaizo_academies`, `kaizo_academy_memberships`, `kaizo_academy_groups`, and `kaizo_academy_assignments` records. These tables have no `tenant_id`, no FK to Coach ownership, and store multi-coach assignments as JSONB. `coach_id` is caller-supplied data. Its `_audit` helper swallows exceptions and does not use the atomic transaction used by Coach ownership.
 
@@ -30,7 +30,7 @@ The Academy P03 charter explicitly excluded production authentication/RBAC and d
 3. `kaizo_academy_athletes`: explicit athlete enrolment in an academy, FK constrained to the athlete's existing Coach-ownership tenant.
 4. `kaizo_academy_athlete_coach_assignments`: normalized multi-Coach assignment; every assigned Coach must have an active membership in that same tenant and academy.
 
-The existing Coach ownership row remains the primary ownership anchor and is not replaced by Academy membership. Academy enrolment stores the explicit primary-owner Coach and uses a composite FK to the existing (tenant_id, coach_actor_id, athlete_id) ownership key. This deliberately avoids assuming that (tenant_id, athlete_id) is globally unique: the existing ownership table permits multiple Coach rows. If the tenant has zero or multiple candidate primary-owner rows for an athlete, the authenticated enrolment service fails closed rather than guessing. An Academy assignment grants only the Academy-scoped relationship represented here; it does not silently broaden Product API access.
+The existing Coach ownership row remains the primary ownership anchor and is not replaced by Academy membership. Academy enrolment stores the explicit primary-owner Coach and uses a composite FK to the existing (tenant_id, coach_actor_id, athlete_id) ownership key. The existing ownership table has athlete_id as its primary key, so the current schema enforces one ownership row per athlete globally; it also declares the composite unique key (tenant_id, coach_actor_id, athlete_id). The new FK explicitly binds enrolment to that ownership Coach and tenant rather than relying on a global athlete ID alone. The service still fails closed if no unambiguous owner row is found. An Academy assignment grants only the Academy-scoped relationship represented here; it does not silently broaden Product API access.
 
 ## 4. Verified Principal service boundary now implemented
 
@@ -58,7 +58,7 @@ Suggested permission vocabulary (must be aligned with the Auth0 API contract bef
 - Additive DDL only; no backfill or automatic tenant inference.
 - Existing Academy rows remain unbound until an authorized, reviewed mapping operation supplies the true tenant.
 - Existing JSONB multi-coach assignments are not auto-converted: their tenant and Coach identity provenance are insufficient.
-- Existing Coach ownership rows are retained. Academy enrolment uses a composite FK to the existing (tenant_id, coach_actor_id, athlete_id) unique key; it does not add a potentially invalid uniqueness assumption on (tenant_id, athlete_id).
+- Existing Coach ownership rows are retained. Academy enrolment uses a composite FK to the existing (tenant_id, coach_actor_id, athlete_id) unique key and does not create any new uniqueness assumption.
 - Keep FEAT-061–065 routes disabled (410) until mapping, identity permissions, atomic audit, and runtime tests are accepted.
 - No production migration, secret mutation, data backfill, or deployment is included in this branch.
 
