@@ -426,3 +426,51 @@ def set_membership_status_for_principal(
             new_value={"academy_id": academy_id, "coach_actor_id": coach_actor_id,
                        "status": status}, now=now,
         )
+
+
+def list_assigned_athletes_for_coach(
+    *, tenant_id: str, academy_id: str, coach_actor_id: str,
+) -> list[dict[str, Any]]:
+    """List minimal roster data for one active, assigned Coach in one Academy.
+
+    This is deliberately not the longitudinal Coach resource API. Every join
+    is constrained by the verified principal's tenant, academy, actor and
+    active membership/enrolment/assignment state.
+    """
+    if not persistence.is_postgres_enabled():
+        raise RuntimeError("Academy roster requires PostgreSQL")
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT a.athlete_id, a.display_name, a.status,
+                          aa.academy_id, aa.status AS enrolment_status,
+                          ass.status AS assignment_status
+                   FROM kaizo_tenant_academies ta
+                   JOIN kaizo_academy_coach_memberships m
+                     ON m.tenant_id=ta.tenant_id AND m.academy_id=ta.academy_id
+                   JOIN kaizo_academy_athletes aa
+                     ON aa.tenant_id=ta.tenant_id AND aa.academy_id=ta.academy_id
+                   JOIN kaizo_academy_athlete_coach_assignments ass
+                     ON ass.tenant_id=aa.tenant_id AND ass.academy_id=aa.academy_id
+                    AND ass.athlete_id=aa.athlete_id
+                    AND ass.coach_actor_id=m.coach_actor_id
+                   JOIN kaizo_athletes a ON a.athlete_id=aa.athlete_id
+                   WHERE ta.tenant_id=%s AND ta.academy_id=%s
+                     AND m.coach_actor_id=%s
+                     AND ta.status='ACTIVE' AND m.status='ACTIVE'
+                     AND aa.status='ACTIVE' AND ass.status='ACTIVE'
+                   ORDER BY a.display_name, a.athlete_id""",
+                (tenant_id, academy_id, coach_actor_id),
+            )
+            rows = cur.fetchall()
+    return [
+        {
+            "athlete_id": row[0],
+            "display_name": row[1],
+            "status": row[2],
+            "academy_id": row[3],
+            "enrolment_status": row[4],
+            "assignment_status": row[5],
+        }
+        for row in rows
+    ]
