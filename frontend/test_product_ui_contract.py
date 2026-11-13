@@ -342,3 +342,10 @@ def test_academy_assigned_roster_does_not_link_into_primary_owner_longitudinal_w
     assert "loadCoachAcademyAssignedRoster" in APP
     assert 'viewCoachAthlete(a.athlete_id)' not in APP
     assert 'productCall("/coach/academies/"+encodeURIComponent(academyId)+"/athletes")' in APP
+
+
+def test_auth0_requests_product_and_academy_read_for_each_token_flow():
+    auth = (ROOT / "frontend" / "auth.js").read_text()
+    assert 'scope: "product academy:read"' in auth
+    assert 'getTokenSilently({ authorizationParams: authorizationParams() })' in auth
+    assert 'loginWithRedirect({ authorizationParams: authorizationParams() })' in auth
