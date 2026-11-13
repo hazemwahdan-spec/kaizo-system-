@@ -14,6 +14,7 @@ os.environ.setdefault("KAIZO_PERSISTENCE_MODE", "postgres")
 import persistence
 import academy_ops_runtime
 import academy_tenant_contract as contract
+from productization.identity import Principal
 
 
 pytestmark = pytest.mark.skipif(
@@ -70,7 +71,8 @@ def _fixture():
     contract.add_coach_membership(tenant_id=tenant_a, academy_id=academy_b,
                                   coach_actor_id=coach_c, role="COACH", actor_id=coach_a, now=now)
     contract.enroll_athlete(tenant_id=tenant_a, academy_id=academy_a,
-                            athlete_id=athlete, actor_id=coach_a, now=now)
+                            athlete_id=athlete, owner_coach_actor_id=coach_a,
+                            actor_id=coach_a, now=now)
     contract.assign_coach(tenant_id=tenant_a, academy_id=academy_a, athlete_id=athlete,
                           coach_actor_id=coach_a, actor_id=coach_a, now=now)
     return tenant_a, tenant_b, academy_a, academy_b, coach_a, coach_b, coach_c, athlete
@@ -170,5 +172,103 @@ def test_assignment_requires_active_membership_and_enrollment():
             tenant_id=tenant, academy_id=academy_a, coach_actor_id=coach_b,
             athlete_id=f[-1]
         )
+    finally:
+        _cleanup(f)
+
+
+def _principal(actor_id, tenant_id, role="coach", verified=True, source="oidc_jwt"):
+    return Principal(
+        actor_id=actor_id, role=role, tenant_id=tenant_id,
+        resource_owner_id=None, verified=verified, source=source,
+    )
+
+
+def test_verified_principal_service_enforces_assignment_and_writes_tenant_audit():
+    f = _fixture()
+    try:
+        tenant, _other_tenant, academy_a, _academy_b, coach_a, coach_b, _coach_c, athlete = f
+        principal = _principal(coach_a, tenant)
+        assert contract.principal_can_access_athlete(
+            principal=principal, academy_id=academy_a, athlete_id=athlete
+        )
+        contract.assign_coach_for_principal(
+            principal=principal, academy_id=academy_a, athlete_id=athlete,
+            coach_actor_id=coach_b, now=_now(),
+        )
+        assert contract.principal_can_access_athlete(
+            principal=_principal(coach_b, tenant), academy_id=academy_a, athlete_id=athlete
+        )
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT action, who, tenant_id FROM kaizo_audit_logs "
+                    "WHERE tenant_id=%s AND action='ACADEMY_ATHLETE_COACH_ASSIGNED' ORDER BY id DESC LIMIT 1",
+                    (tenant,),
+                )
+                row = cur.fetchone()
+        assert row == ("ACADEMY_ATHLETE_COACH_ASSIGNED", coach_a, tenant)
+    finally:
+        _cleanup(f)
+
+
+def test_unverified_or_wrong_tenant_principal_cannot_access_athlete():
+    f = _fixture()
+    try:
+        tenant, other_tenant, academy_a, _academy_b, coach_a, _coach_b, _coach_c, athlete = f
+        assert not contract.principal_can_access_athlete(
+            principal=_principal(coach_a, tenant, verified=False),
+            academy_id=academy_a, athlete_id=athlete,
+        )
+        assert not contract.principal_can_access_athlete(
+            principal=_principal(coach_a, other_tenant),
+            academy_id=academy_a, athlete_id=athlete,
+        )
+        assert not contract.principal_can_access_athlete(
+            principal=_principal(coach_a, tenant, role="academy"),
+            academy_id=academy_a, athlete_id=athlete,
+        )
+    finally:
+        _cleanup(f)
+
+
+def test_audit_failure_rolls_back_coach_assignment(monkeypatch):
+    f = _fixture()
+    try:
+        tenant, _other_tenant, academy_a, _academy_b, coach_a, coach_b, _coach_c, athlete = f
+        def fail_audit(**_kwargs):
+            raise RuntimeError("simulated durable audit failure")
+        monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.assign_coach_for_principal(
+                principal=_principal(coach_a, tenant), academy_id=academy_a,
+                athlete_id=athlete, coach_actor_id=coach_b, now=_now(),
+            )
+        assert not contract.coach_can_access_athlete(
+            tenant_id=tenant, academy_id=academy_a,
+            coach_actor_id=coach_b, athlete_id=athlete,
+        )
+    finally:
+        _cleanup(f)
+
+
+def test_enrollment_rejects_ambiguous_primary_owner_mapping():
+    f = _fixture()
+    try:
+        tenant, _other_tenant, academy_a, _academy_b, coach_a, coach_b, _coach_c, athlete = f
+        now = _now()
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO kaizo_coach_athlete_ownership
+                       (athlete_id,tenant_id,coach_actor_id,assigned_at)
+                       VALUES (%s,%s,%s,%s)""",
+                    (athlete, tenant, coach_b, now),
+                )
+            conn.commit()
+        with pytest.raises(contract.AcademyContractConflict, match="unambiguous"):
+            contract.enroll_athlete_for_principal(
+                principal=_principal(coach_a, tenant), academy_id=academy_a,
+                athlete_id=athlete, now=now,
+            )
     finally:
         _cleanup(f)
