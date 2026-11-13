@@ -184,7 +184,7 @@ ALL_ACADEMY_PERMISSIONS = frozenset({
 
 
 def _principal(actor_id, tenant_id, role="coach", verified=True, source="oidc_jwt",
-               permissions=ALL_ACADEMY_PERMISSIONS):
+               permissions=ALL_ACADEMY_PERMISSIONS, academy_id=None):
     return SimpleNamespace(
         actor_id=actor_id, role=role, tenant_id=tenant_id,
         resource_owner_id=None, verified=verified, source=source,
