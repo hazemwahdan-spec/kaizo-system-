@@ -339,3 +339,16 @@ def test_auth0_requests_product_permission_for_login_and_silent_tokens():
     assert 'authorizationParams: authorizationParams()' in AUTH
     assert 'getAccessTokenSilently: () => client.getTokenSilently({ authorizationParams: authorizationParams() })' in AUTH
     assert 'loginWithRedirect: () => client.loginWithRedirect({ authorizationParams: authorizationParams() })' in AUTH
+
+
+def test_coach_ui_links_recorded_decision_to_owned_digital_twin_state():
+    assert 'currentCoachTwinStateVersion' in APP
+    assert 'currentCoachDecisionId' in APP
+    assert 'stateCycleCall("/state-cycle/feat-044/decision-state-link"' in APP
+    assert 'stateCycleCall("/state-cycle/feat-044/decision-state-link/"+encodeURIComponent(decisionId)+"?athlete_id="+encodeURIComponent(athleteId))' in APP
+    assert 'stateCycleCall("/state-cycle/feat-045/next-state"' in APP
+    assert 'state_ref:stateRef' in APP
+    assert 'decision_id:decisionId' in APP
+    assert 'function linkCoachDecisionToDigitalTwinState()' in APP
+    assert 'function loadCoachNextState()' in APP
+    assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
