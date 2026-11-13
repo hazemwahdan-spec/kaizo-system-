@@ -62,12 +62,12 @@ def _fixture():
             )
         conn.commit()
     contract.bind_academy(tenant_id=tenant_a, academy_id=academy_a, actor_id=coach_a, now=now)
-    contract.bind_academy(tenant_id=tenant_b, academy_id=academy_b, actor_id=coach_a, now=now)
+    contract.bind_academy(tenant_id=tenant_a, academy_id=academy_b, actor_id=coach_a, now=now)
     contract.add_coach_membership(tenant_id=tenant_a, academy_id=academy_a,
                                   coach_actor_id=coach_a, role="HEAD_COACH", actor_id=coach_a, now=now)
     contract.add_coach_membership(tenant_id=tenant_a, academy_id=academy_a,
                                   coach_actor_id=coach_b, role="COACH", actor_id=coach_a, now=now)
-    contract.add_coach_membership(tenant_id=tenant_b, academy_id=academy_b,
+    contract.add_coach_membership(tenant_id=tenant_a, academy_id=academy_b,
                                   coach_actor_id=coach_c, role="COACH", actor_id=coach_a, now=now)
     contract.enroll_athlete(tenant_id=tenant_a, academy_id=academy_a,
                             athlete_id=athlete, actor_id=coach_a, now=now)
@@ -80,12 +80,12 @@ def _cleanup(f):
     tenant_a, tenant_b, academy_a, academy_b, coach_a, coach_b, coach_c, athlete = f
     with persistence.connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM kaizo_academy_athlete_coach_assignments WHERE tenant_id=%s AND academy_id IN (%s,%s)",
-                        (tenant_a, academy_a, academy_b))
+            cur.execute("DELETE FROM kaizo_academy_athlete_coach_assignments WHERE academy_id IN (%s,%s)",
+                        (academy_a, academy_b))
             cur.execute("DELETE FROM kaizo_academy_athletes WHERE tenant_id=%s AND academy_id IN (%s,%s)",
                         (tenant_a, academy_a, academy_b))
-            cur.execute("DELETE FROM kaizo_academy_coach_memberships WHERE tenant_id=%s AND academy_id IN (%s,%s)",
-                        (tenant_a, academy_a, academy_b))
+            cur.execute("DELETE FROM kaizo_academy_coach_memberships WHERE academy_id IN (%s,%s)",
+                        (academy_a, academy_b))
             cur.execute("DELETE FROM kaizo_tenant_academies WHERE academy_id IN (%s,%s)",
                         (academy_a, academy_b))
             cur.execute("DELETE FROM kaizo_coach_athlete_ownership WHERE athlete_id=%s", (athlete,))
@@ -104,8 +104,9 @@ def test_cross_coach_and_cross_academy_isolation():
         assert not contract.coach_can_access_athlete(
             tenant_id=tenant, academy_id=academy_a, coach_actor_id=coach_b, athlete_id=athlete
         )
+        # Coach C is an active member of another Academy in the same Tenant, but the athlete is not enrolled there.
         assert not contract.coach_can_access_athlete(
-            tenant_id=other_tenant, academy_id=academy_b, coach_actor_id=coach_c, athlete_id=athlete
+            tenant_id=tenant, academy_id=academy_b, coach_actor_id=coach_c, athlete_id=athlete
         )
     finally:
         _cleanup(f)
@@ -116,7 +117,7 @@ def test_cross_tenant_and_wrong_academy_are_denied():
     try:
         tenant, other_tenant, academy_a, academy_b, coach_a, _coach_b, coach_c, athlete = f
         assert not contract.coach_can_access_athlete(
-            tenant_id=other_tenant, academy_id=academy_b, coach_actor_id=coach_c, athlete_id=athlete
+            tenant_id=other_tenant, academy_id=academy_a, coach_actor_id=coach_a, athlete_id=athlete
         )
         assert not contract.coach_can_access_athlete(
             tenant_id=tenant, academy_id=academy_b, coach_actor_id=coach_a, athlete_id=athlete
