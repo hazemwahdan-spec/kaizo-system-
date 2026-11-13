@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
-from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
+from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token, principal_has_permission
 from . import coach_roster, coach_groups, coach_priority_queue, coach_decision_workspace, coach_action_history, coach_audit_review, coach_product_action_traceability, coach_decision_cycles, coach_assessment_workflow, coach_problem_workflow, coach_diagnostic_workflow, coach_decision_workflow, coach_training_workflow, coach_problem_library_workflow, coach_progression_workflow
 import academy_tenant_contract
 
@@ -326,6 +326,8 @@ def list_coach_academies(
     principal = _coach_scope(authorization, actor_id, role, tenant_id, owner)
     if principal.verified is not True or principal.source != "oidc_jwt":
         raise HTTPException(status_code=403, detail="verified OIDC Coach identity required")
+    if not principal_has_permission(principal, "academy:read"):
+        raise HTTPException(status_code=403, detail="academy:read permission required")
     try:
         academies = academy_tenant_contract.list_active_academies_for_coach(
             tenant_id=principal.tenant_id,
