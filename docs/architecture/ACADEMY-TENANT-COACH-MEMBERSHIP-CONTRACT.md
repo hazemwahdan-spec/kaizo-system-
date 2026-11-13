@@ -40,14 +40,16 @@ Every authenticated mutation wrapper writes `append_tenant_audit` inside the sam
 
 ## 5. Narrow Product API integration
 
-The branch now exposes one read-only route:
-`GET /api/v1/product/coach/academies/{academy_id}/athletes`.
+The branch now exposes two read-only routes:
+- `GET /api/v1/product/coach/academies`: lists only active Academy memberships of the verified Coach.
+- `GET /api/v1/product/coach/academies/{academy_id}/athletes`: lists only active athlete assignments for that Coach in the selected Academy.
 
 - The handler obtains its Coach Principal through the existing Coach identity boundary and additionally requires `verified=true` and `source=oidc_jwt`; development/header identities are rejected.
 - `tenant_id` and `coach_actor_id` are taken only from the verified Principal. Caller-supplied identity headers are not used as authority.
 - The SQL query joins tenant binding, active membership, active athlete enrolment, active assignment, and athlete profile. All joins and filters are scoped by the verified tenant, requested academy, and verified Coach subject.
 - The response contains only minimal roster fields and explicitly reports `longitudinal_access_granted=false`.
-- PostgreSQL is mandatory; if persistence is unavailable, the route returns 503 rather than falling back to memory.
+- PostgreSQL is mandatory; if persistence is unavailable, either route returns 503 rather than falling back to memory.
+- Coach UI now loads the verified Coach's Academy memberships, lets the Coach select an Academy, and displays only the minimal assigned roster. It does not navigate secondary-assigned athletes into the primary-owner longitudinal workspace.
 - Existing `/coach/athletes` and longitudinal Product API routes remain primary-owner scoped. No write route or secondary-Coach access to decisions, assessments, training, KPI, audit, or Digital Twin data is introduced.
 
 This is a deliberately narrow first integration, not activation of the legacy Academy Ops router and not completion of the full Academy feature surface.
