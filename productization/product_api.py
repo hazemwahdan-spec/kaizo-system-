@@ -3,6 +3,8 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
+import persistence
+
 from .product_surface import ProductSurface
 from .runtime_adapter import ProductCoreRuntimeAdapter, RuntimeAuthorizationError, RuntimeContext
 from .identity import IdentityNotConfiguredError, resolve_principal, resolve_bearer_principal, verify_bearer_token
@@ -314,6 +316,11 @@ def verified_coach_scope(
     if not principal.actor_id or not principal.tenant_id:
         raise HTTPException(status_code=403, detail="Coach tenant scope required")
     require_product_permission(principal)
+    # A verified production Coach must never fall back to process-local memory.
+    # This single guard protects Product API, FEAT-033..040 and FEAT-042..045
+    # because all three surfaces share verified_coach_scope.
+    if principal.verified and not persistence.is_postgres_enabled():
+        raise HTTPException(status_code=503, detail="durable Coach API requires PostgreSQL")
     return principal
 
 
