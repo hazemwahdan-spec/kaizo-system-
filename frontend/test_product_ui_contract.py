@@ -335,7 +335,7 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
 
 
 def test_auth0_requests_product_permission_for_login_and_silent_tokens():
-    assert 'scope: "product"' in AUTH
+    assert 'scope: "product academy:read"' in AUTH
     assert 'authorizationParams: authorizationParams()' in AUTH
     assert 'getAccessTokenSilently: () => client.getTokenSilently({ authorizationParams: authorizationParams() })' in AUTH
     assert 'loginWithRedirect: () => client.loginWithRedirect({ authorizationParams: authorizationParams() })' in AUTH

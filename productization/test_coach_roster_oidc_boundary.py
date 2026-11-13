@@ -35,7 +35,7 @@ def verified(actor="auth0|coach-A", tenant="TENANT-A", role="coach", permissions
         permissions=frozenset(permissions),
     )
 
-def test_principal(actor="auth0|coach-A", tenant="TENANT-A", role="coach"):
+def __test_principal(actor="auth0|coach-A", tenant="TENANT-A", role="coach"):
     return Principal(
         actor_id=actor,
         role=role,
@@ -57,7 +57,7 @@ def test_stubbed_principal_ignores_spoofed_identity_headers(monkeypatch):
     monkeypatch.setattr(
         product_api,
         "resolve_bearer_principal",
-        lambda authorization: test_principal(),
+        lambda authorization: _test_principal(),
     )
     response = client().post(
         "/api/v1/product/coach/athletes",
