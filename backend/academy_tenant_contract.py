@@ -282,6 +282,20 @@ def add_coach_membership_for_principal(
     role: str, now: str,
 ) -> str:
     _require_academy_manager(principal, principal.tenant_id, academy_id)
+    if principal.role != "academy":
+        actor_membership_role = _membership_role(
+            tenant_id=principal.tenant_id, academy_id=academy_id,
+            coach_actor_id=principal.actor_id,
+        )
+        permitted_roles = {
+            "OWNER": {"ADMIN", "HEAD_COACH", "COACH", "ASSISTANT"},
+            "ADMIN": {"HEAD_COACH", "COACH", "ASSISTANT"},
+            "HEAD_COACH": {"COACH", "ASSISTANT"},
+        }
+        if role not in permitted_roles.get(actor_membership_role, set()):
+            raise AcademyContractConflict(
+                "membership role exceeds the authenticated Coach's delegation authority"
+            )
     with persistence.atomic_transaction():
         membership_id = add_coach_membership(
             tenant_id=principal.tenant_id, academy_id=academy_id,
@@ -383,6 +397,22 @@ def set_membership_status_for_principal(
             if row is None:
                 raise AcademyContractConflict("Coach membership not found")
             old_status = str(row[0])
+            cur.execute(
+                """SELECT role FROM kaizo_academy_coach_memberships
+                   WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s""",
+                (principal.tenant_id, academy_id, coach_actor_id),
+            )
+            target_role_row = cur.fetchone()
+            target_role = str(target_role_row[0]) if target_role_row else ""
+            if principal.role != "academy":
+                actor_role = _membership_role(
+                    tenant_id=principal.tenant_id, academy_id=academy_id,
+                    coach_actor_id=principal.actor_id,
+                )
+                if target_role == "OWNER" or actor_role == "HEAD_COACH" and target_role not in {"COACH", "ASSISTANT"}:
+                    raise AcademyContractConflict(
+                        "Coach membership role is outside the authenticated actor's management scope"
+                    )
             cur.execute(
                 """UPDATE kaizo_academy_coach_memberships SET status=%s
                    WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s""",
