@@ -177,10 +177,18 @@ def test_assignment_requires_active_membership_and_enrollment():
         _cleanup(f)
 
 
-def _principal(actor_id, tenant_id, role="coach", verified=True, source="oidc_jwt"):
+ALL_ACADEMY_PERMISSIONS = frozenset({
+    "academy:read", "academy:tenant:bind", "academy:membership:manage",
+    "academy:athlete:enroll", "academy:coach:assign",
+})
+
+
+def _principal(actor_id, tenant_id, role="coach", verified=True, source="oidc_jwt",
+               permissions=ALL_ACADEMY_PERMISSIONS):
     return SimpleNamespace(
         actor_id=actor_id, role=role, tenant_id=tenant_id,
         resource_owner_id=None, verified=verified, source=source,
+        permissions=permissions,
     )
 
 
@@ -393,4 +401,49 @@ def test_membership_lifecycle_enforces_full_delegation_hierarchy():
         ) is None
     finally:
         _cleanup(f)
+
+def test_academy_mutations_deny_missing_explicit_oidc_permissions_before_database_access():
+    principal = _principal(
+        "coach-no-permissions", "tenant-a", permissions=frozenset()
+    )
+    with pytest.raises(
+        contract.AcademyContractConflict, match="academy:membership:manage"
+    ):
+        contract.add_coach_membership_for_principal(
+            principal=principal, academy_id="academy-a",
+            coach_actor_id="coach-b", role="COACH", now=_now(),
+        )
+    with pytest.raises(
+        contract.AcademyContractConflict, match="academy:athlete:enroll"
+    ):
+        contract.enroll_athlete_for_principal(
+            principal=principal, academy_id="academy-a",
+            athlete_id="athlete-a", now=_now(),
+        )
+    with pytest.raises(
+        contract.AcademyContractConflict, match="academy:coach:assign"
+    ):
+        contract.assign_coach_for_principal(
+            principal=principal, academy_id="academy-a",
+            athlete_id="athlete-a", coach_actor_id="coach-b", now=_now(),
+        )
+    with pytest.raises(
+        contract.AcademyContractConflict, match="academy:membership:manage"
+    ):
+        contract.set_membership_status_for_principal(
+            principal=principal, academy_id="academy-a",
+            coach_actor_id="coach-b", status="REVOKED", now=_now(),
+        )
+
+
+def test_academy_tenant_binding_requires_explicit_oidc_permission():
+    principal = _principal(
+        "academy-admin", "tenant-a", role="academy", permissions=frozenset()
+    )
+    with pytest.raises(
+        contract.AcademyContractConflict, match="academy:tenant:bind"
+    ):
+        contract.bind_academy_for_principal(
+            principal=principal, academy_id="academy-a", now=_now()
+        )
 
