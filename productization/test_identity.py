@@ -70,6 +70,7 @@ def _local_oidc_token(private_key, **overrides):
         "exp": now + 300,
         "https://kaizo.system/kaizo_role": "coach",
         "https://kaizo.system/tenant_id": "TENANT-A",
+        "https://kaizo.system/academy_id": "ACADEMY-A",
         "https://kaizo.system/resource_owner_id": "ATHLETE-A",
         "permissions": [
             "academy:read", "academy:tenant:bind", "academy:membership:manage",
@@ -127,6 +128,7 @@ def test_valid_rs256_bearer_derives_verified_coach_and_ignores_forged_headers(mo
     assert principal.actor_id == "auth0|verified-coach"
     assert principal.role == "coach"
     assert principal.tenant_id == "TENANT-A"
+    assert principal.academy_id == "ACADEMY-A"
     assert principal.resource_owner_id == "ATHLETE-A"
     assert principal.verified is True
     assert principal.source == "oidc_jwt"

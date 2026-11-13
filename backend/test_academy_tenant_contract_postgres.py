@@ -188,7 +188,7 @@ def _principal(actor_id, tenant_id, role="coach", verified=True, source="oidc_jw
     return SimpleNamespace(
         actor_id=actor_id, role=role, tenant_id=tenant_id,
         resource_owner_id=None, verified=verified, source=source,
-        permissions=permissions,
+        permissions=permissions, academy_id=academy_id,
     )
 
 
@@ -446,4 +446,189 @@ def test_academy_tenant_binding_requires_explicit_oidc_permission():
         contract.bind_academy_for_principal(
             principal=principal, academy_id="academy-a", now=_now()
         )
+
+
+def test_academy_principal_is_confined_to_its_signed_academy_claim():
+    f = _fixture()
+    try:
+        tenant, _other_tenant, academy_a, academy_b, coach_a, *_rest = f
+        principal = _principal(coach_a, tenant, role="academy", academy_id=academy_a)
+        new_coach = _id("NEWCOACH")
+        contract.add_coach_membership_for_principal(
+            principal=principal, academy_id=academy_a,
+            coach_actor_id=new_coach, role="COACH", now=_now(),
+        )
+        with pytest.raises(contract.AcademyContractConflict, match="signed academy_id"):
+            contract.add_coach_membership_for_principal(
+                principal=principal, academy_id=academy_b,
+                coach_actor_id=_id("CROSSACADEMY"), role="COACH", now=_now(),
+            )
+        with pytest.raises(contract.AcademyContractConflict, match="signed academy_id"):
+            contract.add_coach_membership_for_principal(
+                principal=_principal(coach_a, tenant, role="academy"),
+                academy_id=academy_a, coach_actor_id=_id("NOCLAIM"),
+                role="COACH", now=_now(),
+            )
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT academy_id FROM kaizo_academy_coach_memberships "
+                    "WHERE tenant_id=%s AND coach_actor_id=%s",
+                    (tenant, new_coach),
+                )
+                rows = cur.fetchall()
+        assert rows == [(academy_a,)]
+    finally:
+        _cleanup(f)
+
+
+def test_membership_status_changes_obey_the_same_delegation_hierarchy():
+    f = _fixture()
+    try:
+        tenant, _other_tenant, academy_a, _academy_b, coach_a, coach_b, _coach_c, _athlete = f
+        admin_a, admin_b, owner = _id("ADMIN"), _id("ADMIN"), _id("OWNER")
+        contract.add_coach_membership(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=admin_a,
+            role="ADMIN", actor_id=coach_a, now=_now(),
+        )
+        contract.add_coach_membership(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=admin_b,
+            role="ADMIN", actor_id=coach_a, now=_now(),
+        )
+        contract.add_coach_membership(
+            tenant_id=tenant, academy_id=academy_a, coach_actor_id=owner,
+            role="OWNER", actor_id=coach_a, now=_now(),
+        )
+        with pytest.raises(contract.AcademyContractConflict, match="management scope"):
+            contract.set_membership_status_for_principal(
+                principal=_principal(admin_a, tenant), academy_id=academy_a,
+                coach_actor_id=owner, status="REVOKED", now=_now(),
+            )
+        with pytest.raises(contract.AcademyContractConflict, match="management scope"):
+            contract.set_membership_status_for_principal(
+                principal=_principal(admin_a, tenant), academy_id=academy_a,
+                coach_actor_id=admin_b, status="REVOKED", now=_now(),
+            )
+        with pytest.raises(contract.AcademyContractConflict, match="management scope"):
+            contract.set_membership_status_for_principal(
+                principal=_principal(coach_a, tenant), academy_id=academy_a,
+                coach_actor_id=admin_a, status="REVOKED", now=_now(),
+            )
+        contract.set_membership_status_for_principal(
+            principal=_principal(coach_a, tenant), academy_id=academy_a,
+            coach_actor_id=coach_b, status="SUSPENDED", now=_now(),
+        )
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT status FROM kaizo_academy_coach_memberships "
+                    "WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s",
+                    (tenant, academy_a, coach_b),
+                )
+                assert cur.fetchone() == ("SUSPENDED",)
+    finally:
+        _cleanup(f)
+
+
+def test_all_principal_mutations_roll_back_when_tenant_audit_fails(monkeypatch):
+    f = _fixture()
+    tenant, _other_tenant, academy_a, _academy_b, coach_a, coach_b, _coach_c, athlete = f
+    new_coach, new_athlete, new_academy = _id("NEWCOACH"), _id("ATHLETE"), _id("ACADEMY")
+    now = _now()
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_academies
+                   (academy_id,name,status,owner_id,created_at,updated_at)
+                   VALUES (%s,%s,'ACTIVE',%s,%s,%s)""",
+                (new_academy, new_academy, coach_a, now, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_athletes
+                   (athlete_id,display_name,status,metadata,created_at,updated_at)
+                   VALUES (%s,'Rollback athlete','ACTIVE','{}'::jsonb,%s,%s)""",
+                (new_athlete, now, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_coach_athlete_ownership
+                   (athlete_id,tenant_id,coach_actor_id,assigned_at)
+                   VALUES (%s,%s,%s,%s)""",
+                (new_athlete, tenant, coach_a, now),
+            )
+        conn.commit()
+
+    def fail_audit(**_kwargs):
+        raise RuntimeError("simulated durable audit failure")
+
+    monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+    academy_principal = _principal(coach_a, tenant, role="academy", academy_id=academy_a)
+    new_academy_principal = _principal(coach_a, tenant, role="academy", academy_id=new_academy)
+
+    try:
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.bind_academy_for_principal(
+                principal=new_academy_principal, academy_id=new_academy, now=now,
+            )
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.add_coach_membership_for_principal(
+                principal=academy_principal, academy_id=academy_a,
+                coach_actor_id=new_coach, role="COACH", now=now,
+            )
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.enroll_athlete_for_principal(
+                principal=academy_principal, academy_id=academy_a,
+                athlete_id=new_athlete, now=now,
+            )
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.assign_coach_for_principal(
+                principal=academy_principal, academy_id=academy_a,
+                athlete_id=athlete, coach_actor_id=coach_b, now=now,
+            )
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.set_membership_status_for_principal(
+                principal=academy_principal, academy_id=academy_a,
+                coach_actor_id=coach_b, status="SUSPENDED", now=now,
+            )
+
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM kaizo_tenant_academies WHERE academy_id=%s",
+                    (new_academy,),
+                )
+                assert cur.fetchone() is None
+                cur.execute(
+                    "SELECT 1 FROM kaizo_academy_coach_memberships "
+                    "WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s",
+                    (tenant, academy_a, new_coach),
+                )
+                assert cur.fetchone() is None
+                cur.execute(
+                    "SELECT 1 FROM kaizo_academy_athletes "
+                    "WHERE tenant_id=%s AND academy_id=%s AND athlete_id=%s",
+                    (tenant, academy_a, new_athlete),
+                )
+                assert cur.fetchone() is None
+                cur.execute(
+                    "SELECT 1 FROM kaizo_academy_athlete_coach_assignments "
+                    "WHERE tenant_id=%s AND academy_id=%s AND athlete_id=%s AND coach_actor_id=%s",
+                    (tenant, academy_a, athlete, coach_b),
+                )
+                assert cur.fetchone() is None
+                cur.execute(
+                    "SELECT status FROM kaizo_academy_coach_memberships "
+                    "WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s",
+                    (tenant, academy_a, coach_b),
+                )
+                assert cur.fetchone() == ("ACTIVE",)
+    finally:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM kaizo_academy_athletes WHERE athlete_id=%s", (new_athlete,))
+                cur.execute("DELETE FROM kaizo_coach_athlete_ownership WHERE athlete_id=%s", (new_athlete,))
+                cur.execute("DELETE FROM kaizo_athletes WHERE athlete_id=%s", (new_athlete,))
+                cur.execute("DELETE FROM kaizo_tenant_academies WHERE academy_id=%s", (new_academy,))
+                cur.execute("DELETE FROM kaizo_academies WHERE academy_id=%s", (new_academy,))
+            conn.commit()
+        _cleanup(f)
 
