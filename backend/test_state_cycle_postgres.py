@@ -72,7 +72,7 @@ def test_state_history_and_tenant_audit_persist_under_verified_scope():
     assert client.get(f"/api/v1/state-cycle/feat-043/state-history/{athlete}",headers=other).status_code==404
 
 
-def test_digital_twin_rejects_missing_unverified_foreign_and_e0_evidence():
+def test_digital_twin_rejects_missing_unverified_foreign_wrong_coach_and_e0_evidence():
     tenant,coach,athlete,headers,payload=_fixture()
     foreign=coach_roster.create_owned_athlete(
         tenant_id=tenant,coach_actor_id=coach+"-OTHER",
@@ -80,6 +80,7 @@ def test_digital_twin_rejects_missing_unverified_foreign_and_e0_evidence():
     )
     unverified="EVIDENCE-UNVERIFIED-"+uuid4().hex
     foreign_evidence="EVIDENCE-FOREIGN-"+uuid4().hex
+    wrong_coach="EVIDENCE-WRONG-COACH-"+uuid4().hex
     e0="EVIDENCE-E0-"+uuid4().hex
     now="2026-11-14T00:00:00+00:00"
     with persistence.connection() as conn:
@@ -91,9 +92,11 @@ def test_digital_twin_rejects_missing_unverified_foreign_and_e0_evidence():
                    VALUES
                    (%s,'athlete',%s,'E3','UNVERIFIED',%s,'Unverified fixture',%s,%s,'test'),
                    (%s,'athlete',%s,'E3','VERIFIED',%s,'Foreign athlete fixture',%s,%s,'test'),
+                   (%s,'athlete',%s,'E3','VERIFIED',%s,'Wrong Coach fixture',%s,%s,'test'),
                    (%s,'athlete',%s,'E0','VERIFIED',%s,'E0 fixture',%s,%s,'test')""",
                 (unverified,athlete,"fixture:"+unverified,coach,now,
                  foreign_evidence,foreign["athlete_id"],"fixture:"+foreign_evidence,coach,now,
+                 wrong_coach,athlete,"fixture:"+wrong_coach,coach+"-OTHER",now,
                  e0,athlete,"fixture:"+e0,coach,now),
             )
         conn.commit()
@@ -101,6 +104,7 @@ def test_digital_twin_rejects_missing_unverified_foreign_and_e0_evidence():
         "MISSING-EVIDENCE-"+uuid4().hex,
         unverified,
         foreign_evidence,
+        wrong_coach,
         e0,
         payload["evidence_refs"][0] + "-duplicate",
     ]
