@@ -179,6 +179,83 @@ def _save_with_owned_session(
         return _save(feature_id, athlete_id, payload, principal, decision_id, session_id)
 
 
+
+def _validate_decision_evidence_refs(
+    principal: Any,
+    athlete_id: str,
+    decision_id: str,
+    evidence_refs: List[str],
+    *,
+    required: bool = False,
+) -> List[str]:
+    refs = [str(item).strip() for item in (evidence_refs or [])]
+    if required and not refs:
+        raise HTTPException(status_code=409, detail="verified evidence references are required")
+    if not refs:
+        return []
+    if any(not item for item in refs) or len(refs) != len(set(refs)):
+        raise HTTPException(status_code=409, detail="evidence references must be non-empty and unique")
+    if not persistence.is_postgres_enabled():
+        # Development memory requests are unverified; production OIDC is PostgreSQL-only.
+        return refs
+    decision = coach_decision_workflow.get_recorded_decision_for_scope(
+        tenant_id=principal.tenant_id,
+        coach_actor_id=principal.actor_id,
+        athlete_id=athlete_id,
+        decision_id=decision_id,
+    )
+    if (decision is None or not decision.get("problem_id")
+            or not decision.get("assessment_id")):
+        raise HTTPException(409, detail="evidence references require a same-scope recorded decision and assessment")
+    try:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                for evidence_id in refs:
+                    coach_decision_workflow._evidence_sql(
+                        cur,
+                        evidence_id=evidence_id,
+                        athlete_id=athlete_id,
+                        problem_id=decision["problem_id"],
+                        assessment_id=decision["assessment_id"],
+                    )
+    except (coach_decision_workflow.CoachDecisionNotFound,
+            coach_decision_workflow.CoachDecisionConflict) as exc:
+        raise HTTPException(409, detail=f"evidence reference is not currently verified in this decision scope: {exc}") from exc
+    return refs
+
+
+def _save_with_verified_evidence(
+    feature_id: str,
+    athlete_id: str,
+    payload: Dict[str, Any],
+    principal: Any,
+    decision_id: str,
+    evidence_refs: List[str],
+    *,
+    session_id: Optional[str] = None,
+    require_evidence: bool = False,
+) -> Dict[str, Any]:
+    if not persistence.is_postgres_enabled():
+        _validate_decision_evidence_refs(
+            principal, athlete_id, decision_id, evidence_refs, required=require_evidence,
+        )
+        if session_id:
+            return _save_with_owned_session(
+                feature_id, athlete_id, payload, principal, decision_id, session_id,
+            )
+        return _save(feature_id, athlete_id, payload, principal, decision_id)
+    # Evidence row locks and the business record + tenant audit share one transaction.
+    with persistence.atomic_transaction():
+        _validate_decision_evidence_refs(
+            principal, athlete_id, decision_id, evidence_refs, required=require_evidence,
+        )
+        if session_id:
+            return _save_with_owned_session(
+                feature_id, athlete_id, payload, principal, decision_id, session_id,
+            )
+        return _save(feature_id, athlete_id, payload, principal, decision_id)
+
+
 def _list(feature_id: str, athlete_id: str, tenant_id: str, coach_actor_id: str) -> List[Dict[str, Any]]:
     if not persistence.is_postgres_enabled():
         return [
@@ -419,7 +496,10 @@ def select_decision_drill(
     payload = req.model_dump()
     payload["problem_id"] = sources["problem_id"]
     payload["problem_drill_link_id"] = sources["problem_drill_link"].get("link_id")
-    return _save("FEAT-033", req.athlete_id, payload, principal, req.decision_id)
+    return _save_with_verified_evidence(
+        "FEAT-033", req.athlete_id, payload, principal, req.decision_id,
+        req.evidence_refs, require_evidence=True,
+    )
 
 
 @router.post("/feat-034/drill-prescription", status_code=status.HTTP_201_CREATED)
@@ -509,7 +589,12 @@ def capture_retest(
         raise HTTPException(409, detail="retest KPI keys must exactly match the linked training response")
     if not set(response_values).issubset(set(baseline_values)):
         raise HTTPException(409, detail="response KPI identities must exist in the referenced baseline snapshot")
-    return _save_with_owned_session("FEAT-037", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=req.session_id)
+    return _save_with_verified_evidence(
+        "FEAT-037", req.athlete_id, req.model_dump(), principal,
+        decision_id=response_record.get("decision_id"),
+        evidence_refs=req.evidence_refs, session_id=req.session_id,
+        require_evidence=True,
+    )
 
 
 @router.post("/feat-038/before-after", status_code=status.HTTP_201_CREATED)
@@ -564,8 +649,12 @@ def update_progress_state(
     if not req.state:
         raise HTTPException(400, "state is required")
     comparison = _prior_record("FEAT-038", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.comparison_record_id)
-    return _save_with_owned_session("FEAT-039", req.athlete_id, req.model_dump(), principal,
-        decision_id=comparison.get("decision_id"), session_id=comparison.get("session_id"))
+    return _save_with_verified_evidence(
+        "FEAT-039", req.athlete_id, req.model_dump(), principal,
+        decision_id=comparison.get("decision_id"),
+        evidence_refs=req.evidence_refs, session_id=comparison.get("session_id"),
+        require_evidence=True,
+    )
 
 
 @router.post("/feat-040/next-decision-trigger", status_code=status.HTTP_201_CREATED)
@@ -601,8 +690,14 @@ def create_next_decision_trigger(
     )
     if comparison_id not in req.required_evidence:
         raise HTTPException(409, detail="required_evidence must include the linked FEAT-038 comparison record")
-    return _save_with_owned_session("FEAT-040", req.athlete_id, req.model_dump(), principal,
-        decision_id=progress.get("decision_id"), session_id=req.session_id)
+    if len(req.required_evidence) != len(set(req.required_evidence)):
+        raise HTTPException(409, detail="required_evidence references must be unique")
+    additional_evidence = [item for item in req.required_evidence if item != comparison_id]
+    return _save_with_verified_evidence(
+        "FEAT-040", req.athlete_id, req.model_dump(), principal,
+        decision_id=progress.get("decision_id"),
+        evidence_refs=additional_evidence, session_id=req.session_id,
+    )
 
 
 @router.get("/athletes/{athlete_id}")
