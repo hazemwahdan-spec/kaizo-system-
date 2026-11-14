@@ -108,7 +108,7 @@ def test_verified_primary_owner_can_record_approve_retrieve_and_link(owned_scope
     assert [row["knowledge_id"] for row in results] == [knowledge]
     link = scoped.link_training_session(
         principal=principal, athlete_id=athlete, knowledge_id=knowledge,
-        session_id=session, link_type="SUPPORTS", evidence_refs=["EVIDENCE-REF"],
+        session_id=session, link_type="SUPPORTS", evidence_refs=[_evidence],
     )
     assert link["unit_id"] == session
 
@@ -180,22 +180,23 @@ def test_audit_failure_rolls_back_relationship_and_trace_writes(owned_scope, mon
 
 
 def test_governance_is_versioned_and_audited(owned_scope):
-    principal, _tenant, _coach, athlete, _knowledge, _evidence, _session = owned_scope
+    principal, _tenant, _coach, athlete, knowledge, _evidence, _session = owned_scope
+    _record(owned_scope)
     created = scoped.set_governance(
-        principal=principal, athlete_id=athlete, resource_type="DECISION",
-        resource_id=_id("DECISION"), governance_status="REVIEW",
+        principal=principal, athlete_id=athlete, resource_type="KNOWLEDGE",
+        resource_id=knowledge, governance_status="REVIEW",
         metadata={"coach_final_authority": True}, expected_version=0,
     )
     assert created["version"] == 1
     updated = scoped.set_governance(
-        principal=principal, athlete_id=athlete, resource_type="DECISION",
+        principal=principal, athlete_id=athlete, resource_type="KNOWLEDGE",
         resource_id=created["resource_id"], governance_status="APPROVED",
         metadata={"coach_final_authority": True}, expected_version=1,
     )
     assert updated["version"] == 2
     with pytest.raises(scoped.CoachEvidenceConflict):
         scoped.set_governance(
-            principal=principal, athlete_id=athlete, resource_type="DECISION",
+            principal=principal, athlete_id=athlete, resource_type="KNOWLEDGE",
             resource_id=created["resource_id"], governance_status="RETIRED",
             metadata={}, expected_version=1,
         )
