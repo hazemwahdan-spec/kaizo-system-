@@ -1,6 +1,7 @@
 """Disposable-PostgreSQL security regressions for Coach-scoped FEAT-047..050/052..053."""
 import os
 from datetime import datetime, timezone
+import threading
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -177,6 +178,161 @@ def test_audit_failure_rolls_back_relationship_and_trace_writes(owned_scope, mon
                 (tenant, coach, athlete),
             )
             assert cur.fetchone()[0] == 0
+
+
+
+def test_approval_rechecks_current_provenance_evidence_status(owned_scope):
+    principal, _tenant, _coach, athlete, knowledge, evidence, _session = owned_scope
+    _record(owned_scope)
+    scoped.change_lifecycle(
+        principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+        target_status="REVIEW", expected_version=1,
+    )
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE kaizo_evidence_records SET status='REJECTED' WHERE evidence_id=%s",
+                (evidence,),
+            )
+        conn.commit()
+    with pytest.raises(scoped.CoachEvidenceConflict, match="provenance evidence"):
+        scoped.change_lifecycle(
+            principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+            target_status="APPROVED", expected_version=2,
+        )
+
+
+def test_revoked_provenance_evidence_is_not_retrieved_or_linked(owned_scope):
+    principal, _tenant, _coach, athlete, knowledge, evidence, session = owned_scope
+    _record(owned_scope)
+    scoped.change_lifecycle(
+        principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+        target_status="REVIEW", expected_version=1,
+    )
+    scoped.change_lifecycle(
+        principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+        target_status="APPROVED", expected_version=2,
+    )
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE kaizo_evidence_records SET status='REJECTED' WHERE evidence_id=%s",
+                (evidence,),
+            )
+        conn.commit()
+    assert scoped.retrieve_knowledge(principal=principal, athlete_id=athlete, query="fixture") == []
+    with pytest.raises(scoped.CoachEvidenceConflict, match="provenance evidence"):
+        scoped.link_training_session(
+            principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+            session_id=session, link_type="SUPPORTS", evidence_refs=[evidence],
+        )
+
+
+def test_actor_trace_rejects_evidence_from_another_athlete(owned_scope):
+    principal, tenant, coach, athlete, _knowledge, _evidence, _session = owned_scope
+    other_athlete, other_evidence = _id("ATHLETE"), _id("EVIDENCE")
+    now = _now()
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_athletes
+                   (athlete_id,display_name,status,metadata,created_at,updated_at)
+                   VALUES (%s,'Other athlete','ACTIVE','{}'::jsonb,%s,%s)""",
+                (other_athlete, now, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_coach_athlete_ownership
+                   (athlete_id,tenant_id,coach_actor_id,assigned_at) VALUES (%s,%s,%s,%s)""",
+                (other_athlete, tenant, coach, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_evidence_records
+                   (evidence_id,subject_type,subject_id,evidence_level,status,source_ref,claim,
+                    observed_value,verified_by,verified_at,notes)
+                   VALUES (%s,'athlete',%s,'E3','VERIFIED','fixture','other athlete evidence',
+                           '{}'::jsonb,%s,%s,'disposable test')""",
+                (other_evidence, other_athlete, coach, now),
+            )
+        conn.commit()
+    try:
+        with pytest.raises(scoped.CoachEvidenceConflict, match="belong to this athlete"):
+            scoped.record_actor_trace(
+                principal=principal, athlete_id=athlete, action="CROSS_ATHLETE_EVIDENCE",
+                evidence_refs=[other_evidence],
+            )
+    finally:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM kaizo_evidence_records WHERE evidence_id=%s", (other_evidence,))
+                cur.execute("DELETE FROM kaizo_coach_athlete_ownership WHERE athlete_id=%s", (other_athlete,))
+                cur.execute("DELETE FROM kaizo_athletes WHERE athlete_id=%s", (other_athlete,))
+            conn.commit()
+
+
+def test_link_holds_approved_knowledge_lock_against_concurrent_retirement(owned_scope, monkeypatch):
+    principal, _tenant, _coach, athlete, knowledge, evidence, session = owned_scope
+    _record(owned_scope)
+    scoped.change_lifecycle(
+        principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+        target_status="REVIEW", expected_version=1,
+    )
+    scoped.change_lifecycle(
+        principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+        target_status="APPROVED", expected_version=2,
+    )
+    link_audit_entered = threading.Event()
+    release_link = threading.Event()
+    retirement_started = threading.Event()
+    retirement_done = threading.Event()
+    errors = []
+    original_audit = scoped._audit
+
+    def pause_link_audit(principal_arg, tenant_id, action, old_value, new_value, timestamp):
+        if action == "COACH_FEAT050_KNOWLEDGE_LINKED":
+            link_audit_entered.set()
+            if not release_link.wait(5):
+                raise TimeoutError("test did not release the FEAT-050 transaction")
+        return original_audit(principal_arg, tenant_id, action, old_value, new_value, timestamp)
+
+    monkeypatch.setattr(scoped, "_audit", pause_link_audit)
+
+    def link_worker():
+        try:
+            scoped.link_training_session(
+                principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+                session_id=session, link_type="SUPPORTS", evidence_refs=[evidence],
+            )
+        except BaseException as exc:
+            errors.append(("link", exc))
+
+    def retirement_worker():
+        retirement_started.set()
+        try:
+            scoped.change_lifecycle(
+                principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+                target_status="RETIRED", expected_version=3,
+            )
+        except BaseException as exc:
+            errors.append(("retirement", exc))
+        finally:
+            retirement_done.set()
+
+    linker = threading.Thread(target=link_worker)
+    retirer = threading.Thread(target=retirement_worker)
+    linker.start()
+    try:
+        assert link_audit_entered.wait(5), "FEAT-050 did not reach its in-transaction audit step"
+        retirer.start()
+        assert retirement_started.wait(5), "retirement worker did not start"
+        assert not retirement_done.wait(0.5), "retirement bypassed the FEAT-050 knowledge row lock"
+    finally:
+        release_link.set()
+        linker.join(5)
+        if retirer.ident is not None:
+            retirer.join(5)
+    assert not linker.is_alive() and not retirer.is_alive(), "concurrent database workers did not finish"
+    assert not errors, f"concurrent FEAT-050/lifecycle operations failed: {errors!r}"
+    assert retirement_done.is_set()
 
 
 def test_governance_is_versioned_and_audited(owned_scope):

@@ -146,6 +146,33 @@ def _audit(principal: Any, tenant_id: str, action: str, old_value: Any, new_valu
     )
 
 
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(value, (list, tuple)):
+        return []
+    result = [str(item).strip() for item in value]
+    return result if all(result) else []
+
+
+def _verified_evidence_ids(cur: Any, evidence_refs: Iterable[str], athlete_id: str) -> set[str]:
+    """Lock and resolve verified evidence for this exact athlete in the current transaction."""
+    refs = _string_list(evidence_refs)
+    if not refs or len(refs) != len(set(refs)):
+        return set()
+    cur.execute(
+        """SELECT evidence_id FROM kaizo_evidence_records
+           WHERE evidence_id = ANY(%s) AND subject_type='athlete'
+             AND subject_id=%s AND status='VERIFIED'
+           FOR SHARE""",
+        (refs, athlete_id),
+    )
+    return {str(row[0]) for row in cur.fetchall()}
+
+
 def record_provenance(
     *, principal: Any, athlete_id: str, knowledge_id: str, source_type: str,
     source_ref: str, source_version: str, provenance_note: str,
@@ -159,13 +186,8 @@ def record_provenance(
     with persistence.atomic_transaction() as conn:
         with conn.cursor() as cur:
             _lock_primary_owner(cur, tenant_id=tenant, coach_actor_id=actor, athlete_id=athlete_id)
-            cur.execute(
-                """SELECT COUNT(*) FROM kaizo_evidence_records
-                   WHERE evidence_id = ANY(%s) AND status='VERIFIED' AND subject_id=%s""",
-                (values, athlete_id),
-            )
-            verified_count = int(cur.fetchone()[0])
-            evidence_status = "VERIFIED" if verified_count == len(set(values)) == len(values) else "UNVERIFIED"
+            verified_ids = _verified_evidence_ids(cur, values, athlete_id)
+            evidence_status = "VERIFIED" if len(verified_ids) == len(values) == len(set(values)) else "UNVERIFIED"
             cur.execute(
                 """SELECT COUNT(*) FROM kaizo_coach_scoped_knowledge
                    WHERE tenant_id=%s AND source_type=%s AND source_ref=%s
@@ -210,7 +232,7 @@ def change_lifecycle(
         with conn.cursor() as cur:
             _lock_primary_owner(cur, tenant_id=tenant, coach_actor_id=actor, athlete_id=athlete_id)
             cur.execute(
-                """SELECT lifecycle_status,evidence_status,version FROM kaizo_coach_scoped_knowledge
+                """SELECT lifecycle_status,evidence_status,version,evidence_refs FROM kaizo_coach_scoped_knowledge
                    WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s AND knowledge_id=%s
                    FOR UPDATE""",
                 (tenant, actor, athlete_id, knowledge_id),
@@ -223,8 +245,13 @@ def change_lifecycle(
                 raise CoachEvidenceConflict("knowledge version changed; reload before retry")
             if target_status not in allowed.get(old_status, set()):
                 raise CoachEvidenceConflict("invalid knowledge lifecycle transition")
-            if target_status == "APPROVED" and evidence_status != "VERIFIED":
-                raise CoachEvidenceConflict("only VERIFIED evidence can be approved")
+            if target_status == "APPROVED":
+                provenance_refs = _string_list(row[3])
+                verified_ids = _verified_evidence_ids(cur, provenance_refs, athlete_id)
+                if (evidence_status != "VERIFIED" or not provenance_refs
+                        or len(provenance_refs) != len(set(provenance_refs))
+                        or len(verified_ids) != len(provenance_refs)):
+                    raise CoachEvidenceConflict("all provenance evidence must remain VERIFIED for this athlete before approval")
             cur.execute(
                 """UPDATE kaizo_coach_scoped_knowledge
                    SET lifecycle_status=%s,version=version+1,updated_at=%s
@@ -255,15 +282,23 @@ def retrieve_knowledge(*, principal: Any, athlete_id: str, query: str, limit: in
                    WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s
                      AND lifecycle_status='APPROVED' AND evidence_status='VERIFIED'
                      AND (knowledge_id ILIKE %s OR provenance_note ILIKE %s OR source_ref ILIKE %s)
-                   ORDER BY updated_at DESC LIMIT %s""",
+                   ORDER BY updated_at DESC LIMIT %s
+                   FOR SHARE""",
                 (tenant, actor, athlete_id, f"%{q}%", f"%{q}%", f"%{q}%", limit),
             )
             rows = cur.fetchall()
-            results = [{
-                "knowledge_id": r[0], "source_type": r[1], "source_ref": r[2],
-                "source_version": r[3], "evidence_status": r[4], "provenance_note": r[5],
-                "evidence_refs": r[6], "lifecycle_status": r[7], "version": int(r[8]),
-            } for r in rows]
+            results = []
+            for r in rows:
+                provenance_refs = _string_list(r[6])
+                verified_ids = _verified_evidence_ids(cur, provenance_refs, athlete_id)
+                if (not provenance_refs or len(provenance_refs) != len(set(provenance_refs))
+                        or len(verified_ids) != len(provenance_refs)):
+                    continue
+                results.append({
+                    "knowledge_id": r[0], "source_type": r[1], "source_ref": r[2],
+                    "source_version": r[3], "evidence_status": r[4], "provenance_note": r[5],
+                    "evidence_refs": r[6], "lifecycle_status": r[7], "version": int(r[8]),
+                })
             _audit(principal, tenant, "COACH_FEAT049_KNOWLEDGE_RETRIEVED",
                    None, {"athlete_id": athlete_id, "query": q, "result_count": len(results)}, _now())
     return results
@@ -283,24 +318,26 @@ def link_training_session(
         with conn.cursor() as cur:
             _lock_primary_owner(cur, tenant_id=tenant, coach_actor_id=actor, athlete_id=athlete_id)
             cur.execute(
-                """SELECT lifecycle_status FROM kaizo_coach_scoped_knowledge
+                """SELECT lifecycle_status,evidence_status,evidence_refs FROM kaizo_coach_scoped_knowledge
                    WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s AND knowledge_id=%s
-                   FOR KEY SHARE""",
+                   FOR SHARE""",
                 (tenant, actor, athlete_id, knowledge_id),
             )
             knowledge = cur.fetchone()
-            if knowledge is None or knowledge[0] != "APPROVED":
-                raise CoachEvidenceConflict("approved knowledge is required in the same Coach athlete scope")
-            cur.execute(
-                """SELECT COUNT(*) FROM kaizo_evidence_records
-                   WHERE evidence_id = ANY(%s) AND status='VERIFIED' AND subject_id=%s""",
-                (refs, athlete_id),
-            )
-            if int(cur.fetchone()[0]) != len(set(refs)) or len(set(refs)) != len(refs):
-                raise CoachEvidenceConflict("all linkage evidence references must be verified for this athlete")
+            if knowledge is None or knowledge[0] != "APPROVED" or knowledge[1] != "VERIFIED":
+                raise CoachEvidenceConflict("approved, verified knowledge is required in the same Coach athlete scope")
+            provenance_refs = _string_list(knowledge[2])
+            if (not provenance_refs or len(provenance_refs) != len(set(provenance_refs))
+                    or len(set(refs)) != len(refs)
+                    or not set(refs).issubset(set(provenance_refs))):
+                raise CoachEvidenceConflict("linkage evidence must be a unique subset of the knowledge provenance evidence")
+            verified_ids = _verified_evidence_ids(cur, provenance_refs, athlete_id)
+            if len(verified_ids) != len(provenance_refs):
+                raise CoachEvidenceConflict("all knowledge provenance evidence must remain VERIFIED for this athlete")
             cur.execute(
                 """SELECT session_id FROM kaizo_training_sessions
-                   WHERE session_id=%s AND athlete_id=%s AND created_by=%s""",
+                   WHERE session_id=%s AND athlete_id=%s AND created_by=%s
+                   FOR SHARE""",
                 (session_id, athlete_id, actor),
             )
             if cur.fetchone() is None:
@@ -335,6 +372,10 @@ def record_actor_trace(
     with persistence.atomic_transaction() as conn:
         with conn.cursor() as cur:
             _lock_primary_owner(cur, tenant_id=tenant, coach_actor_id=actor, athlete_id=athlete_id)
+            if refs:
+                verified_ids = _verified_evidence_ids(cur, refs, athlete_id)
+                if len(verified_ids) != len(refs):
+                    raise CoachEvidenceConflict("actor trace evidence must be VERIFIED and belong to this athlete")
             cur.execute(
                 """INSERT INTO kaizo_coach_scoped_actor_trace
                    (trace_id,tenant_id,coach_actor_id,athlete_id,action,occurred_at,evidence_refs,correlation_id,created_at)
@@ -365,13 +406,15 @@ def set_governance(
             if resource_type == "KNOWLEDGE":
                 cur.execute(
                     """SELECT 1 FROM kaizo_coach_scoped_knowledge
-                       WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s AND knowledge_id=%s""",
+                       WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s AND knowledge_id=%s
+                       FOR SHARE""",
                     (tenant, actor, athlete_id, resource_id),
                 )
             else:
                 cur.execute(
                     """SELECT 1 FROM kaizo_training_sessions
-                       WHERE session_id=%s AND athlete_id=%s AND created_by=%s""",
+                       WHERE session_id=%s AND athlete_id=%s AND created_by=%s
+                       FOR SHARE""",
                     (resource_id, athlete_id, actor),
                 )
             if cur.fetchone() is None:
