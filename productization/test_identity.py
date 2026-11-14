@@ -231,3 +231,25 @@ def test_rs256_bearer_requires_valid_role_and_tenant_claims(monkeypatch, claims)
 
     with pytest.raises(IdentityNotConfiguredError, match="missing required KAIZO claims"):
         resolve_principal("forged", "coach", "TENANT-A", None, f"Bearer {token}")
+
+
+def test_rs256_bearer_ignores_legacy_unnamespaced_academy_id(monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from productization.identity import resolve_principal
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    _configure_local_oidc(monkeypatch, private_key.public_key())
+    token = _local_oidc_token(
+        private_key,
+        **{
+            "https://kaizo.system/academy_id": None,
+            "academy_id": "LEGACY-UNNAMESPACED-ACADEMY",
+        },
+    )
+    principal = resolve_principal(
+        actor_id="forged-actor", role="academy", tenant_id="FORGED-TENANT",
+        authorization=f"Bearer {token}",
+    )
+    assert principal.role == "coach"
+    assert principal.tenant_id == "TENANT-A"
+    assert principal.academy_id is None
