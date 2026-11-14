@@ -140,6 +140,45 @@ def _save(
     return record
 
 
+def _save_with_owned_session(
+    feature_id: str,
+    athlete_id: str,
+    payload: Dict[str, Any],
+    principal: Any,
+    decision_id: str,
+    session_id: str,
+) -> Dict[str, Any]:
+    """Lock and bind the Coach-owned session/plan to this decision in the write transaction."""
+    if not persistence.is_postgres_enabled():
+        # Development memory mode is unverified and never used for production OIDC writes.
+        return _save(feature_id, athlete_id, payload, principal, decision_id, session_id)
+    with persistence.atomic_transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT t.decision_id
+                   FROM kaizo_training_sessions s
+                   JOIN kaizo_training_plans t
+                     ON t.plan_id=s.plan_id AND t.athlete_id=s.athlete_id
+                   JOIN kaizo_coach_athlete_ownership o
+                     ON o.athlete_id=s.athlete_id
+                   WHERE s.session_id=%s AND s.athlete_id=%s
+                     AND s.created_by=%s AND t.created_by=%s
+                     AND t.decision_id=%s
+                     AND o.tenant_id=%s AND o.coach_actor_id=%s
+                   FOR UPDATE OF o,s,t""",
+                (session_id, athlete_id, principal.actor_id, principal.actor_id,
+                 decision_id, principal.tenant_id, principal.actor_id),
+            )
+            if cur.fetchone() is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="session_id must reference a persisted session and plan owned by this Coach for the same athlete, tenant and decision",
+                )
+        # _save joins this outer transaction, so the locked parent session,
+        # child record and tenant audit either commit together or all roll back.
+        return _save(feature_id, athlete_id, payload, principal, decision_id, session_id)
+
+
 def _list(feature_id: str, athlete_id: str, tenant_id: str, coach_actor_id: str) -> List[Dict[str, Any]]:
     if not persistence.is_postgres_enabled():
         return [
@@ -401,7 +440,7 @@ def prescribe_drill(
         raise HTTPException(400, "dosage requires sets and reps")
     if not isinstance(d["sets"], int) or d["sets"] <= 0 or not isinstance(d["reps"], int) or d["reps"] <= 0:
         raise HTTPException(400, "sets and reps must be positive integers")
-    return _save("FEAT-034", req.athlete_id, req.model_dump(), principal, req.decision_id, req.session_id)
+    return _save_with_owned_session("FEAT-034", req.athlete_id, req.model_dump(), principal, req.decision_id, req.session_id)
 
 
 @router.post("/feat-035/execution-cues", status_code=status.HTTP_201_CREATED)
@@ -419,7 +458,7 @@ def record_execution_cues(
         raise HTTPException(400, "cues and checklist items must be non-empty")
     predecessor = _prior_record("FEAT-034", req.athlete_id, principal,
         lambda r, p: r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
-    return _save("FEAT-035", req.athlete_id, req.model_dump(), principal,
+    return _save_with_owned_session("FEAT-035", req.athlete_id, req.model_dump(), principal,
         decision_id=predecessor.get("decision_id"), session_id=req.session_id)
 
 
@@ -442,7 +481,7 @@ def capture_training_response(
         lambda r, p: r.get("record_id") == req.execution_cue_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
     if cues.get("decision_id") != prescription.get("decision_id"):
         raise HTTPException(409, detail="prescription and execution cues do not share the same decision lineage")
-    return _save("FEAT-036", req.athlete_id, req.model_dump(), principal, decision_id=prescription.get("decision_id"), session_id=req.session_id)
+    return _save_with_owned_session("FEAT-036", req.athlete_id, req.model_dump(), principal, decision_id=prescription.get("decision_id"), session_id=req.session_id)
 
 
 @router.post("/feat-037/retest", status_code=status.HTTP_201_CREATED)
@@ -470,7 +509,7 @@ def capture_retest(
         raise HTTPException(409, detail="retest KPI keys must exactly match the linked training response")
     if not set(response_values).issubset(set(baseline_values)):
         raise HTTPException(409, detail="response KPI identities must exist in the referenced baseline snapshot")
-    return _save("FEAT-037", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=req.session_id)
+    return _save_with_owned_session("FEAT-037", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=req.session_id)
 
 
 @router.post("/feat-038/before-after", status_code=status.HTTP_201_CREATED)
@@ -508,7 +547,7 @@ def compare_before_after(
         raise HTTPException(409, detail="comparison KPI keys must match exactly")
     if retest_record.get("decision_id") != response_record.get("decision_id"):
         raise HTTPException(409, detail="response and retest do not share the same decision lineage")
-    return _save("FEAT-038", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=response_record.get("session_id"))
+    return _save_with_owned_session("FEAT-038", req.athlete_id, req.model_dump(), principal, decision_id=response_record.get("decision_id"), session_id=response_record.get("session_id"))
 
 
 @router.post("/feat-039/progress-state", status_code=status.HTTP_201_CREATED)
@@ -525,7 +564,7 @@ def update_progress_state(
     if not req.state:
         raise HTTPException(400, "state is required")
     comparison = _prior_record("FEAT-038", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.comparison_record_id)
-    return _save("FEAT-039", req.athlete_id, req.model_dump(), principal,
+    return _save_with_owned_session("FEAT-039", req.athlete_id, req.model_dump(), principal,
         decision_id=comparison.get("decision_id"), session_id=comparison.get("session_id"))
 
 
@@ -562,7 +601,7 @@ def create_next_decision_trigger(
     )
     if comparison_id not in req.required_evidence:
         raise HTTPException(409, detail="required_evidence must include the linked FEAT-038 comparison record")
-    return _save("FEAT-040", req.athlete_id, req.model_dump(), principal,
+    return _save_with_owned_session("FEAT-040", req.athlete_id, req.model_dump(), principal,
         decision_id=progress.get("decision_id"), session_id=req.session_id)
 
 
