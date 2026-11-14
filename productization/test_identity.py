@@ -242,6 +242,7 @@ def test_rs256_bearer_ignores_legacy_unnamespaced_academy_id(monkeypatch):
     token = _local_oidc_token(
         private_key,
         **{
+            "https://kaizo.system/kaizo_role": "academy",
             "https://kaizo.system/academy_id": None,
             "academy_id": "LEGACY-UNNAMESPACED-ACADEMY",
         },
@@ -250,6 +251,6 @@ def test_rs256_bearer_ignores_legacy_unnamespaced_academy_id(monkeypatch):
         actor_id="forged-actor", role="academy", tenant_id="FORGED-TENANT",
         authorization=f"Bearer {token}",
     )
-    assert principal.role == "coach"
+    assert principal.role == "academy"
     assert principal.tenant_id == "TENANT-A"
     assert principal.academy_id is None
