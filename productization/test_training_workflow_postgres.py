@@ -346,6 +346,22 @@ def test_missing_or_unverified_evidence_is_rejected_before_workflow_write():
         tenant, coach, athlete["athlete_id"],
     )
     missing_evidence = "MISSING-EVIDENCE-" + uuid4().hex
+    # The route first requires the requested reference to be linked to the
+    # authoritative problem/drill pair, then revalidates its durable evidence
+    # row and status. Include the missing ID in that link to exercise the
+    # second check rather than only the link-membership guard.
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE kaizo_coach_problem_drill_links
+                   SET evidence_ids=%s::jsonb
+                   WHERE athlete_id=%s AND drill_id=%s
+                     AND tenant_id=%s AND coach_actor_id=%s""",
+                (json.dumps([_verified_evidence, missing_evidence]),
+                 athlete["athlete_id"], drill_id, tenant, coach),
+            )
+            assert cur.rowcount == 1
+        conn.commit()
     response = client.post(
         "/api/v1/training-workflow/feat-033/decision-drill",
         headers=headers,
