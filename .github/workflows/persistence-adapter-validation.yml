@@ -37,6 +37,7 @@ on:
       - fix/coach-retire-unscoped-feature-routes
       - fix/coach-retire-unscoped-main-api
       - fix/coach-baseline-kpi-digital-twin-lineage-20261112
+      - fix/coach-evidence-lifecycle-locks-20261114
 
 jobs:
   validate-persistence-adapter:
