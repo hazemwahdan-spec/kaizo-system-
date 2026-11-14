@@ -26,6 +26,8 @@ In Auth0 API Settings, enable both **RBAC** and **Add Permissions in the Access 
 - `https://kaizo.system/resource_owner_id`: optional resource-owner scope.
 - `permissions`: Auth0-issued array of exact permission identifiers. Missing permissions means no Academy permissions.
 
+The identity parser retains legacy unnamespaced aliases for role, tenant and resource-owner claims, but **does not accept an unnamespaced `academy_id`**. Academy scope is authorization-sensitive: only the configured KAIZO namespaced claim is trusted, and a token containing only the legacy unnamespaced alias has no Academy scope.
+
 The role and tenant custom claims must be populated only from trusted Auth0 server-side data (for example, protected `app_metadata`) by a Post Login Action. For an `academy` principal, the Action must also emit `https://kaizo.system/academy_id` from `app_metadata.academy_id`; omit KAIZO identity claims if the required trusted values are missing. Do not source any of these claims from `user_metadata`, request headers, query parameters, or client-editable profile fields. Do not accept an ID token as an API bearer token.
 
 ### Example Auth0 Post Login Action for trusted identity claims
