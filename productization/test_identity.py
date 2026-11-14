@@ -249,7 +249,7 @@ def test_rs256_bearer_ignores_legacy_unnamespaced_academy_id(monkeypatch):
     )
     principal = resolve_principal(
         actor_id="forged-actor", role="academy", tenant_id="FORGED-TENANT",
-        authorization=f"Bearer {token}",
+        resource_owner_id=None, authorization=f"Bearer {token}",
     )
     assert principal.role == "academy"
     assert principal.tenant_id == "TENANT-A"
