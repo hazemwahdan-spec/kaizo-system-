@@ -150,15 +150,15 @@ def test_unverified_evidence_cannot_be_approved(owned_scope):
         source_type="IJF", source_ref="unverified-source", source_version="v1",
         provenance_note="no durable verified evidence", evidence_refs=[_id("MISSING")],
     )
+    reviewed = scoped.change_lifecycle(
+        principal=principal, athlete_id=athlete, knowledge_id=other["knowledge_id"],
+        target_status="REVIEW", expected_version=1,
+    )
+    assert reviewed["version"] == 2
     with pytest.raises(scoped.CoachEvidenceConflict):
         scoped.change_lifecycle(
             principal=principal, athlete_id=athlete, knowledge_id=other["knowledge_id"],
-            target_status="REVIEW", expected_version=1,
-        )
-    with pytest.raises(scoped.CoachEvidenceConflict):
-        scoped.change_lifecycle(
-            principal=principal, athlete_id=athlete, knowledge_id=other["knowledge_id"],
-            target_status="APPROVED", expected_version=1,
+            target_status="APPROVED", expected_version=2,
         )
 
 
