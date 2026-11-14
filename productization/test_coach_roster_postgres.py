@@ -51,3 +51,110 @@ def test_postgres_persists_single_coach_ownership_and_tenant_audit():
             """, (coach,))
             audit = cur.fetchone()
             assert audit == ("COACH_ATHLETE_CREATED", tenant)
+
+
+def test_verified_coach_product_api_uses_postgres_and_ignores_spoofed_scope(monkeypatch):
+    """A verified Coach route must persist and scope records in PostgreSQL."""
+    assert persistence.is_postgres_enabled()
+    persistence.initialize()
+
+    monkeypatch.setenv("KAIZO_IDENTITY_MODE", "oidc")
+    from fastapi.testclient import TestClient
+    from main import app
+    from productization import product_api
+    from productization.identity import Principal
+
+    tenant_a = "TENANT-" + uuid4().hex
+    tenant_b = "TENANT-" + uuid4().hex
+    coach_a = "auth0|coach-" + uuid4().hex
+    coach_b = "auth0|coach-" + uuid4().hex
+    coach_c = "auth0|coach-" + uuid4().hex
+
+    principals = {
+        "Bearer coach-a": Principal(
+            actor_id=coach_a, role="coach", tenant_id=tenant_a,
+            resource_owner_id=None, verified=True, source="oidc_jwt",
+            permissions=frozenset({"product"}),
+        ),
+        "Bearer coach-b": Principal(
+            actor_id=coach_b, role="coach", tenant_id=tenant_a,
+            resource_owner_id=None, verified=True, source="oidc_jwt",
+            permissions=frozenset({"product"}),
+        ),
+        "Bearer coach-c": Principal(
+            actor_id=coach_c, role="coach", tenant_id=tenant_b,
+            resource_owner_id=None, verified=True, source="oidc_jwt",
+            permissions=frozenset({"product"}),
+        ),
+    }
+
+    def resolve_bearer(authorization):
+        if authorization not in principals:
+            raise product_api.IdentityNotConfiguredError("unknown integration-test token")
+        return principals[authorization]
+
+    monkeypatch.setattr(product_api, "resolve_bearer_principal", resolve_bearer)
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/product/coach/athletes",
+        headers={
+            "Authorization": "Bearer coach-a",
+            "X-KAIZO-Actor": "attacker",
+            "X-KAIZO-Role": "administrator",
+            "X-KAIZO-Tenant": "TENANT-ATTACKER",
+        },
+        json={"display_name": "Verified PostgreSQL Coach Athlete"},
+    )
+    assert created.status_code == 201, created.text
+    athlete_id = created.json()["athlete_id"]
+    assert created.json()["coach_final_authority"] is True
+    assert created.json()["execution_authorized"] is False
+
+    owner_read = client.get(
+        f"/api/v1/product/coach/athletes/{athlete_id}",
+        headers={"Authorization": "Bearer coach-a"},
+    )
+    assert owner_read.status_code == 200, owner_read.text
+    assert owner_read.json()["display_name"] == "Verified PostgreSQL Coach Athlete"
+
+    same_tenant_other_coach = client.get(
+        f"/api/v1/product/coach/athletes/{athlete_id}",
+        headers={"Authorization": "Bearer coach-b"},
+    )
+    other_tenant = client.get(
+        f"/api/v1/product/coach/athletes/{athlete_id}",
+        headers={"Authorization": "Bearer coach-c"},
+    )
+    assert same_tenant_other_coach.status_code == 404
+    assert other_tenant.status_code == 404
+
+    assert client.get(
+        "/api/v1/product/coach/athletes",
+        headers={"Authorization": "Bearer coach-b"},
+    ).json()["total"] == 0
+    assert client.get(
+        "/api/v1/product/coach/athletes",
+        headers={"Authorization": "Bearer coach-c"},
+    ).json()["total"] == 0
+
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT tenant_id, coach_actor_id
+                FROM kaizo_coach_athlete_ownership
+                WHERE athlete_id=%s
+                """,
+                (athlete_id,),
+            )
+            assert cur.fetchone() == (tenant_a, coach_a)
+            cur.execute(
+                """
+                SELECT action, tenant_id
+                FROM kaizo_audit_logs
+                WHERE who=%s AND action='COACH_ATHLETE_CREATED'
+                ORDER BY id DESC LIMIT 1
+                """,
+                (coach_a,),
+            )
+            assert cur.fetchone() == ("COACH_ATHLETE_CREATED", tenant_a)
