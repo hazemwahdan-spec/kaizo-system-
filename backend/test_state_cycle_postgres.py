@@ -29,10 +29,26 @@ def _fixture():
         tenant_id=tenant,coach_actor_id=coach,display_name="Digital Twin PostgreSQL acceptance"
     )
     headers={"X-KAIZO-Actor":coach,"X-KAIZO-Role":"coach","X-KAIZO-Tenant":tenant}
-    payload={"entity_id":athlete["athlete_id"],"state":{"kpi":7,"status":"IMPROVING"},
+    athlete_id=athlete["athlete_id"]
+    evidence_id="EVIDENCE-"+uuid4().hex
+    now="2026-11-14T00:00:00+00:00"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_evidence_records
+                   (evidence_id,subject_type,subject_id,evidence_level,status,
+                    source_ref,claim,observed_value,verified_by,verified_at,notes)
+                   VALUES (%s,'athlete',%s,'E3','VERIFIED',%s,%s,
+                           '{"kpi":7}'::jsonb,%s,%s,%s)""",
+                (evidence_id,athlete_id,"fixture:"+evidence_id,
+                 "Verified Digital Twin athlete evidence",coach,now,
+                 "Disposable PostgreSQL acceptance fixture"),
+            )
+        conn.commit()
+    payload={"entity_id":athlete_id,"state":{"kpi":7,"status":"IMPROVING"},
              "source_event":"POSTGRES_RETEST","case_id":"CASE-"+uuid4().hex,
-             "evidence_refs":["REF-PG"],"coach_final_authority":True}
-    return tenant,coach,athlete["athlete_id"],headers,payload
+             "evidence_refs":[evidence_id],"coach_final_authority":True}
+    return tenant,coach,athlete_id,headers,payload
 
 
 def test_state_history_and_tenant_audit_persist_under_verified_scope():
@@ -54,6 +70,70 @@ def test_state_history_and_tenant_audit_persist_under_verified_scope():
     other={**headers,"X-KAIZO-Actor":coach+"-OTHER"}
     assert client.get(f"/api/v1/state-cycle/feat-042/digital-twin-state/{athlete}",headers=other).status_code==404
     assert client.get(f"/api/v1/state-cycle/feat-043/state-history/{athlete}",headers=other).status_code==404
+
+
+def test_digital_twin_rejects_missing_unverified_foreign_wrong_coach_and_e0_evidence():
+    tenant,coach,athlete,headers,payload=_fixture()
+    foreign=coach_roster.create_owned_athlete(
+        tenant_id=tenant,coach_actor_id=coach+"-OTHER",
+        display_name="Foreign evidence owner",
+    )
+    unverified="EVIDENCE-UNVERIFIED-"+uuid4().hex
+    foreign_evidence="EVIDENCE-FOREIGN-"+uuid4().hex
+    wrong_coach="EVIDENCE-WRONG-COACH-"+uuid4().hex
+    e0="EVIDENCE-E0-"+uuid4().hex
+    now="2026-11-14T00:00:00+00:00"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_evidence_records
+                   (evidence_id,subject_type,subject_id,evidence_level,status,
+                    source_ref,claim,verified_by,verified_at,notes)
+                   VALUES
+                   (%s,'athlete',%s,'E3','UNVERIFIED',%s,'Unverified fixture',%s,%s,'test'),
+                   (%s,'athlete',%s,'E3','VERIFIED',%s,'Foreign athlete fixture',%s,%s,'test'),
+                   (%s,'athlete',%s,'E3','VERIFIED',%s,'Wrong Coach fixture',%s,%s,'test'),
+                   (%s,'athlete',%s,'E0','VERIFIED',%s,'E0 fixture',%s,%s,'test')""",
+                (unverified,athlete,"fixture:"+unverified,coach,now,
+                 foreign_evidence,foreign["athlete_id"],"fixture:"+foreign_evidence,coach,now,
+                 wrong_coach,athlete,"fixture:"+wrong_coach,coach+"-OTHER",now,
+                 e0,athlete,"fixture:"+e0,coach,now),
+            )
+        conn.commit()
+    invalid_refs=[
+        "MISSING-EVIDENCE-"+uuid4().hex,
+        unverified,
+        foreign_evidence,
+        wrong_coach,
+        e0,
+        payload["evidence_refs"][0] + "-duplicate",
+    ]
+    for evidence_ref in invalid_refs:
+        response=client.post(
+            "/api/v1/state-cycle/feat-042/digital-twin-state",
+            json={**payload,"evidence_refs":[evidence_ref]},headers=headers,
+        )
+        assert response.status_code==409,response.text
+    duplicate=client.post(
+        "/api/v1/state-cycle/feat-042/digital-twin-state",
+        json={**payload,"evidence_refs":[payload["evidence_refs"][0],payload["evidence_refs"][0]]},
+        headers=headers,
+    )
+    assert duplicate.status_code==409,duplicate.text
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM kaizo_digital_twin_state WHERE entity_id=%s",(athlete,))
+            assert cur.fetchone()[0]==0
+            cur.execute("SELECT COUNT(*) FROM kaizo_digital_twin_history WHERE entity_id=%s",(athlete,))
+            assert cur.fetchone()[0]==0
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_audit_logs
+                   WHERE tenant_id=%s AND who=%s
+                     AND action='FEAT-042_STATE_UPDATED'
+                     AND new_value->>'entity_id'=%s""",
+                (tenant,coach,athlete),
+            )
+            assert cur.fetchone()[0]==0
 
 
 def test_audit_failure_rolls_back_state_and_history():
