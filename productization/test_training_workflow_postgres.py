@@ -31,6 +31,7 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
     problem = "PROB-" + uuid4().hex
     drill = "DRILL-" + uuid4().hex
     link = "LINK-" + uuid4().hex
+    evidence_id = "EVIDENCE-" + uuid4().hex
     now = "2026-11-12T00:00:00+00:00"
     assessment_record = coach_assessment_workflow.create_assessment(
         tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
@@ -67,6 +68,14 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
                         'Improve entry timing','Increase successful entries','RECORDED',%s)""",
                 (decision,"CAND-"+uuid4().hex,"DIAG-"+uuid4().hex,problem,athlete_id,
                  assessment,coach,now))
+            cur.execute("""INSERT INTO kaizo_evidence_records
+                (evidence_id,subject_type,subject_id,evidence_level,status,source_ref,claim,
+                 observed_value,verified_by,verified_at,notes)
+                VALUES (%s,'assessment',%s,'E3','VERIFIED',%s,%s,%s::jsonb,%s,%s,%s)""",
+                (evidence_id,assessment,"coach-assessment:"+assessment,
+                 "Verified assessment evidence for FEAT-033",
+                 json.dumps({"entry_success":4}),coach,now,
+                 "Disposable PostgreSQL acceptance fixture"))
             cur.execute("""INSERT INTO kaizo_coach_drill_library
                 (drill_id,tenant_id,coach_actor_id,source_assessment_id,payload,status,
                  coach_review,created_by,approved_by,approved_at,created_at,updated_at)
@@ -77,8 +86,9 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
             cur.execute("""INSERT INTO kaizo_coach_problem_drill_links
                 (link_id,tenant_id,coach_actor_id,problem_id,drill_id,athlete_id,
                  assessment_id,rationale,evidence_ids,created_by,created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,'Targets recorded decision','["REF-POSTGRES"]'::jsonb,%s,%s)""",
-                (link,tenant,coach,problem,drill,athlete_id,assessment,coach,now))
+                VALUES (%s,%s,%s,%s,%s,%s,%s,'Targets recorded decision',%s::jsonb,%s,%s)""",
+                (link,tenant,coach,problem,drill,athlete_id,assessment,
+                 json.dumps([evidence_id]),coach,now))
             cur.execute("""INSERT INTO kaizo_audit_logs
                 (timestamp,who,action,old_value,new_value,why,tenant_id)
                 VALUES (%s,%s,'COACH_DECISION_RECORD_RECORDED',NULL,%s::jsonb,
@@ -86,7 +96,7 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
                 (now,coach,json.dumps({"decision_id":decision,"athlete_id":athlete_id,
                                        "coach_id":coach,"problem_id":problem,"status":"RECORDED"}),tenant))
         conn.commit()
-    return decision, drill, baseline_snapshot["snapshot_id"], kpi_id
+    return decision, drill, baseline_snapshot["snapshot_id"], kpi_id, evidence_id
 
 
 
@@ -129,13 +139,13 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id, baseline_snapshot_id, kpi_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, baseline_snapshot_id, kpi_id, evidence_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
         "drill_id": drill_id,
         "rationale": "PostgreSQL ownership and audit acceptance",
-        "evidence_refs": ["REF-POSTGRES"],
+        "evidence_refs": [evidence_id],
         "selected_by": "SPOOFED-CLIENT-IDENTITY",
     }
     def unexpected_request_ddl():
@@ -237,24 +247,24 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "athlete_id":athlete_id,"session_id":session_id,
         "response_record_id":training_response["record_id"],
         "baseline_reference":baseline_snapshot_id,
-        "retest_values":{"different_kpi":6},"evidence_refs":["REF-POSTGRES"]})
+        "retest_values":{"different_kpi":6},"evidence_refs":[evidence_id]})
     assert bad_retest.status_code == 409, bad_retest.text
     retest = post("037","retest",{
         "session_id":session_id,"response_record_id":training_response["record_id"],
         "baseline_reference":baseline_snapshot_id,
-        "retest_values":{kpi_id:6},"evidence_refs":["REF-POSTGRES"]})
+        "retest_values":{kpi_id:6},"evidence_refs":[evidence_id]})
     comparison = post("038","before-after",{
         "response_record_id":training_response["record_id"],"retest_record_id":retest["record_id"],
         "baseline":{kpi_id:4},"current":{kpi_id:6},
         "comparison_method":"same_kpi_absolute_change"})
     progress = post("039","progress-state",{
-        "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"},"evidence_refs":["REF-POSTGRES"]})
+        "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"},"evidence_refs":[evidence_id]})
     unlinked_trigger = client.post("/api/v1/training-workflow/feat-040/next-decision-trigger",
         headers=headers,json={
             "athlete_id":athlete_id,"session_id":session_id,
             "progress_record_id":progress["record_id"],
             "trigger_type":"RETEST_COMPLETE","trigger_reason":"Coach reviewed progress",
-            "required_evidence":["REF-POSTGRES"]})
+            "required_evidence":[evidence_id]})
     assert unlinked_trigger.status_code == 409, unlinked_trigger.text
     trigger = post("040","next-decision-trigger",{
         "session_id":session_id,"progress_record_id":progress["record_id"],
@@ -318,6 +328,70 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert denied.status_code == 404
 
 
+def test_missing_or_unverified_evidence_is_rejected_before_workflow_write():
+    assert persistence.is_postgres_enabled()
+    persistence.initialize()
+    tenant = "TENANT-" + uuid4().hex
+    coach = "COACH-" + uuid4().hex
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id=tenant, coach_actor_id=coach,
+        display_name="FEAT-033 evidence rejection acceptance",
+    )
+    headers = {
+        "X-KAIZO-Actor": coach,
+        "X-KAIZO-Role": "coach",
+        "X-KAIZO-Tenant": tenant,
+    }
+    decision_id, drill_id, _baseline, _kpi, _verified_evidence = seed_authoritative_feat033_sources(
+        tenant, coach, athlete["athlete_id"],
+    )
+    missing_evidence = "MISSING-EVIDENCE-" + uuid4().hex
+    # The route first requires the requested reference to be linked to the
+    # authoritative problem/drill pair, then revalidates its durable evidence
+    # row and status. Include the missing ID in that link to exercise the
+    # second check rather than only the link-membership guard.
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE kaizo_coach_problem_drill_links
+                   SET evidence_ids=%s::jsonb
+                   WHERE athlete_id=%s AND drill_id=%s
+                     AND tenant_id=%s AND coach_actor_id=%s""",
+                (json.dumps([_verified_evidence, missing_evidence]),
+                 athlete["athlete_id"], drill_id, tenant, coach),
+            )
+            assert cur.rowcount == 1
+        conn.commit()
+    response = client.post(
+        "/api/v1/training-workflow/feat-033/decision-drill",
+        headers=headers,
+        json={
+            "athlete_id": athlete["athlete_id"],
+            "decision_id": decision_id,
+            "drill_id": drill_id,
+            "rationale": "Reject evidence that is not in the verified decision scope",
+            "evidence_refs": [missing_evidence],
+        },
+    )
+    assert response.status_code == 409, response.text
+    assert "evidence not found" in response.text
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_training_workflow_records
+                   WHERE athlete_id=%s AND decision_id=%s AND feature_id='FEAT-033'""",
+                (athlete["athlete_id"], decision_id),
+            )
+            assert cur.fetchone()[0] == 0
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_audit_logs
+                   WHERE tenant_id=%s AND who=%s AND action='FEAT-033_RECORDED'
+                     AND new_value->>'decision_id'=%s""",
+                (tenant, coach, decision_id),
+            )
+            assert cur.fetchone()[0] == 0
+
+
 def test_audit_failure_rolls_back_workflow_record():
     assert persistence.is_postgres_enabled()
     persistence.initialize()
@@ -332,13 +406,13 @@ def test_audit_failure_rolls_back_workflow_record():
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id, baseline_snapshot_id, kpi_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, baseline_snapshot_id, kpi_id, evidence_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
         "drill_id": drill_id,
         "rationale": "Audit failure must roll back record",
-        "evidence_refs": ["REF-POSTGRES"],
+        "evidence_refs": [evidence_id],
     }
     trigger = "kaizo_test_reject_workflow_audit"
     function = "kaizo_test_reject_workflow_audit_fn"
@@ -445,7 +519,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         coach_actor_id=coach,
         display_name="OIDC FEAT-033 PostgreSQL acceptance",
     )
-    decision_id, drill_id, _baseline_snapshot_id, _kpi_id = seed_authoritative_feat033_sources(
+    decision_id, drill_id, _baseline_snapshot_id, _kpi_id, evidence_id = seed_authoritative_feat033_sources(
         tenant, coach, athlete["athlete_id"]
     )
     path = "/api/v1/training-workflow/feat-033/decision-drill"
@@ -454,7 +528,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         "decision_id": decision_id,
         "drill_id": drill_id,
         "rationale": "Verified OIDC Coach ownership acceptance",
-        "evidence_refs": ["REF-POSTGRES"],
+        "evidence_refs": [evidence_id],
         "selected_by": "FORGED-CLIENT-IDENTITY",
     }
 
