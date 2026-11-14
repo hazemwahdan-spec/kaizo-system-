@@ -82,7 +82,7 @@ def _verified_athlete_evidence(cur, athlete_id: str, coach_actor_id: str, eviden
     if valid != set(refs):
         raise HTTPException(
             409,
-            detail="FEAT-042 requires VERIFIED, non-E0 evidence records scoped to the same athlete",
+            detail="FEAT-042 requires VERIFIED, non-E0 evidence verified by this Coach for the same athlete",
         )
 
 
