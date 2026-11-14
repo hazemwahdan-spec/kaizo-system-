@@ -89,6 +89,32 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
     return decision, drill, baseline_snapshot["snapshot_id"], kpi_id
 
 
+
+def seed_owned_session(tenant, coach, athlete_id, decision_id, created_by=None):
+    actor = created_by or coach
+    plan_id = "PLAN-" + uuid4().hex
+    session_id = "SESSION-" + uuid4().hex
+    now = "2026-11-14T00:00:00+00:00"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_training_plans
+                   (plan_id,athlete_id,decision_id,title,objective,constraints,status,created_by,created_at)
+                   VALUES (%s,%s,%s,'Workflow test plan','Verify session lineage','{}'::jsonb,'DRAFT',%s,%s)""",
+                (plan_id, athlete_id, decision_id, actor, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_training_sessions
+                   (session_id,plan_id,athlete_id,title,duration_minutes,blocks,status,created_by,created_at)
+                   VALUES (%s,%s,%s,'Workflow test session',30,
+                           '[{"name":"Technical block","duration_minutes":30}]'::jsonb,
+                           'DRAFT',%s,%s)""",
+                (session_id, plan_id, athlete_id, actor, now),
+            )
+        conn.commit()
+    return session_id
+
+
 def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert persistence.is_postgres_enabled()
     persistence.initialize()
@@ -166,7 +192,25 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert record["payload"]["problem_drill_link_id"]
 
     athlete_id = athlete["athlete_id"]
-    session_id = "SESSION-" + uuid4().hex
+    session_id = seed_owned_session(tenant, coach, athlete_id, decision_id)
+    wrong_decision_session = seed_owned_session(
+        tenant, coach, athlete_id, "DIFFERENT-" + uuid4().hex,
+    )
+    wrong_owner_session = seed_owned_session(
+        tenant, coach, athlete_id, decision_id, created_by=coach + "-OTHER",
+    )
+    for invalid_session in (wrong_decision_session, wrong_owner_session):
+        invalid_session_response = client.post(
+            "/api/v1/training-workflow/feat-034/drill-prescription",
+            headers=headers,
+            json={
+                "athlete_id": athlete_id, "decision_id": decision_id,
+                "session_id": invalid_session, "drill_id": drill_id,
+                "objective": "Reject foreign session", "dosage": {"sets": 3, "reps": 5},
+            },
+        )
+        assert invalid_session_response.status_code == 409, invalid_session_response.text
+
     def post(feature, suffix, body):
         result = client.post(f"/api/v1/training-workflow/feat-{feature}/{suffix}",
                              json={"athlete_id":athlete_id, **body}, headers=headers)
@@ -234,8 +278,14 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         i for i, query in enumerate(normalized)
         if "INSERT INTO KAIZO_TRAINING_WORKFLOW_RECORDS" in query
     ]
-    assert lock_indexes and insert_indexes, statements
+    session_lock_indexes = [
+        i for i, query in enumerate(normalized)
+        if "FROM KAIZO_TRAINING_SESSIONS S" in query and "FOR UPDATE OF O,S,T" in query
+    ]
+    assert lock_indexes and insert_indexes and session_lock_indexes, statements
     assert lock_indexes[0] < insert_indexes[0], statements
+    next_child_insert = next(i for i in insert_indexes if i > session_lock_indexes[0])
+    assert session_lock_indexes[0] < next_child_insert, statements
     assert any("JOIN KAIZO_COACH_ATHLETE_OWNERSHIP" in query for query in normalized), statements
     assert not any(
         query.lstrip().startswith(("CREATE TABLE", "ALTER TABLE", "CREATE INDEX"))
