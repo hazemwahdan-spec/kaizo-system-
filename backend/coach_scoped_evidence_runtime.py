@@ -292,6 +292,13 @@ def link_training_session(
             if knowledge is None or knowledge[0] != "APPROVED":
                 raise CoachEvidenceConflict("approved knowledge is required in the same Coach athlete scope")
             cur.execute(
+                """SELECT COUNT(*) FROM kaizo_evidence_records
+                   WHERE evidence_id = ANY(%s) AND status='VERIFIED' AND subject_id=%s""",
+                (refs, athlete_id),
+            )
+            if int(cur.fetchone()[0]) != len(set(refs)) or len(set(refs)) != len(refs):
+                raise CoachEvidenceConflict("all linkage evidence references must be verified for this athlete")
+            cur.execute(
                 """SELECT session_id FROM kaizo_training_sessions
                    WHERE session_id=%s AND athlete_id=%s AND created_by=%s""",
                 (session_id, athlete_id, actor),
@@ -348,10 +355,27 @@ def set_governance(
     tenant, actor = _require_principal(principal)
     if not all(str(x).strip() for x in (athlete_id, resource_type, resource_id, governance_status)):
         raise ValueError("athlete, resource type/id and governance status are required")
+    allowed_resource_types = {"KNOWLEDGE", "TRAINING_SESSION"}
+    if resource_type not in allowed_resource_types:
+        raise CoachEvidenceConflict("governance resource_type is not enabled in the scoped service")
     timestamp = _now()
     with persistence.atomic_transaction() as conn:
         with conn.cursor() as cur:
             _lock_primary_owner(cur, tenant_id=tenant, coach_actor_id=actor, athlete_id=athlete_id)
+            if resource_type == "KNOWLEDGE":
+                cur.execute(
+                    """SELECT 1 FROM kaizo_coach_scoped_knowledge
+                       WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s AND knowledge_id=%s""",
+                    (tenant, actor, athlete_id, resource_id),
+                )
+            else:
+                cur.execute(
+                    """SELECT 1 FROM kaizo_training_sessions
+                       WHERE session_id=%s AND athlete_id=%s AND created_by=%s""",
+                    (resource_id, athlete_id, actor),
+                )
+            if cur.fetchone() is None:
+                raise CoachEvidenceAuthorizationError("governance resource is outside the authenticated Coach athlete scope")
             cur.execute(
                 """SELECT governance_id,governance_status,metadata,version
                    FROM kaizo_coach_scoped_governance
