@@ -172,12 +172,12 @@ def create_coach_product_action_trace(
 def list_coach_product_action_traces(
     *, tenant_id: str, coach_actor_id: str, athlete_id: str
 ) -> dict[str, Any] | None:
-    athlete = coach_roster.get_owned_athlete(
-        tenant_id=tenant_id, coach_actor_id=coach_actor_id, athlete_id=athlete_id
-    )
-    if athlete is None:
-        return None
     if not persistence.is_postgres_enabled():
+        athlete = coach_roster.get_owned_athlete(
+            tenant_id=tenant_id, coach_actor_id=coach_actor_id, athlete_id=athlete_id
+        )
+        if athlete is None:
+            return None
         return {
             "feature_id": "FEAT-055", "athlete_id": athlete_id,
             "status": "INSUFFICIENT_EVIDENCE", "items": [], "total": 0,
@@ -185,8 +185,20 @@ def list_coach_product_action_traces(
             "read_only": True, "coach_final_authority": True,
             "execution_authorized": False,
         }
-    with persistence.connection() as conn:
+
+    # Authorization and the trace read share one transaction. Holding the
+    # ownership row lock prevents a concurrent reassignment from exposing
+    # history after the caller has lost this Coach/tenant/athlete scope.
+    with persistence.atomic_transaction() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                """SELECT athlete_id FROM kaizo_coach_athlete_ownership
+                   WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s
+                   FOR KEY SHARE""",
+                (tenant_id, coach_actor_id, athlete_id),
+            )
+            if cur.fetchone() is None:
+                return None
             cur.execute("SELECT to_regclass('public.kaizo_coach_product_action_traces')")
             table = cur.fetchone()
             if not table or table[0] is None:
@@ -205,6 +217,7 @@ def list_coach_product_action_traces(
                 ORDER BY traced_at DESC, trace_id DESC
             """, (tenant_id, coach_actor_id, athlete_id))
             rows = cur.fetchall()
+
     items = [{
         "trace_id": row[0], "product_action": row[1],
         "source_record_ids": row[2], "trace_reason": row[3],
