@@ -89,7 +89,7 @@ jobs:
       - name: Verify FEAT-033..040 Coach workflow ownership and atomic audit
         run: PYTHONPATH=..:. pytest -q ../productization/test_training_workflow_postgres.py
       - name: Verify FEAT-047..050 and FEAT-052..053 scoped evidence and atomic audit
-        run: PYTHONPATH=. pytest -q test_coach_scoped_evidence_runtime_postgres.py
+        run: PYTHONPATH=..:. pytest -q test_coach_scoped_evidence_runtime_postgres.py
       - name: Verify FEAT-042..045 scoped Digital Twin state cycle
         run: PYTHONPATH=..:. pytest -q test_state_cycle.py test_feat_041_digital_twin.py
       - name: Verify scoped Digital Twin PostgreSQL persistence and atomic audit rollback
