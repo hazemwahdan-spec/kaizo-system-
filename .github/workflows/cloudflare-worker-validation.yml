@@ -16,6 +16,7 @@ on:
   pull_request:
     branches:
       - main
+      - integration/coach-closure-evidence-audit-20261115
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
@@ -25,6 +26,7 @@ on:
       - "productization/**"
       - "frontend/**"
       - ".github/workflows/cloudflare-worker-validation.yml"
+      - ".github/workflows/cloudflare-worker-staging-deploy.yml"
 
 permissions:
   contents: read
