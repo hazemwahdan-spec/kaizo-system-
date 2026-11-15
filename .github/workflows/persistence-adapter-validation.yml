@@ -102,6 +102,8 @@ jobs:
         run: PYTHONPATH=..:. pytest -q ../frontend/test_product_ui_contract.py
       - name: Compile Auth0 Staging live-proof harness
         run: python -m py_compile ../scripts/verify_coach_auth0_staging.py
+      - name: Compile guarded Staging schema preparation
+        run: python -m py_compile ../scripts/apply_coach_scoped_evidence_staging_schema.py
       - name: Verify FEAT-042..045 scoped Digital Twin state cycle
         run: PYTHONPATH=..:. pytest -q test_state_cycle.py test_feat_041_digital_twin.py
       - name: Verify scoped Digital Twin PostgreSQL persistence and atomic audit rollback
