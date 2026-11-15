@@ -10,15 +10,18 @@ def main():
     environment = os.getenv("KAIZO_ENVIRONMENT", "").strip().lower()
     database_url = os.getenv("DATABASE_URL", "").strip()
     expected_host = os.getenv("KAIZO_STAGING_DB_HOST", "").strip().lower()
+    production_host = os.getenv("KAIZO_PRODUCTION_DB_HOST", "").strip().lower()
     if environment != "staging":
         raise RuntimeError("Refusing schema change: KAIZO_ENVIRONMENT must be exactly 'staging'")
-    if not database_url or not expected_host:
-        raise RuntimeError("Staging DATABASE_URL secret and KAIZO_STAGING_DB_HOST variable are required")
+    if not database_url or not expected_host or not production_host:
+        raise RuntimeError("Staging DATABASE_URL secret plus trusted Staging and Production DB host variables are required")
     parsed = urlparse(database_url)
     if parsed.scheme not in {"postgres", "postgresql"} or not parsed.hostname:
         raise RuntimeError("DATABASE_URL must be a PostgreSQL URL")
     if parsed.hostname.lower() != expected_host:
         raise RuntimeError("DATABASE_URL host does not match the trusted KAIZO_STAGING_DB_HOST")
+    if parsed.hostname.lower() == production_host:
+        raise RuntimeError("Refusing schema change: target host matches the configured Production DB host")
 
     sys.path.insert(0, os.path.abspath("backend"))
     import persistence
