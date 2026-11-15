@@ -16,6 +16,7 @@ jobs:
       KAIZO_PERSISTENCE_MODE: postgres
       DATABASE_URL: ${{ secrets.KAIZO_STAGING_DATABASE_URL }}
       KAIZO_STAGING_DB_HOST: ${{ vars.KAIZO_STAGING_DB_HOST }}
+      KAIZO_PRODUCTION_DB_HOST: ${{ vars.KAIZO_PRODUCTION_DB_HOST }}
       PYTHONPATH: backend:.
     steps:
       - uses: actions/checkout@v4
@@ -28,8 +29,8 @@ jobs:
       - name: Require allowlisted Staging database target
         shell: bash
         run: |
-          if [ -z "$DATABASE_URL" ] || [ -z "$KAIZO_STAGING_DB_HOST" ]; then
-            echo "KAIZO_STAGING_DATABASE_URL secret and KAIZO_STAGING_DB_HOST repository variable are required."
+          if [ -z "$DATABASE_URL" ] || [ -z "$KAIZO_STAGING_DB_HOST" ] || [ -z "$KAIZO_PRODUCTION_DB_HOST" ]; then
+            echo "KAIZO_STAGING_DATABASE_URL secret plus KAIZO_STAGING_DB_HOST and KAIZO_PRODUCTION_DB_HOST repository variables are required."
             exit 1
           fi
       - name: Apply additive Coach evidence schema to Staging only
