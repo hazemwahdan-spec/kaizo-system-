@@ -1,5 +1,6 @@
 """Disposable PostgreSQL acceptance for scoped Digital Twin state/history/audit."""
 import os
+import json
 os.environ["KAIZO_IDENTITY_MODE"]="development"
 os.environ["KAIZO_PERSISTENCE_MODE"]="postgres"
 
@@ -51,7 +52,7 @@ def _fixture():
     return tenant,coach,athlete_id,headers,payload
 
 
-def _seed_decision(coach, athlete):
+def _seed_decision(tenant, coach, athlete):
     decision_id = "DECISION-" + uuid4().hex
     now = "2026-11-15T00:00:00+00:00"
     with persistence.connection() as conn:
@@ -66,6 +67,13 @@ def _seed_decision(coach, athlete):
                 (decision_id, "CAND-" + uuid4().hex, "DIAG-" + uuid4().hex,
                  "PROBLEM-" + uuid4().hex, athlete, "ASSESSMENT-" + uuid4().hex,
                  coach, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_audit_logs
+                   (timestamp,who,action,old_value,new_value,why,tenant_id)
+                   VALUES (%s,%s,'COACH_DECISION_RECORD_RECORDED',NULL,%s::jsonb,%s,%s)""",
+                (now, coach, json.dumps({"decision_id": decision_id, "athlete_id": athlete}),
+                 "Authoritative decision provenance for Digital Twin link test.", tenant),
             )
         conn.commit()
     return decision_id
@@ -202,17 +210,17 @@ def test_decision_state_link_rejects_cross_coach_and_cross_tenant_decisions():
     assert created.status_code == 201, created.text
 
     other_coach = coach + "-OTHER"
-    same_athlete_wrong_coach = _seed_decision(other_coach, athlete)
+    same_athlete_wrong_coach = _seed_decision(tenant, other_coach, athlete)
     other_athlete = coach_roster.create_owned_athlete(
         tenant_id=tenant, coach_actor_id=other_coach,
         display_name="Foreign Coach decision athlete",
     )
-    cross_coach_decision = _seed_decision(other_coach, other_athlete["athlete_id"])
+    cross_coach_decision = _seed_decision(tenant, other_coach, other_athlete["athlete_id"])
     other_tenant_athlete = coach_roster.create_owned_athlete(
         tenant_id=tenant + "-OTHER", coach_actor_id=coach,
         display_name="Foreign Tenant decision athlete",
     )
-    cross_tenant_decision = _seed_decision(coach, other_tenant_athlete["athlete_id"])
+    cross_tenant_decision = _seed_decision(tenant + "-OTHER", coach, other_tenant_athlete["athlete_id"])
 
     for decision_id in (
         same_athlete_wrong_coach, cross_coach_decision, cross_tenant_decision,
@@ -229,7 +237,7 @@ def test_decision_state_link_rejects_cross_coach_and_cross_tenant_decisions():
             },
             headers=headers,
         )
-        assert response.status_code == 404, response.text
+        assert response.status_code == 409, response.text
 
     with persistence.connection() as conn:
         with conn.cursor() as cur:
@@ -247,7 +255,7 @@ def test_decision_state_link_rejects_cross_coach_and_cross_tenant_decisions():
             )
             assert cur.fetchone()[0] == 0
 
-    valid_decision = _seed_decision(coach, athlete)
+    valid_decision = _seed_decision(tenant, coach, athlete)
     accepted = client.post(
         "/api/v1/state-cycle/feat-044/decision-state-link",
         json={
@@ -277,7 +285,7 @@ def test_decision_state_link_rolls_back_when_tenant_audit_fails():
         json=payload, headers=headers,
     )
     assert created.status_code == 201, created.text
-    decision_id = _seed_decision(coach, athlete)
+    decision_id = _seed_decision(tenant, coach, athlete)
     trigger = "kaizo_test_reject_feat044_audit_" + uuid4().hex[:12]
     function = trigger + "_fn"
     with persistence.connection() as conn:
@@ -342,7 +350,7 @@ def test_state_reads_recheck_current_ownership_inside_read_transaction(monkeypat
         json=payload, headers=headers,
     )
     assert created.status_code == 201, created.text
-    decision_id = _seed_decision(coach, athlete)
+    decision_id = _seed_decision(tenant, coach, athlete)
     linked = client.post(
         "/api/v1/state-cycle/feat-044/decision-state-link",
         json={
