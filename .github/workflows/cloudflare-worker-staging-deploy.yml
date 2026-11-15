@@ -45,7 +45,7 @@ jobs:
               "binding": "HYPERDRIVE",
               "id": os.environ["KAIZO_STAGING_HYPERDRIVE_ID"]
           }]
-          path.write_text(json.dumps(config, indent=2) + "\\n")
+          path.write_text(json.dumps(config, indent=2) + "\n")
           PY
       - name: Install Python Worker dependencies
         run: |
