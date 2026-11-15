@@ -42,8 +42,22 @@ def main():
     base = os.environ["KAIZO_STAGING_API_URL"].strip().rstrip("/")
     token = os.environ["KAIZO_OIDC_BEARER_TOKEN"].strip()
     athlete_id = os.environ["KAIZO_STAGING_OWNED_ATHLETE_ID"].strip()
-    if not base.startswith("https://"):
-        raise RuntimeError("Staging API URL must use HTTPS")
+    staging_host = os.environ.get("KAIZO_STAGING_API_HOST", "").strip().lower().rstrip(".")
+    production_host = os.environ.get("KAIZO_PRODUCTION_API_HOST", "").strip().lower().rstrip(".")
+    parsed_base = urllib.parse.urlparse(base)
+    actual_host = (parsed_base.hostname or "").lower().rstrip(".")
+    if parsed_base.scheme != "https" or not actual_host:
+        raise RuntimeError("Staging API URL must be an HTTPS URL with a hostname")
+    if parsed_base.username or parsed_base.password or parsed_base.query or parsed_base.fragment:
+        raise RuntimeError("Staging API URL must not contain credentials, query parameters, or fragments")
+    if not staging_host or not production_host:
+        raise RuntimeError("Trusted KAIZO_STAGING_API_HOST and KAIZO_PRODUCTION_API_HOST variables are required")
+    if staging_host == production_host:
+        raise RuntimeError("Refusing Auth0 proof: configured Staging and Production API hosts must differ")
+    if actual_host != staging_host:
+        raise RuntimeError("Staging API URL host does not match the trusted KAIZO_STAGING_API_HOST")
+    if actual_host == production_host:
+        raise RuntimeError("Refusing Auth0 proof: target host matches the configured Production API host")
     if not token or not athlete_id:
         raise RuntimeError("Staging Bearer token and owned athlete ID are required")
 
