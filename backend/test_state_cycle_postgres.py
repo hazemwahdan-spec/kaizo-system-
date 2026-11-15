@@ -285,14 +285,14 @@ def test_decision_state_link_rolls_back_when_tenant_audit_fails():
             cur.execute(f"DROP TRIGGER IF EXISTS {trigger} ON kaizo_audit_logs")
             cur.execute(f"DROP FUNCTION IF EXISTS {function}()")
             cur.execute(f"""
-                CREATE FUNCTION {function}() RETURNS trigger AS $
+                CREATE FUNCTION {function}() RETURNS trigger AS $fn$
                 BEGIN
                     IF NEW.action='FEAT-044_DECISION_STATE_LINKED' THEN
                         RAISE EXCEPTION 'intentional FEAT-044 audit failure';
                     END IF;
                     RETURN NEW;
                 END;
-                $ LANGUAGE plpgsql
+                $fn$ LANGUAGE plpgsql
             """)
             cur.execute(
                 f"CREATE TRIGGER {trigger} BEFORE INSERT ON kaizo_audit_logs "
