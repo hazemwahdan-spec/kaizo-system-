@@ -1178,7 +1178,7 @@ async function loadCoachProblemDrillLinks(athleteId,problemId){
 }
 
 
-async function coachScopedEvidenceRequest(path,options={}){const token=await productAccessToken();return productCall(path,{...options,headers:{...(options.headers||{}),Authorization:"Bearer "+token}})}
+async function coachScopedEvidenceRequest(path,options={}){return productCall(path,options)}
 function coachCsv(id){return (document.getElementById(id)?.value||"").split(",").map(x=>x.trim()).filter(Boolean)}
 function coachEvidenceNotice(message){const n=document.getElementById("coachScopedEvidenceNotice");if(n)n.textContent=message}
 async function createCoachEvidenceProvenance(event){event.preventDefault();const athleteId=selectedCoachAthleteId;if(!athleteId)return coachEvidenceNotice("Select an owned athlete first.");const payload={knowledge_id:document.getElementById("coachKnowledgeId").value.trim(),source_type:document.getElementById("coachSourceType").value.trim(),source_ref:document.getElementById("coachSourceRef").value.trim(),source_version:document.getElementById("coachSourceVersion").value.trim(),provenance_note:document.getElementById("coachProvenanceNote").value.trim(),evidence_refs:coachCsv("coachProvenanceEvidence")};try{const r=await coachScopedEvidenceRequest("/coach/athletes/"+encodeURIComponent(athleteId)+"/knowledge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});coachEvidenceNotice("Provenance saved: "+r.evidence_status+" / "+r.lifecycle_status+"; version "+r.version)}catch(e){coachEvidenceNotice("Provenance rejected: "+String(e.message||e))}}
