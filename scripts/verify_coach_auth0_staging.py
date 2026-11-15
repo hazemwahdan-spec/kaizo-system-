@@ -62,6 +62,14 @@ def main():
     status, _ = request(base, f"/api/v1/product/coach/athletes/{encoded}", token)
     require_status("Owned athlete detail read", status, 200)
 
+    status, spoofed_roster = request(base, "/api/v1/product/coach/athletes", token, {
+        "X-KAIZO-Actor": "forged-actor", "X-KAIZO-Role": "admin",
+        "X-KAIZO-Tenant": "forged-tenant", "X-KAIZO-Resource-Owner": "foreign-athlete",
+    })
+    require_status("Verified token remains authoritative over spoofed identity headers", status, 200)
+    if not any(str(row.get("athlete_id")) == athlete_id for row in spoofed_roster.get("athletes", [])):
+        raise RuntimeError("Spoofed identity headers changed the authenticated Coach roster")
+
     status, _ = request(base, "/api/v1/product/coach/athletes")
     require_status("Anonymous Coach API denial", status, 401)
 
@@ -79,6 +87,11 @@ def main():
         encoded_foreign = urllib.parse.quote(foreign_id, safe="")
         status, _ = request(base, f"/api/v1/product/coach/athletes/{encoded_foreign}", token)
         require_status("Cross-Coach / cross-tenant athlete denial", status, 404)
+
+    wrong_audience_token = os.getenv("KAIZO_OIDC_WRONG_AUDIENCE_TOKEN", "").strip()
+    if wrong_audience_token:
+        status, _ = request(base, "/api/v1/product/auth/oidc/verify", wrong_audience_token)
+        require_status("Wrong-audience Auth0 token denial", status, 401)
 
     no_product_token = os.getenv("KAIZO_OIDC_NO_PRODUCT_TOKEN", "").strip()
     if no_product_token:
