@@ -54,6 +54,34 @@ def _scope_check(cur, athlete_id, principal):
         raise HTTPException(404, detail="athlete not found in Coach scope")
 
 
+def _verified_athlete_evidence(cur, athlete_id: str, coach_actor_id: str, evidence_refs: List[str]) -> None:
+    """Lock only VERIFIED, non-E0 evidence belonging to this exact athlete."""
+    refs = [str(item).strip() for item in evidence_refs]
+    if (not refs or any(not item for item in refs)
+            or len(refs) != len(set(refs))):
+        raise HTTPException(409, detail="FEAT-042 evidence_refs must be non-empty and unique")
+    cur.execute(
+        """SELECT evidence_id,evidence_level,status,verified_by
+           FROM kaizo_evidence_records
+           WHERE evidence_id=ANY(%s)
+             AND LOWER(subject_type)='athlete' AND subject_id=%s
+             AND verified_by=%s
+           FOR SHARE""",
+        (refs, athlete_id, coach_actor_id),
+    )
+    valid = {
+        str(row[0]) for row in cur.fetchall()
+        if str(row[1] or "").strip().upper() != "E0"
+        and str(row[2] or "").strip().upper() == "VERIFIED"
+        and str(row[3] or "").strip() == coach_actor_id
+    }
+    if valid != set(refs):
+        raise HTTPException(
+            409,
+            detail="FEAT-042 requires VERIFIED, non-E0 evidence verified by this Coach for the same athlete",
+        )
+
+
 def _get_state(athlete_id: str, principal: Any) -> Optional[Dict[str, Any]]:
     if persistence.is_postgres_enabled():
         with persistence.connection() as conn:
@@ -87,6 +115,8 @@ def _persist_update(state: Dict[str, Any], history: Dict[str, Any],
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             _scope_check(cur,state["entity_id"],principal)
+            # Evidence, versioned state, history and tenant audit commit together.
+            _verified_athlete_evidence(cur, state["entity_id"], principal.actor_id, history["evidence_refs"])
             cur.execute(
                 """SELECT version,tenant_id,coach_actor_id FROM kaizo_digital_twin_state
                    WHERE entity_id=%s FOR UPDATE""",(state["entity_id"],))
