@@ -16,7 +16,6 @@ on:
       - fix/coach-feat040-required-evidence-lineage-20261113
       - fix/coach-postgres-verified-evidence-fixture-20261114
       - integration/coach-closure-evidence-audit-20261115
-      - integration/coach-closure-evidence-audit-20261115
       - feat/coach-scoped-evidence-product-api-ui-20261115
   pull_request:
     branches:
@@ -44,6 +43,7 @@ on:
       - fix/coach-evidence-lifecycle-locks-20261114
       - fix/coach-training-session-lineage-20261114
       - fix/coach-postgres-verified-evidence-fixture-20261114
+      - integration/coach-closure-evidence-audit-20261115
 
 jobs:
   validate-persistence-adapter:
@@ -98,6 +98,8 @@ jobs:
         run: PYTHONPATH=..:. pytest -q test_coach_scoped_evidence_runtime_postgres.py
       - name: Verify protected FEAT-047..050 and FEAT-052..053 Product API routes
         run: PYTHONPATH=..:. pytest -q ../productization/test_coach_scoped_evidence_api.py
+      - name: Verify Coach UI Product API contract
+        run: PYTHONPATH=..:. pytest -q ../frontend/test_product_ui_contract.py
       - name: Verify FEAT-042..045 scoped Digital Twin state cycle
         run: PYTHONPATH=..:. pytest -q test_state_cycle.py test_feat_041_digital_twin.py
       - name: Verify scoped Digital Twin PostgreSQL persistence and atomic audit rollback
