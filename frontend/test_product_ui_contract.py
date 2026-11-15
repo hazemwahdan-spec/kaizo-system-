@@ -388,7 +388,7 @@ def test_coach_scoped_evidence_and_governance_ui_uses_product_bearer_api():
         "/knowledge", "/lifecycle", "/knowledge-links", "/actor-traces", "/governance",
     ):
         assert route in APP
-    assert 'Authorization:"Bearer "+token' in APP
+    assert '"Authorization":"Bearer "+token' in APP
     assert 'data-athlete-section="coachEvidenceGovernanceSection"' in APP
     assert '"coachEvidenceGovernanceSection"' in APP
     assert 'X-KAIZO-Actor' not in APP
