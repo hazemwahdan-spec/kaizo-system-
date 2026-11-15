@@ -43,8 +43,7 @@ jobs:
           config = json.loads(path.read_text())
           config["hyperdrive"] = [{
               "binding": "HYPERDRIVE",
-              "id": os.environ["KAIZO_STAGING_HYPERDRIVE_ID"],
-              "localConnectionString": ""
+              "id": os.environ["KAIZO_STAGING_HYPERDRIVE_ID"]
           }]
           path.write_text(json.dumps(config, indent=2) + "\\n")
           PY
