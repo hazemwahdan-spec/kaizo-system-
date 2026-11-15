@@ -166,6 +166,26 @@ def _persist_update(state: Dict[str, Any], history: Dict[str, Any],
         conn.commit()
 
 
+def _lock_owned_decision(cur, *, decision_id: str, athlete_id: str, principal: Any) -> None:
+    """Require the linked decision to belong to this exact Coach/tenant/athlete."""
+    cur.execute(
+        """SELECT d.decision_id
+           FROM kaizo_decision_records d
+           JOIN kaizo_coach_athlete_ownership o
+             ON o.athlete_id=d.athlete_id
+           WHERE d.decision_id=%s
+             AND d.athlete_id=%s
+             AND d.coach_id=%s
+             AND o.tenant_id=%s
+             AND o.coach_actor_id=%s
+           FOR SHARE OF d,o""",
+        (decision_id, athlete_id, principal.actor_id,
+         principal.tenant_id, principal.actor_id),
+    )
+    if cur.fetchone() is None:
+        raise HTTPException(404, detail="decision not found in Coach scope")
+
+
 def _save_link(record: Dict[str, Any], principal: Any) -> None:
     if not persistence.is_postgres_enabled():
         _MEMORY_LINKS.append(record)
@@ -173,6 +193,10 @@ def _save_link(record: Dict[str, Any], principal: Any) -> None:
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             _scope_check(cur,record["entity_id"],principal)
+            _lock_owned_decision(
+                cur, decision_id=record["decision_id"],
+                athlete_id=record["entity_id"], principal=principal,
+            )
             cur.execute(
                 """SELECT 1 FROM kaizo_digital_twin_state
                    WHERE entity_id=%s AND version=%s AND tenant_id=%s AND coach_actor_id=%s
