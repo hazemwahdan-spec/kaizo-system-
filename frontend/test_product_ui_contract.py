@@ -381,7 +381,7 @@ def test_coach_scoped_evidence_and_governance_ui_uses_product_bearer_api():
         "coachScopedEvidenceRequest", "createCoachEvidenceProvenance",
         "changeCoachKnowledgeLifecycle", "searchCoachKnowledge",
         "linkCoachKnowledgeToSession", "createCoachActorTrace",
-        "saveCoachGovernance", "loadCoachScopedEvidenceRecords",
+        "saveCoachGovernance", "loadCoachScopedEvidenceRecords", "loadCoachGovernanceRecord",
     ):
         assert f"function {function}(" in APP or f"async function {function}(" in APP
     for route in (
