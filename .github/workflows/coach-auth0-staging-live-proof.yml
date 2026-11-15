@@ -21,6 +21,8 @@ jobs:
     timeout-minutes: 5
     env:
       KAIZO_STAGING_API_URL: ${{ vars.KAIZO_STAGING_API_URL }}
+      KAIZO_STAGING_API_HOST: ${{ vars.KAIZO_STAGING_API_HOST }}
+      KAIZO_PRODUCTION_API_HOST: ${{ vars.KAIZO_PRODUCTION_API_HOST }}
       KAIZO_STAGING_OWNED_ATHLETE_ID: ${{ inputs.owned_athlete_id }}
       KAIZO_STAGING_FOREIGN_ATHLETE_ID: ${{ inputs.foreign_athlete_id }}
       KAIZO_OIDC_BEARER_TOKEN: ${{ secrets.KAIZO_OIDC_BEARER_TOKEN }}
