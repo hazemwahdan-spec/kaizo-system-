@@ -1,0 +1,47 @@
+name: Coach Auth0 Staging Live Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: HTTPS base URL of the isolated KAIZO Staging API (no trailing slash)
+        required: true
+        type: string
+      owned_athlete_id:
+        description: Existing disposable athlete owned by the Auth0 Coach test account
+        required: true
+        type: string
+      foreign_athlete_id:
+        description: Optional disposable athlete owned by another Coach or tenant
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  auth0-coach-live-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KAIZO_STAGING_API_URL: ${{ inputs.api_base_url }}
+      KAIZO_STAGING_OWNED_ATHLETE_ID: ${{ inputs.owned_athlete_id }}
+      KAIZO_STAGING_FOREIGN_ATHLETE_ID: ${{ inputs.foreign_athlete_id }}
+      KAIZO_OIDC_BEARER_TOKEN: ${{ secrets.KAIZO_OIDC_BEARER_TOKEN }}
+      KAIZO_OIDC_NO_PRODUCT_TOKEN: ${{ secrets.KAIZO_OIDC_NO_PRODUCT_TOKEN }}
+      KAIZO_OIDC_NONCOACH_TOKEN: ${{ secrets.KAIZO_OIDC_NONCOACH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Require Auth0 Staging test token
+        shell: bash
+        run: |
+          if [ -z "$KAIZO_OIDC_BEARER_TOKEN" ]; then
+            echo "KAIZO_OIDC_BEARER_TOKEN repository secret is required."
+            exit 1
+          fi
+      - name: Run live Auth0 Coach authorization checks (GET only)
+        run: python scripts/verify_coach_auth0_staging.py
