@@ -3,10 +3,6 @@ name: Coach Auth0 Staging Live Proof
 on:
   workflow_dispatch:
     inputs:
-      api_base_url:
-        description: HTTPS base URL of the isolated KAIZO Staging API (no trailing slash)
-        required: true
-        type: string
       owned_athlete_id:
         description: Existing disposable athlete owned by the Auth0 Coach test account
         required: true
@@ -24,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      KAIZO_STAGING_API_URL: ${{ inputs.api_base_url }}
+      KAIZO_STAGING_API_URL: ${{ vars.KAIZO_STAGING_API_URL }}
       KAIZO_STAGING_OWNED_ATHLETE_ID: ${{ inputs.owned_athlete_id }}
       KAIZO_STAGING_FOREIGN_ATHLETE_ID: ${{ inputs.foreign_athlete_id }}
       KAIZO_OIDC_BEARER_TOKEN: ${{ secrets.KAIZO_OIDC_BEARER_TOKEN }}
