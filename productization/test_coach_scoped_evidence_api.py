@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import main
 import persistence
 from productization import coach_scoped_evidence_api as api
-from productization import coach_scoped_evidence_runtime as service
+service = api.evidence_service
 
 client = TestClient(main.app)
 
