@@ -30,6 +30,7 @@ jobs:
       KAIZO_OIDC_BEARER_TOKEN: ${{ secrets.KAIZO_OIDC_BEARER_TOKEN }}
       KAIZO_OIDC_NO_PRODUCT_TOKEN: ${{ secrets.KAIZO_OIDC_NO_PRODUCT_TOKEN }}
       KAIZO_OIDC_NONCOACH_TOKEN: ${{ secrets.KAIZO_OIDC_NONCOACH_TOKEN }}
+      KAIZO_OIDC_WRONG_AUDIENCE_TOKEN: ${{ secrets.KAIZO_OIDC_WRONG_AUDIENCE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
