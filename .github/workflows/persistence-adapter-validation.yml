@@ -42,6 +42,7 @@ on:
       - fix/coach-evidence-lifecycle-locks-20261114
       - fix/coach-training-session-lineage-20261114
       - fix/coach-postgres-verified-evidence-fixture-20261114
+      - integration/coach-closure-evidence-audit-20261115
 
 jobs:
   validate-persistence-adapter:
