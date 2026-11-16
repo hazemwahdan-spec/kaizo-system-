@@ -356,3 +356,88 @@ def test_governance_is_versioned_and_audited(owned_scope):
             resource_id=created["resource_id"], governance_status="RETIRED",
             metadata={}, expected_version=1,
         )
+
+
+def _coach_evidence_api_client(monkeypatch, principal):
+    from fastapi.testclient import TestClient
+    import main
+    from productization import coach_scoped_evidence_api as api
+
+    monkeypatch.setattr(api, "resolve_bearer_principal", lambda _authorization: principal)
+    monkeypatch.setattr(main, "resolve_bearer_principal", lambda _authorization: principal)
+    return TestClient(main.app)
+
+
+def test_api_actor_trace_and_governance_reads_write_tenant_audit(owned_scope, monkeypatch):
+    principal, tenant, coach, athlete, knowledge, _evidence, _session = owned_scope
+    _record(owned_scope)
+    trace = scoped.record_actor_trace(
+        principal=principal, athlete_id=athlete, action="READ_AUDIT_FIXTURE"
+    )
+    scoped.set_governance(
+        principal=principal, athlete_id=athlete, resource_type="KNOWLEDGE",
+        resource_id=knowledge, governance_status="REVIEW",
+        metadata={"coach_final_authority": True}, expected_version=0,
+    )
+    client = _coach_evidence_api_client(monkeypatch, principal)
+    headers = {"Authorization": "Bearer disposable-test-token"}
+
+    trace_response = client.get(
+        f"/api/v1/product/coach/athletes/{athlete}/actor-traces", headers=headers
+    )
+    assert trace_response.status_code == 200, trace_response.text
+    assert any(row["trace_id"] == trace["trace_id"] for row in trace_response.json()["traces"])
+
+    governance_response = client.get(
+        f"/api/v1/product/coach/athletes/{athlete}/governance/KNOWLEDGE/{knowledge}",
+        headers=headers,
+    )
+    assert governance_response.status_code == 200, governance_response.text
+    assert governance_response.json()["version"] == 1
+
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT action,new_value FROM kaizo_audit_logs
+                   WHERE tenant_id=%s AND who=%s AND action=ANY(%s)""",
+                (tenant, coach, [
+                    "COACH_FEAT052_ACTOR_TRACES_READ",
+                    "COACH_FEAT053_GOVERNANCE_READ",
+                ]),
+            )
+            events = {row[0]: row[1] for row in cur.fetchall()}
+    assert set(events) == {
+        "COACH_FEAT052_ACTOR_TRACES_READ",
+        "COACH_FEAT053_GOVERNANCE_READ",
+    }
+    assert events["COACH_FEAT052_ACTOR_TRACES_READ"]["athlete_id"] == athlete
+    assert events["COACH_FEAT052_ACTOR_TRACES_READ"]["result_count"] >= 1
+    assert events["COACH_FEAT053_GOVERNANCE_READ"]["resource_id"] == knowledge
+    assert events["COACH_FEAT053_GOVERNANCE_READ"]["version"] == 1
+
+
+def test_api_actor_trace_and_governance_reads_fail_closed_when_audit_fails(owned_scope, monkeypatch):
+    principal, _tenant, _coach, athlete, knowledge, _evidence, _session = owned_scope
+    _record(owned_scope)
+    scoped.record_actor_trace(principal=principal, athlete_id=athlete, action="AUDIT_FAILURE_FIXTURE")
+    scoped.set_governance(
+        principal=principal, athlete_id=athlete, resource_type="KNOWLEDGE",
+        resource_id=knowledge, governance_status="REVIEW",
+        metadata={}, expected_version=0,
+    )
+    client = _coach_evidence_api_client(monkeypatch, principal)
+
+    def fail_audit(**_kwargs):
+        raise RuntimeError("simulated tenant audit storage failure")
+
+    monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+    headers = {"Authorization": "Bearer disposable-test-token"}
+    trace_response = client.get(
+        f"/api/v1/product/coach/athletes/{athlete}/actor-traces", headers=headers
+    )
+    governance_response = client.get(
+        f"/api/v1/product/coach/athletes/{athlete}/governance/KNOWLEDGE/{knowledge}",
+        headers=headers,
+    )
+    assert trace_response.status_code == 503
+    assert governance_response.status_code == 503
