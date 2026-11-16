@@ -54,7 +54,7 @@ class FakeConnection:
 
 def _configure_staging(monkeypatch, missing=None):
     monkeypatch.setenv("KAIZO_ENVIRONMENT", "staging")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://staging-user:masked@staging-db.example/kaizo")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://staging-user:masked@staging-db.example/kaizo_coach_staging")
     monkeypatch.setenv("KAIZO_STAGING_DB_HOST", "staging-db.example")
     monkeypatch.setenv("KAIZO_PRODUCTION_DB_HOST", "production-db.example")
     monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: True)
@@ -100,3 +100,16 @@ def test_worker_startup_never_runs_core_schema_ddl():
         "kaizo_coach_scoped_actor_trace",
         "kaizo_coach_scoped_governance",
     }
+
+ 
+def test_staging_schema_workflow_refuses_an_unexpected_database_name(monkeypatch):
+    _configure_staging(monkeypatch)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://staging-user:masked@staging-db.example/not-coach-staging",
+    )
+    calls = []
+    monkeypatch.setattr(scoped, "ensure_schema", lambda: calls.append("scoped"))
+    with pytest.raises(RuntimeError, match="target database must be exactly 'kaizo_coach_staging'"):
+        schema_script.main()
+    assert calls == []

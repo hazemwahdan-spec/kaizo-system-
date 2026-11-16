@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 
 def main():
@@ -22,6 +22,9 @@ def main():
         raise RuntimeError("DATABASE_URL host does not match the trusted KAIZO_STAGING_DB_HOST")
     if parsed.hostname.lower() == production_host:
         raise RuntimeError("Refusing schema change: target host matches the configured Production DB host")
+    database_name = unquote(parsed.path.lstrip("/"))
+    if database_name != "kaizo_coach_staging":
+        raise RuntimeError("Refusing schema change: target database must be exactly 'kaizo_coach_staging'")
 
     sys.path.insert(0, os.path.abspath("backend"))
     import persistence
