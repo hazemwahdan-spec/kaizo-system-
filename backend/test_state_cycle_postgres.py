@@ -394,3 +394,39 @@ def test_state_reads_recheck_current_ownership_inside_read_transaction(monkeypat
         params={"athlete_id": athlete},
         headers=headers,
     ).status_code == 404
+
+
+def test_verified_coach_state_cycle_refuses_memory_adapter(monkeypatch):
+    from types import SimpleNamespace
+    import state_cycle
+    from fastapi import HTTPException
+
+    principal = SimpleNamespace(
+        actor_id="auth0|verified-coach",
+        role="coach",
+        tenant_id="TENANT-A",
+        verified=True,
+        source="oidc_jwt",
+    )
+    monkeypatch.setattr(state_cycle, "verified_coach_scope", lambda *_args: principal)
+    monkeypatch.setattr(state_cycle.persistence, "is_postgres_enabled", lambda: False)
+
+    try:
+        state_cycle._principal("Bearer disposable", None, None, None, None, "ATHLETE-A")
+    except HTTPException as exc:
+        assert exc.status_code == 503
+        assert "durable PostgreSQL" in str(exc.detail)
+    else:
+        raise AssertionError("verified Coach Digital Twin requests must fail closed without PostgreSQL")
+
+
+def test_state_cycle_compatibility_schema_hook_never_initializes_database(monkeypatch):
+    import state_cycle
+
+    monkeypatch.setattr(state_cycle.persistence, "is_postgres_enabled", lambda: True)
+    monkeypatch.setattr(
+        state_cycle.persistence,
+        "initialize",
+        lambda: (_ for _ in ()).throw(AssertionError("request-time schema initialization is forbidden")),
+    )
+    state_cycle._ensure_schema()
