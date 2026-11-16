@@ -29,33 +29,13 @@ def main():
 
     if not persistence.is_postgres_enabled():
         raise RuntimeError("PostgreSQL persistence mode is not enabled")
-    # Never initialize the full Core schema from this narrowly scoped workflow.
-    # Require its authoritative parent tables to exist already, then create only
-    # the four additive Coach-scoped evidence tables below.
-    required_parents = (
-        "kaizo_athletes",
-        "kaizo_coach_athlete_ownership",
-        "kaizo_evidence_records",
-        "kaizo_training_sessions",
-        "kaizo_audit_logs",
-    )
-    with persistence.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT " + ", ".join("to_regclass(%s)" for _ in required_parents),
-                tuple(required_parents),
-            )
-            parent_rows = cur.fetchone()
-    missing_parents = [
-        name for name, value in zip(required_parents, parent_rows or ())
-        if value is None
-    ]
-    if missing_parents:
-        raise RuntimeError(
-            "Required existing Staging parent tables are missing; refusing full Core schema initialization: "
-            + ", ".join(missing_parents)
-        )
+    import staging_schema_guard as schema_guard
+
+    # Require the complete existing Core schema before applying only the
+    # four additive Coach evidence tables. Never run Core DDL from this workflow.
+    schema_guard.verify_required_tables(schema_guard.CORE_SCHEMA_TABLES)
     scoped.ensure_schema()
+    schema_guard.verify_required_tables(schema_guard.COACH_EVIDENCE_TABLES)
 
     required = (
         "kaizo_coach_scoped_knowledge",
