@@ -104,7 +104,7 @@ jobs:
       - name: Compile Auth0 Staging live-proof harness
         run: python -m py_compile ../scripts/verify_coach_auth0_staging.py
       - name: Compile guarded Staging schema preparation
-        run: python -m py_compile ../scripts/apply_coach_scoped_evidence_staging_schema.py
+        run: python -m py_compile ../scripts/apply_coach_scoped_evidence_staging_schema.py ../backend/staging_schema_guard.py ../cloudflare_worker.py
       - name: Verify Staging schema preparation is narrowly scoped
         run: PYTHONPATH=..:. pytest -q test_coach_staging_schema_guard.py
       - name: Verify FEAT-042..045 scoped Digital Twin state cycle
