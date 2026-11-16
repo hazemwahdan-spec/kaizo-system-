@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import persistence
 import coach_scoped_evidence_runtime as scoped
+import staging_schema_guard
 
 SCRIPT = ROOT / "scripts" / "apply_coach_scoped_evidence_staging_schema.py"
 SPEC = importlib.util.spec_from_file_location("coach_staging_schema_script", SCRIPT)
@@ -84,3 +85,16 @@ def test_staging_schema_workflow_refuses_missing_parent_tables_without_initializ
     with pytest.raises(RuntimeError, match="Required existing Staging parent tables are missing"):
         schema_script.main()
     assert calls == []
+
+
+def test_worker_startup_never_runs_core_schema_ddl():
+    worker_source = (ROOT / "cloudflare_worker.py").read_text()
+    assert "persistence.initialize()" not in worker_source
+    assert "persistence.check_connection()" in worker_source
+    assert "staging_schema_guard.verify_required_tables" in worker_source
+    assert set(staging_schema_guard.COACH_EVIDENCE_TABLES) == {
+        "kaizo_coach_scoped_knowledge",
+        "kaizo_coach_scoped_knowledge_links",
+        "kaizo_coach_scoped_actor_trace",
+        "kaizo_coach_scoped_governance",
+    }
