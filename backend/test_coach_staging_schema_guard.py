@@ -82,7 +82,7 @@ def test_staging_schema_workflow_refuses_missing_parent_tables_without_initializ
     _configure_staging(monkeypatch, missing="kaizo_coach_athlete_ownership")
     calls = []
     monkeypatch.setattr(scoped, "ensure_schema", lambda: calls.append("scoped"))
-    with pytest.raises(RuntimeError, match="Required existing Staging parent tables are missing"):
+    with pytest.raises(RuntimeError, match="Required pre-provisioned Staging tables are missing"):
         schema_script.main()
     assert calls == []
 
