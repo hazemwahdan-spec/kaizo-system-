@@ -92,6 +92,8 @@ def test_worker_startup_never_runs_core_schema_ddl():
     assert "persistence.initialize()" not in worker_source
     assert "persistence.check_connection()" in worker_source
     assert "staging_schema_guard.verify_required_tables" in worker_source
+    assert "CORE_DATABASE_STARTUP.update" in worker_source
+    assert "refuses Production deployments" in worker_source
     assert set(staging_schema_guard.COACH_EVIDENCE_TABLES) == {
         "kaizo_coach_scoped_knowledge",
         "kaizo_coach_scoped_knowledge_links",
