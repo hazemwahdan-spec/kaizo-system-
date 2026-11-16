@@ -32,6 +32,8 @@ class Default(WorkerEntrypoint):
 
         hyperdrive = getattr(self.env, "HYPERDRIVE", None)
         environment = str(getattr(self.env, "KAIZO_ENVIRONMENT", "")).strip().lower()
+        if environment == "production":
+            raise RuntimeError("KAIZO Cloudflare Worker refuses Production deployments")
 
         if hyperdrive is not None:
             if environment != "staging":
@@ -79,6 +81,9 @@ class Default(WorkerEntrypoint):
                         + staging_schema_guard.COACH_EVIDENCE_TABLES
                     )
                     core.KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
+                    core.CORE_DATABASE_STARTUP.update(
+                        {"enabled": True, "initialized": True, "error": None}
+                    )
                     _DATABASE_INITIALIZED = True
                 return await asgi.fetch(app, request, self.env)
 
