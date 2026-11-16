@@ -356,3 +356,106 @@ def test_governance_is_versioned_and_audited(owned_scope):
             resource_id=created["resource_id"], governance_status="RETIRED",
             metadata={}, expected_version=1,
         )
+
+
+def test_provenance_insert_rolls_back_when_tenant_audit_fails(owned_scope, monkeypatch):
+    principal, tenant, coach, athlete, knowledge, evidence, _session = owned_scope
+
+    def fail_audit(**_kwargs):
+        raise RuntimeError("simulated tenant audit storage failure")
+
+    monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+    with pytest.raises(RuntimeError, match="simulated tenant audit"):
+        scoped.record_provenance(
+            principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+            source_type="IJF", source_ref="rollback-source", source_version="v1",
+            provenance_note="must roll back with audit", evidence_refs=[evidence],
+        )
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_coach_scoped_knowledge
+                   WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s AND knowledge_id=%s""",
+                (tenant, coach, athlete, knowledge),
+            )
+            assert cur.fetchone()[0] == 0
+
+
+def test_lifecycle_update_rolls_back_when_tenant_audit_fails(owned_scope, monkeypatch):
+    principal, tenant, coach, athlete, knowledge, _evidence, _session = owned_scope
+    _record(owned_scope)
+
+    def fail_audit(**_kwargs):
+        raise RuntimeError("simulated tenant audit storage failure")
+
+    monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+    with pytest.raises(RuntimeError, match="simulated tenant audit"):
+        scoped.change_lifecycle(
+            principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+            target_status="REVIEW", expected_version=1,
+        )
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT lifecycle_status,version FROM kaizo_coach_scoped_knowledge
+                   WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s AND knowledge_id=%s""",
+                (tenant, coach, athlete, knowledge),
+            )
+            assert cur.fetchone() == ("DRAFT", 1)
+
+
+def test_session_knowledge_link_rolls_back_when_tenant_audit_fails(owned_scope, monkeypatch):
+    principal, tenant, coach, athlete, knowledge, evidence, session = owned_scope
+    _record(owned_scope)
+    scoped.change_lifecycle(
+        principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+        target_status="REVIEW", expected_version=1,
+    )
+    scoped.change_lifecycle(
+        principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+        target_status="APPROVED", expected_version=2,
+    )
+
+    def fail_audit(**_kwargs):
+        raise RuntimeError("simulated tenant audit storage failure")
+
+    monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+    with pytest.raises(RuntimeError, match="simulated tenant audit"):
+        scoped.link_training_session(
+            principal=principal, athlete_id=athlete, knowledge_id=knowledge,
+            session_id=session, link_type="SUPPORTS", evidence_refs=[evidence],
+        )
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_coach_scoped_knowledge_links
+                   WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s
+                     AND knowledge_id=%s AND unit_id=%s""",
+                (tenant, coach, athlete, knowledge, session),
+            )
+            assert cur.fetchone()[0] == 0
+
+
+def test_governance_insert_rolls_back_when_tenant_audit_fails(owned_scope, monkeypatch):
+    principal, tenant, coach, athlete, knowledge, _evidence, _session = owned_scope
+    _record(owned_scope)
+
+    def fail_audit(**_kwargs):
+        raise RuntimeError("simulated tenant audit storage failure")
+
+    monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+    with pytest.raises(RuntimeError, match="simulated tenant audit"):
+        scoped.set_governance(
+            principal=principal, athlete_id=athlete, resource_type="KNOWLEDGE",
+            resource_id=knowledge, governance_status="REVIEW",
+            metadata={"attempt": "must roll back"}, expected_version=0,
+        )
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_coach_scoped_governance
+                   WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s
+                     AND resource_type='KNOWLEDGE' AND resource_id=%s""",
+                (tenant, coach, athlete, knowledge),
+            )
+            assert cur.fetchone()[0] == 0
