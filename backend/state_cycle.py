@@ -23,13 +23,16 @@ def _now() -> str:
 
 
 def _ensure_schema() -> None:
-    """Compatibility hook; canonical schema is provisioned by persistence.initialize()."""
-    if persistence.is_postgres_enabled():
-        persistence.initialize()
+    """Compatibility shim; startup/deployment owns schema provisioning, never a request."""
+    return None
 
 
 def _principal(authorization, actor_id, role, tenant_id, owner, athlete_id):
     principal = verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
+    if principal.verified and not persistence.is_postgres_enabled():
+        raise HTTPException(
+            503, detail="verified Coach Digital Twin routes require durable PostgreSQL"
+        )
     athlete = coach_roster.get_owned_athlete(
         tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
         athlete_id=athlete_id,
