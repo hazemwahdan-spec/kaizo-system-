@@ -70,10 +70,10 @@ def verify_staging_hyperdrive_target(
         raise RuntimeError("Trusted Staging and Production DB host variables are required")
     if trusted_staging == trusted_production:
         raise RuntimeError("Configured Staging and Production DB hosts must differ")
-    if actual_host != trusted_staging:
-        raise RuntimeError("Hyperdrive host does not match the trusted Staging DB host")
     if actual_host == trusted_production:
         raise RuntimeError("Refusing Hyperdrive target: host matches the configured Production DB host")
+    if actual_host != trusted_staging:
+        raise RuntimeError("Hyperdrive host does not match the trusted Staging DB host")
     database_name = unquote(parsed.path.lstrip("/"))
     if database_name != expected_database:
         raise RuntimeError(
