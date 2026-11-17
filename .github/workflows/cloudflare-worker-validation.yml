@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/coach-athlete-ownership-boundary
+      - fix/coach-worker-import-memory-guard-20261117
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
@@ -18,6 +19,7 @@ on:
       - main
       - integration/coach-closure-evidence-audit-20261115
       - feat/coach-scoped-evidence-product-api-ui-20261115
+      - fix/coach-staging-schema-minimal-ddl-20261116
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
