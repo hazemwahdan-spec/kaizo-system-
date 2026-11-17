@@ -17,6 +17,7 @@ on:
     branches:
       - main
       - integration/coach-closure-evidence-audit-20261115
+      - feat/coach-scoped-evidence-product-api-ui-20261115
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
