@@ -141,7 +141,7 @@ def test_worker_accepts_only_the_allowlisted_staging_hyperdrive_target():
 @pytest.mark.parametrize(
     ("connection_string", "staging_host", "production_host", "message"),
     [
-        ("postgresql://worker:masked@production-db.example/kaizo_coach_staging", "staging-db.example", "production-db.example", "does not match the trusted Staging"),
+        ("postgresql://worker:masked@production-db.example/kaizo_coach_staging", "staging-db.example", "production-db.example", "matches the configured Production DB host"),
         ("postgresql://worker:masked@staging-db.example/kaizo_coach_staging", "", "production-db.example", "Trusted Staging and Production"),
         ("postgresql://worker:masked@staging-db.example/kaizo_coach_staging", "staging-db.example", "staging-db.example", "must differ"),
         ("postgresql://worker:masked@staging-db.example/not-coach-staging", "staging-db.example", "production-db.example", "database must be exactly"),
