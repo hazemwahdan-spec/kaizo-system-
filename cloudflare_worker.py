@@ -1,8 +1,9 @@
 """Cloudflare Workers entrypoint for the KAIZO FastAPI application.
 
 The isolated Staging Worker requires a Hyperdrive binding connected to the
-dedicated kaizo_coach_staging database. It refuses to initialize PostgreSQL
-against any other database name. In-memory mode is reserved for local dry runs.
+dedicated kaizo_coach_staging database. It never creates or migrates schema:
+all Core and Coach evidence tables must be pre-provisioned before deployment.
+In-memory mode is reserved for local dry runs.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from workers import WorkerEntrypoint, asgi
 from app import app
 import main as core
 import persistence
+import staging_schema_guard
 
 _DATABASE_INITIALIZED = False
 _DATABASE_LOCK = asyncio.Lock()
@@ -30,6 +32,8 @@ class Default(WorkerEntrypoint):
 
         hyperdrive = getattr(self.env, "HYPERDRIVE", None)
         environment = str(getattr(self.env, "KAIZO_ENVIRONMENT", "")).strip().lower()
+        if environment == "production":
+            raise RuntimeError("KAIZO Cloudflare Worker refuses Production deployments")
 
         if hyperdrive is not None:
             if environment != "staging":
@@ -67,8 +71,19 @@ class Default(WorkerEntrypoint):
             # synchronous psycopg calls, so guard the request boundary.
             async with _DATABASE_LOCK:
                 if not _DATABASE_INITIALIZED:
-                    persistence.initialize()
+                    if not persistence.is_postgres_enabled():
+                        raise RuntimeError("KAIZO Staging requires PostgreSQL persistence")
+                    # Connection and schema checks are read-only; deployment must
+                    # never trigger Core schema DDL or implicit migrations.
+                    persistence.check_connection()
+                    staging_schema_guard.verify_required_tables(
+                        staging_schema_guard.CORE_SCHEMA_TABLES
+                        + staging_schema_guard.COACH_EVIDENCE_TABLES
+                    )
                     core.KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
+                    core.CORE_DATABASE_STARTUP.update(
+                        {"enabled": True, "initialized": True, "error": None}
+                    )
                     _DATABASE_INITIALIZED = True
                 return await asgi.fetch(app, request, self.env)
 
