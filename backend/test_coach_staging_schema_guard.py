@@ -113,3 +113,17 @@ def test_staging_schema_workflow_refuses_an_unexpected_database_name(monkeypatch
     with pytest.raises(RuntimeError, match="target database must be exactly 'kaizo_coach_staging'"):
         schema_script.main()
     assert calls == []
+
+
+def test_worker_forces_memory_mode_before_core_import_to_prevent_implicit_ddl():
+    worker_source = (ROOT / "cloudflare_worker.py").read_text()
+    main_source = (ROOT / "backend" / "main.py").read_text()
+    memory_guard = worker_source.index('os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"')
+    database_guard = worker_source.index('os.environ.pop("DATABASE_URL", None)')
+    core_import = worker_source.index("from app import app")
+    assert memory_guard < core_import
+    assert database_guard < core_import
+    # The Core module still has legacy import-time initialization; the Worker
+    # must neutralize its environment before importing that module.
+    assert "if persistence.is_postgres_enabled():" in main_source
+    assert "persistence.initialize()" in main_source

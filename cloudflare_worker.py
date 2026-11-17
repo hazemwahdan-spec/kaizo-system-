@@ -11,6 +11,12 @@ import asyncio
 import os
 from urllib.parse import unquote, urlparse
 
+# backend/main.py initializes PostgreSQL during import when persistence mode is
+# already set to postgres. Cloudflare bindings are only available in fetch(),
+# so keep the Core import memory-only until the Staging target is verified.
+os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
+os.environ.pop("DATABASE_URL", None)
+
 from workers import WorkerEntrypoint, asgi
 
 # Import the Core app during Worker startup so Cloudflare can snapshot the
