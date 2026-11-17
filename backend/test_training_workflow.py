@@ -168,7 +168,14 @@ def test_workflow_history_is_scoped_and_actor_fields_cannot_be_spoofed():
 def test_caller_authority_boolean_is_ignored_but_invalid_dosage_still_fails_closed():
     path, payload = cases(ATHLETE_ID)[0]
     payload["coach_final_authority"] = False
-    assert client.post(path, json=payload, headers=COACH_HEADERS).status_code == 201
+    payload["execution_authorized"] = True
+    response = client.post(path, json=payload, headers=COACH_HEADERS)
+    assert response.status_code == 201
+    saved = response.json()
+    assert saved["coach_final_authority"] is True
+    assert saved["execution_authorized"] is False
+    assert saved["payload"]["coach_final_authority"] is True
+    assert saved["payload"]["execution_authorized"] is False
     invalid = {
         "athlete_id":ATHLETE_ID,"decision_id":"D1","session_id":"S1","drill_id":"DR1",
         "objective":"x","dosage":{"sets":0,"reps":5},
