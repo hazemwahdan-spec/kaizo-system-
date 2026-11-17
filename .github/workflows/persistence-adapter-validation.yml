@@ -16,7 +16,6 @@ on:
       - fix/coach-feat040-required-evidence-lineage-20261113
       - fix/coach-postgres-verified-evidence-fixture-20261114
       - integration/coach-closure-evidence-audit-20261115
-      - fix/coach-server-authority-payload-20261117
       - feat/coach-scoped-evidence-product-api-ui-20261115
       - fix/coach-server-authority-payload-20261117
       - fix/coach-auth0-staging-live-proof-cross-scope-20261117
@@ -47,6 +46,7 @@ on:
       - fix/coach-training-session-lineage-20261114
       - fix/coach-postgres-verified-evidence-fixture-20261114
       - integration/coach-closure-evidence-audit-20261115
+      - fix/coach-server-authority-payload-20261117
 
 jobs:
   validate-persistence-adapter:
