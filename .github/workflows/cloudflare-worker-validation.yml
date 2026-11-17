@@ -5,6 +5,7 @@ on:
     branches:
       - feat/coach-athlete-ownership-boundary
       - fix/coach-worker-import-memory-guard-20261117
+      - fix/coach-worker-hyperdrive-host-allowlist-20261117
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
@@ -20,6 +21,7 @@ on:
       - integration/coach-closure-evidence-audit-20261115
       - feat/coach-scoped-evidence-product-api-ui-20261115
       - fix/coach-staging-schema-minimal-ddl-20261116
+      - fix/coach-worker-import-memory-guard-20261117
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
