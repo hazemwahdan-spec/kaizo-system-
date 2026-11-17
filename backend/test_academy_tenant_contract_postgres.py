@@ -447,3 +447,172 @@ def test_academy_tenant_binding_requires_explicit_oidc_permission():
             principal=principal, academy_id="academy-a", now=_now()
         )
 
+
+
+
+def test_academy_binding_rolls_back_when_tenant_audit_fails(monkeypatch):
+    f = _fixture()
+    extra_academy = _id("ACADEMY")
+    tenant, _other_tenant, _academy_a, _academy_b, _coach_a, *_ = f
+    now = _now()
+    try:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO kaizo_academies
+                       (academy_id,name,status,owner_id,created_at,updated_at)
+                       VALUES (%s,%s,'ACTIVE',%s,%s,%s)""",
+                    (extra_academy, extra_academy, _id("ACADEMY_OWNER"), now, now),
+                )
+            conn.commit()
+
+        def fail_audit(**_kwargs):
+            raise RuntimeError("simulated durable audit failure")
+
+        monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.bind_academy_for_principal(
+                principal=_principal(_id("ACADEMY_ACTOR"), tenant, role="academy"),
+                academy_id=extra_academy, now=now,
+            )
+
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM kaizo_tenant_academies WHERE academy_id=%s",
+                    (extra_academy,),
+                )
+                assert cur.fetchone()[0] == 0
+    finally:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM kaizo_tenant_academies WHERE academy_id=%s", (extra_academy,))
+                cur.execute("DELETE FROM kaizo_academies WHERE academy_id=%s", (extra_academy,))
+            conn.commit()
+        _cleanup(f)
+
+
+def test_membership_creation_rolls_back_when_tenant_audit_fails(monkeypatch):
+    f = _fixture()
+    try:
+        tenant, _other_tenant, academy_a, _academy_b, coach_a, *_ = f
+        new_coach = _id("COACH")
+
+        def fail_audit(**_kwargs):
+            raise RuntimeError("simulated durable audit failure")
+
+        monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.add_coach_membership_for_principal(
+                principal=_principal(coach_a, tenant), academy_id=academy_a,
+                coach_actor_id=new_coach, role="COACH", now=_now(),
+            )
+
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT COUNT(*) FROM kaizo_academy_coach_memberships
+                       WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s""",
+                    (tenant, academy_a, new_coach),
+                )
+                assert cur.fetchone()[0] == 0
+    finally:
+        _cleanup(f)
+
+
+def test_enrollment_rolls_back_when_tenant_audit_fails(monkeypatch):
+    f = _fixture()
+    new_athlete = _id("ATHLETE")
+    try:
+        tenant, _other_tenant, academy_a, _academy_b, coach_a, *_ = f
+        now = _now()
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO kaizo_athletes
+                       (athlete_id,display_name,status,metadata,created_at,updated_at)
+                       VALUES (%s,'Rollback athlete','ACTIVE','{}'::jsonb,%s,%s)""",
+                    (new_athlete, now, now),
+                )
+                cur.execute(
+                    """INSERT INTO kaizo_coach_athlete_ownership
+                       (athlete_id,tenant_id,coach_actor_id,assigned_at)
+                       VALUES (%s,%s,%s,%s)""",
+                    (new_athlete, tenant, coach_a, now),
+                )
+            conn.commit()
+
+        def fail_audit(**_kwargs):
+            raise RuntimeError("simulated durable audit failure")
+
+        monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.enroll_athlete_for_principal(
+                principal=_principal(coach_a, tenant), academy_id=academy_a,
+                athlete_id=new_athlete, now=now,
+            )
+
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT COUNT(*) FROM kaizo_academy_athletes
+                       WHERE tenant_id=%s AND academy_id=%s AND athlete_id=%s""",
+                    (tenant, academy_a, new_athlete),
+                )
+                assert cur.fetchone()[0] == 0
+    finally:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM kaizo_academy_athletes WHERE athlete_id=%s", (new_athlete,))
+                cur.execute("DELETE FROM kaizo_coach_athlete_ownership WHERE athlete_id=%s", (new_athlete,))
+                cur.execute("DELETE FROM kaizo_athletes WHERE athlete_id=%s", (new_athlete,))
+            conn.commit()
+        _cleanup(f)
+
+
+def test_membership_status_change_rolls_back_when_tenant_audit_fails(monkeypatch):
+    f = _fixture()
+    try:
+        tenant, _other_tenant, academy_a, _academy_b, coach_a, coach_b, *_ = f
+
+        def fail_audit(**_kwargs):
+            raise RuntimeError("simulated durable audit failure")
+
+        monkeypatch.setattr(persistence, "append_tenant_audit", fail_audit)
+        with pytest.raises(RuntimeError, match="audit failure"):
+            contract.set_membership_status_for_principal(
+                principal=_principal(coach_a, tenant), academy_id=academy_a,
+                coach_actor_id=coach_b, status="SUSPENDED", now=_now(),
+            )
+
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT status FROM kaizo_academy_coach_memberships
+                       WHERE tenant_id=%s AND academy_id=%s AND coach_actor_id=%s""",
+                    (tenant, academy_a, coach_b),
+                )
+                assert cur.fetchone() == ("ACTIVE",)
+    finally:
+        _cleanup(f)
+
+
+@pytest.mark.parametrize(
+    ("verified", "source"),
+    [(False, "oidc_jwt"), (True, "development_headers")],
+)
+def test_unverified_or_development_principal_with_claimed_permissions_is_rejected(
+    verified, source,
+):
+    principal = _principal(
+        "coach-untrusted", "tenant-untrusted",
+        verified=verified, source=source,
+    )
+    with pytest.raises(
+        contract.AcademyContractConflict,
+        match="verified OIDC permission is required",
+    ):
+        contract.add_coach_membership_for_principal(
+            principal=principal, academy_id="academy-untrusted",
+            coach_actor_id="coach-target", role="COACH", now=_now(),
+        )
