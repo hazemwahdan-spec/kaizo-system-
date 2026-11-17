@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import persistence
+from urllib.parse import unquote, urlparse
 
 
 CORE_SCHEMA_TABLES = (
@@ -50,6 +51,35 @@ COACH_EVIDENCE_TABLES = (
     "kaizo_coach_scoped_actor_trace",
     "kaizo_coach_scoped_governance",
 )
+
+
+def verify_staging_hyperdrive_target(
+    connection_string: str,
+    staging_host: str,
+    production_host: str,
+    expected_database: str,
+) -> tuple[str, str]:
+    """Fail closed unless Hyperdrive resolves to the allowlisted Staging DB host and name."""
+    parsed = urlparse(str(connection_string or "").strip())
+    actual_host = (parsed.hostname or "").lower().rstrip(".")
+    trusted_staging = str(staging_host or "").strip().lower().rstrip(".")
+    trusted_production = str(production_host or "").strip().lower().rstrip(".")
+    if parsed.scheme not in {"postgres", "postgresql"} or not actual_host:
+        raise RuntimeError("Hyperdrive connection must be a PostgreSQL URL with a hostname")
+    if not trusted_staging or not trusted_production:
+        raise RuntimeError("Trusted Staging and Production DB host variables are required")
+    if trusted_staging == trusted_production:
+        raise RuntimeError("Configured Staging and Production DB hosts must differ")
+    if actual_host != trusted_staging:
+        raise RuntimeError("Hyperdrive host does not match the trusted Staging DB host")
+    if actual_host == trusted_production:
+        raise RuntimeError("Refusing Hyperdrive target: host matches the configured Production DB host")
+    database_name = unquote(parsed.path.lstrip("/"))
+    if database_name != expected_database:
+        raise RuntimeError(
+            f"Refusing Hyperdrive target: database must be exactly '{expected_database}'"
+        )
+    return actual_host, database_name
 
 
 def verify_required_tables(required_tables):
