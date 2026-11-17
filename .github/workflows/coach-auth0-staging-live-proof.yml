@@ -7,9 +7,13 @@ on:
         description: Existing disposable athlete owned by the Auth0 Coach test account
         required: true
         type: string
-      foreign_athlete_id:
-        description: Optional disposable athlete owned by another Coach or tenant
-        required: false
+      foreign_coach_athlete_id:
+        description: Disposable athlete owned by a different Coach in the same tenant
+        required: true
+        type: string
+      foreign_tenant_athlete_id:
+        description: Disposable athlete owned by a Coach in a different tenant
+        required: true
         type: string
 
 permissions:
@@ -18,13 +22,15 @@ permissions:
 jobs:
   auth0-coach-live-proof:
     runs-on: ubuntu-latest
+    environment: staging
     timeout-minutes: 5
     env:
       KAIZO_STAGING_API_URL: ${{ vars.KAIZO_STAGING_API_URL }}
       KAIZO_STAGING_API_HOST: ${{ vars.KAIZO_STAGING_API_HOST }}
       KAIZO_PRODUCTION_API_HOST: ${{ vars.KAIZO_PRODUCTION_API_HOST }}
       KAIZO_STAGING_OWNED_ATHLETE_ID: ${{ inputs.owned_athlete_id }}
-      KAIZO_STAGING_FOREIGN_ATHLETE_ID: ${{ inputs.foreign_athlete_id }}
+      KAIZO_STAGING_FOREIGN_COACH_ATHLETE_ID: ${{ inputs.foreign_coach_athlete_id }}
+      KAIZO_STAGING_FOREIGN_TENANT_ATHLETE_ID: ${{ inputs.foreign_tenant_athlete_id }}
       KAIZO_OIDC_BEARER_TOKEN: ${{ secrets.KAIZO_OIDC_BEARER_TOKEN }}
       KAIZO_OIDC_NO_PRODUCT_TOKEN: ${{ secrets.KAIZO_OIDC_NO_PRODUCT_TOKEN }}
       KAIZO_OIDC_NONCOACH_TOKEN: ${{ secrets.KAIZO_OIDC_NONCOACH_TOKEN }}
