@@ -127,3 +127,40 @@ def test_worker_forces_memory_mode_before_core_import_to_prevent_implicit_ddl():
     # must neutralize its environment before importing that module.
     assert "if persistence.is_postgres_enabled():" in main_source
     assert "persistence.initialize()" in main_source
+
+
+def test_worker_accepts_only_the_allowlisted_staging_hyperdrive_target():
+    assert staging_schema_guard.verify_staging_hyperdrive_target(
+        "postgresql://worker:masked@staging-db.example:5432/kaizo_coach_staging?sslmode=require",
+        "staging-db.example",
+        "production-db.example",
+        "kaizo_coach_staging",
+    ) == ("staging-db.example", "kaizo_coach_staging")
+
+
+@pytest.mark.parametrize(
+    ("connection_string", "staging_host", "production_host", "message"),
+    [
+        ("postgresql://worker:masked@production-db.example/kaizo_coach_staging", "staging-db.example", "production-db.example", "matches the configured Production DB host"),
+        ("postgresql://worker:masked@staging-db.example/kaizo_coach_staging", "", "production-db.example", "Trusted Staging and Production"),
+        ("postgresql://worker:masked@staging-db.example/kaizo_coach_staging", "staging-db.example", "staging-db.example", "must differ"),
+        ("postgresql://worker:masked@staging-db.example/not-coach-staging", "staging-db.example", "production-db.example", "database must be exactly"),
+        ("https://staging-db.example/kaizo_coach_staging", "staging-db.example", "production-db.example", "PostgreSQL URL"),
+    ],
+)
+def test_worker_rejects_untrusted_hyperdrive_targets(
+    connection_string, staging_host, production_host, message,
+):
+    with pytest.raises(RuntimeError, match=message):
+        staging_schema_guard.verify_staging_hyperdrive_target(
+            connection_string, staging_host, production_host, "kaizo_coach_staging"
+        )
+
+
+def test_worker_requires_trusted_database_host_allowlist_before_hyperdrive_use():
+    worker_source = (ROOT / "cloudflare_worker.py").read_text()
+    workflow_source = (ROOT / ".github" / "workflows" / "cloudflare-worker-staging-deploy.yml").read_text()
+    assert "verify_staging_hyperdrive_target" in worker_source
+    assert 'KAIZO_STAGING_DB_HOST: ${{ vars.KAIZO_STAGING_DB_HOST }}' in workflow_source
+    assert 'KAIZO_PRODUCTION_DB_HOST: ${{ vars.KAIZO_PRODUCTION_DB_HOST }}' in workflow_source
+    assert "environment: staging" in workflow_source

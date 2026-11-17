@@ -18,6 +18,7 @@ on:
       - integration/coach-closure-evidence-audit-20261115
       - fix/coach-staging-schema-minimal-ddl-20261116
       - fix/coach-worker-import-memory-guard-20261117
+      - fix/coach-worker-hyperdrive-host-allowlist-20261117
       - feat/coach-scoped-evidence-product-api-ui-20261115
   pull_request:
     branches:
