@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from urllib.parse import unquote, urlparse
 
 # backend/main.py initializes PostgreSQL during import when persistence mode is
 # already set to postgres. Cloudflare bindings are only available in fetch(),
@@ -45,9 +44,11 @@ class Default(WorkerEntrypoint):
             if environment != "staging":
                 raise RuntimeError("KAIZO Worker refuses Hyperdrive outside the Staging environment")
             connection_string = str(hyperdrive.connectionString)
-            database_name = unquote(urlparse(connection_string).path.lstrip("/").split("?", 1)[0])
-            if database_name != _STAGING_DATABASE_NAME:
-                raise RuntimeError("KAIZO Staging refuses a database other than kaizo_coach_staging")
+            staging_host = str(getattr(self.env, "KAIZO_STAGING_DB_HOST", "")).strip()
+            production_host = str(getattr(self.env, "KAIZO_PRODUCTION_DB_HOST", "")).strip()
+            staging_schema_guard.verify_staging_hyperdrive_target(
+                connection_string, staging_host, production_host, _STAGING_DATABASE_NAME
+            )
             os.environ["DATABASE_URL"] = connection_string
             os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
         else:
