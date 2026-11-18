@@ -87,7 +87,7 @@ def _decision_for_scope_sql(cur: Any, *, tenant_id: str, coach_actor_id: str,
                      AND a.new_value->>'athlete_id'=d.athlete_id
                )"""
     if lock:
-        sql += " FOR KEY SHARE OF d"
+        sql += " FOR SHARE OF d"
     cur.execute(sql, (decision_id, athlete_id, coach_actor_id, tenant_id,
                       coach_actor_id, coach_actor_id, tenant_id))
     row = cur.fetchone()
@@ -104,14 +104,15 @@ def _decision_for_scope_sql(cur: Any, *, tenant_id: str, coach_actor_id: str,
 
 
 def get_recorded_decision_for_scope(*, tenant_id: str, coach_actor_id: str,
-                                    athlete_id: str, decision_id: str) -> dict[str, Any] | None:
+                                    athlete_id: str, decision_id: str,
+                                    lock: bool = False) -> dict[str, Any] | None:
     """Return only a decision with same-athlete, same-Coach, same-tenant audit lineage."""
     if persistence.is_postgres_enabled():
         with persistence.connection() as conn:
             with conn.cursor() as cur:
                 return _decision_for_scope_sql(
                     cur, tenant_id=tenant_id, coach_actor_id=coach_actor_id,
-                    athlete_id=athlete_id, decision_id=decision_id,
+                    athlete_id=athlete_id, decision_id=decision_id, lock=lock,
                 )
     decision = _MEMORY_DECISIONS.get(decision_id)
     if (not decision or decision.get("athlete_id") != athlete_id
