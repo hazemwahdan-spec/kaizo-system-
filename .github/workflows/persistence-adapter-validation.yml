@@ -19,6 +19,9 @@ on:
       - feat/coach-scoped-evidence-product-api-ui-20261115
       - fix/coach-server-authority-payload-20261117
       - fix/coach-auth0-staging-live-proof-cross-scope-20261117
+      - fix/coach-lineage-locks-and-read-audit-20261118
+      - fix/coach-auth0-staging-live-proof-cross-scope-20261117
+      - fix/coach-lineage-locks-and-read-audit-20261118
   pull_request:
     branches:
       - main
@@ -78,7 +81,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install backend dependencies
-        run: pip install -r requirements.txt PyJWT[crypto]
+        run: pip install -r requirements.txt PyJWT[crypto] httpx
       - name: Install pytest for FEAT-027 acceptance
         run: pip install pytest PyJWT[crypto]
       - name: Compile backend
