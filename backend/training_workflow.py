@@ -5,6 +5,7 @@ server-side ownership lookup. Caller-supplied actor identifiers are ignored.
 Training record and tenant-scoped audit event are committed in one transaction.
 """
 import json
+from functools import wraps
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -24,6 +25,17 @@ _MEMORY_AUDIT: list[dict[str, Any]] = []
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _atomic_request(handler):
+    """Keep parent validation, ownership locks, business writes and audit in one transaction."""
+    @wraps(handler)
+    def wrapped(*args, **kwargs):
+        if persistence.is_postgres_enabled():
+            with persistence.atomic_transaction():
+                return handler(*args, **kwargs)
+        return handler(*args, **kwargs)
+    return wrapped
 
 
 def _require_authority(principal: Any) -> None:
@@ -208,6 +220,7 @@ def _validate_decision_evidence_refs(
         coach_actor_id=principal.actor_id,
         athlete_id=athlete_id,
         decision_id=decision_id,
+        lock=True,
     )
     if (decision is None or not decision.get("problem_id")
             or not decision.get("assessment_id")):
@@ -261,7 +274,7 @@ def _save_with_verified_evidence(
         return _save(feature_id, athlete_id, payload, principal, decision_id)
 
 
-def _list(feature_id: str, athlete_id: str, tenant_id: str, coach_actor_id: str) -> List[Dict[str, Any]]:
+def _list(feature_id: str, athlete_id: str, tenant_id: str, coach_actor_id: str, *, lock: bool = False) -> List[Dict[str, Any]]:
     if not persistence.is_postgres_enabled():
         return [
             dict(item) for item in _MEMORY_RECORDS
@@ -273,20 +286,20 @@ def _list(feature_id: str, athlete_id: str, tenant_id: str, coach_actor_id: str)
     # Read paths must never initialize or mutate schema; migrations/writes own DDL.
     with persistence.connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT r.record_id,r.feature_id,r.athlete_id,r.decision_id,r.session_id,
-                          r.payload,r.created_by,r.created_at,r.coach_final_authority,
-                          r.execution_authorized,r.tenant_id,r.coach_actor_id
-                   FROM kaizo_training_workflow_records r
-                   JOIN kaizo_coach_athlete_ownership o
-                     ON o.athlete_id=r.athlete_id
-                    AND o.tenant_id=r.tenant_id
-                    AND o.coach_actor_id=r.coach_actor_id
-                   WHERE r.feature_id=%s AND r.athlete_id=%s
-                     AND r.tenant_id=%s AND r.coach_actor_id=%s
-                   ORDER BY r.created_at,r.record_id""",
-                (feature_id, athlete_id, tenant_id, coach_actor_id),
-            )
+            sql = """SELECT r.record_id,r.feature_id,r.athlete_id,r.decision_id,r.session_id,
+                            r.payload,r.created_by,r.created_at,r.coach_final_authority,
+                            r.execution_authorized,r.tenant_id,r.coach_actor_id
+                     FROM kaizo_training_workflow_records r
+                     JOIN kaizo_coach_athlete_ownership o
+                       ON o.athlete_id=r.athlete_id
+                      AND o.tenant_id=r.tenant_id
+                      AND o.coach_actor_id=r.coach_actor_id
+                     WHERE r.feature_id=%s AND r.athlete_id=%s
+                       AND r.tenant_id=%s AND r.coach_actor_id=%s
+                     ORDER BY r.created_at,r.record_id"""
+            if lock:
+                sql += " FOR SHARE OF o,r"
+            cur.execute(sql, (feature_id, athlete_id, tenant_id, coach_actor_id))
             rows = cur.fetchall()
     return [{
         "record_id": r[0], "feature_id": r[1], "athlete_id": r[2],
@@ -298,9 +311,37 @@ def _list(feature_id: str, athlete_id: str, tenant_id: str, coach_actor_id: str)
 
 
 
-def _prior_record(feature_id: str, athlete_id: str, principal: Any, predicate):
-    """Return a same-owner predecessor record or fail closed."""
-    for item in _list(feature_id, athlete_id, principal.tenant_id, principal.actor_id):
+def _prior_record(feature_id: str, athlete_id: str, principal: Any, predicate, *, lock: bool = False):
+    """Return a same-owner predecessor; PostgreSQL writes lock it until child + audit commit."""
+    if lock and persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT r.record_id,r.feature_id,r.athlete_id,r.decision_id,r.session_id,
+                              r.payload,r.created_by,r.created_at,r.coach_final_authority,
+                              r.execution_authorized,r.tenant_id,r.coach_actor_id
+                       FROM kaizo_training_workflow_records r
+                       JOIN kaizo_coach_athlete_ownership o
+                         ON o.athlete_id=r.athlete_id
+                        AND o.tenant_id=r.tenant_id
+                        AND o.coach_actor_id=r.coach_actor_id
+                       WHERE r.feature_id=%s AND r.athlete_id=%s
+                         AND r.tenant_id=%s AND r.coach_actor_id=%s
+                       ORDER BY r.created_at,r.record_id
+                       FOR UPDATE OF o,r""",
+                    (feature_id, athlete_id, principal.tenant_id, principal.actor_id),
+                )
+                rows = cur.fetchall()
+        records = [{
+            "record_id": row[0], "feature_id": row[1], "athlete_id": row[2],
+            "decision_id": row[3], "session_id": row[4], "payload": row[5],
+            "created_by": row[6], "created_at": row[7],
+            "coach_final_authority": row[8], "execution_authorized": row[9],
+            "tenant_id": row[10], "coach_actor_id": row[11],
+        } for row in rows]
+    else:
+        records = _list(feature_id, athlete_id, principal.tenant_id, principal.actor_id)
+    for item in records:
         payload = item.get("payload") or {}
         if isinstance(payload, str):
             try:
@@ -327,7 +368,7 @@ def _baseline_snapshot_for_response(response_record: Dict[str, Any], baseline_re
         raise HTTPException(status_code=409, detail="response decision has no same-scope recorded assessment lineage")
     snapshot = coach_assessment_workflow.get_state_snapshot(
         tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
-        athlete_id=athlete_id, snapshot_id=baseline_reference,
+        athlete_id=athlete_id, snapshot_id=baseline_reference, lock=True,
     )
     if (snapshot is None or snapshot.get("snapshot_type") != "baseline"
             or snapshot.get("athlete_id") != athlete_id
@@ -358,7 +399,73 @@ def _baseline_snapshot_for_response(response_record: Dict[str, Any], baseline_re
 
 
 def _validate_initial_decision_drill(req: "DecisionDrillRequest", principal: Any) -> Dict[str, Any]:
-    """Resolve FEAT-033 inputs against authoritative Coach-owned source records."""
+    """Resolve and lock every authoritative FEAT-033 parent in the write transaction."""
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                decision = coach_decision_workflow._decision_for_scope_sql(
+                    cur, tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+                    athlete_id=req.athlete_id, decision_id=req.decision_id, lock=True,
+                )
+                if decision is None:
+                    raise HTTPException(status_code=409, detail="decision_id is not a recorded decision in this Coach/tenant/athlete scope")
+                problem_id = str(decision.get("problem_id") or "").strip()
+                if not problem_id:
+                    raise HTTPException(status_code=409, detail="recorded decision has no authoritative problem_id")
+                problem = coach_progression_workflow._problem_context_sql(
+                    cur, tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+                    athlete_id=req.athlete_id, problem_id=problem_id, lock=True,
+                )
+                if problem is None or problem.get("assessment_id") != decision.get("assessment_id"):
+                    raise HTTPException(status_code=409, detail="decision problem must belong to the same Coach athlete assessment")
+                drill = coach_progression_workflow._drill_sql(
+                    cur, tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+                    drill_id=req.drill_id, lock=True,
+                )
+                if (drill is None or drill.get("status") != "PUBLISHED"
+                        or drill.get("coach_review") is not True
+                        or drill.get("approved_by") != principal.actor_id
+                        or drill.get("source_assessment_id") != decision.get("assessment_id")):
+                    raise HTTPException(status_code=409, detail="drill_id must be a Coach-reviewed published drill from this decision assessment")
+                cur.execute(
+                    """SELECT l.link_id,l.tenant_id,l.coach_actor_id,l.problem_id,l.drill_id,
+                              l.athlete_id,l.assessment_id,l.evidence_ids
+                       FROM kaizo_coach_problem_drill_links l
+                       JOIN kaizo_coach_athlete_ownership o
+                         ON o.athlete_id=l.athlete_id
+                        AND o.tenant_id=l.tenant_id
+                        AND o.coach_actor_id=l.coach_actor_id
+                       WHERE l.problem_id=%s AND l.drill_id=%s AND l.athlete_id=%s
+                         AND l.tenant_id=%s AND l.coach_actor_id=%s
+                       FOR UPDATE OF o,l""",
+                    (problem_id, req.drill_id, req.athlete_id,
+                     principal.tenant_id, principal.actor_id),
+                )
+                rows = cur.fetchall()
+        link = None
+        requested_refs = [str(x).strip() for x in req.evidence_refs]
+        if not requested_refs or any(not x for x in requested_refs) or len(requested_refs) != len(set(requested_refs)):
+            raise HTTPException(status_code=409, detail="FEAT-033 evidence_refs must be unique verified references")
+        for row in rows:
+            evidence_ids = row[7]
+            if isinstance(evidence_ids, str):
+                try:
+                    evidence_ids = json.loads(evidence_ids)
+                except (TypeError, ValueError):
+                    evidence_ids = []
+            if (row[6] == decision.get("assessment_id")
+                    and isinstance(evidence_ids, list)
+                    and set(requested_refs).issubset({str(x) for x in evidence_ids})):
+                link = {
+                    "link_id": row[0], "tenant_id": row[1], "coach_actor_id": row[2],
+                    "problem_id": row[3], "drill_id": row[4], "athlete_id": row[5],
+                    "assessment_id": row[6], "evidence_ids": evidence_ids,
+                }
+                break
+        if link is None:
+            raise HTTPException(status_code=409, detail="drill has no verified same-assessment problem-drill link for this decision and athlete")
+        return {"decision": decision, "problem_id": problem_id, "drill": drill, "problem_drill_link": link}
+
     decision = coach_decision_workflow.get_recorded_decision_for_scope(
         tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
         athlete_id=req.athlete_id, decision_id=req.decision_id,
@@ -485,6 +592,7 @@ def _headers(
 
 
 @router.post("/feat-033/decision-drill", status_code=status.HTTP_201_CREATED)
+@_atomic_request
 def select_decision_drill(
     req: DecisionDrillRequest,
     authorization: str | None = Header(None, alias="Authorization"),
@@ -508,6 +616,7 @@ def select_decision_drill(
 
 
 @router.post("/feat-034/drill-prescription", status_code=status.HTTP_201_CREATED)
+@_atomic_request
 def prescribe_drill(
     req: DrillPrescriptionRequest,
     authorization: str | None = Header(None, alias="Authorization"),
@@ -529,6 +638,7 @@ def prescribe_drill(
 
 
 @router.post("/feat-035/execution-cues", status_code=status.HTTP_201_CREATED)
+@_atomic_request
 def record_execution_cues(
     req: ExecutionCueRequest,
     authorization: str | None = Header(None, alias="Authorization"),
@@ -548,6 +658,7 @@ def record_execution_cues(
 
 
 @router.post("/feat-036/training-response", status_code=status.HTTP_201_CREATED)
+@_atomic_request
 def capture_training_response(
     req: ResponseRequest,
     authorization: str | None = Header(None, alias="Authorization"),
@@ -570,6 +681,7 @@ def capture_training_response(
 
 
 @router.post("/feat-037/retest", status_code=status.HTTP_201_CREATED)
+@_atomic_request
 def capture_retest(
     req: RetestRequest,
     authorization: str | None = Header(None, alias="Authorization"),
@@ -603,6 +715,7 @@ def capture_retest(
 
 
 @router.post("/feat-038/before-after", status_code=status.HTTP_201_CREATED)
+@_atomic_request
 def compare_before_after(
     req: ComparisonRequest,
     authorization: str | None = Header(None, alias="Authorization"),
@@ -641,6 +754,7 @@ def compare_before_after(
 
 
 @router.post("/feat-039/progress-state", status_code=status.HTTP_201_CREATED)
+@_atomic_request
 def update_progress_state(
     req: ProgressRequest,
     authorization: str | None = Header(None, alias="Authorization"),
@@ -663,6 +777,7 @@ def update_progress_state(
 
 
 @router.post("/feat-040/next-decision-trigger", status_code=status.HTTP_201_CREATED)
+@_atomic_request
 def create_next_decision_trigger(
     req: NextDecisionRequest,
     authorization: str | None = Header(None, alias="Authorization"),
@@ -706,6 +821,7 @@ def create_next_decision_trigger(
 
 
 @router.get("/athletes/{athlete_id}")
+@_atomic_request
 def get_training_workflow(
     athlete_id: str,
     authorization: str | None = Header(None, alias="Authorization"),
@@ -715,15 +831,30 @@ def get_training_workflow(
     owner: str | None = Header(None, alias="X-KAIZO-Resource-Owner"),
 ):
     principal = _headers(authorization, actor_id, role, tenant_id, owner, athlete_id)
+    features = {
+        feature: _list(feature, athlete_id, principal.tenant_id, principal.actor_id, lock=True)
+        for feature in (
+            "FEAT-033", "FEAT-034", "FEAT-035", "FEAT-036",
+            "FEAT-037", "FEAT-038", "FEAT-039", "FEAT-040",
+        )
+    }
+    if persistence.is_postgres_enabled():
+        persistence.append_tenant_audit(
+            tenant_id=principal.tenant_id,
+            timestamp=_now(),
+            who=principal.actor_id,
+            action="COACH_TRAINING_WORKFLOW_HISTORY_READ",
+            old_value=None,
+            new_value={
+                "athlete_id": athlete_id,
+                "record_count": sum(len(rows) for rows in features.values()),
+                "feature_counts": {key: len(rows) for key, rows in features.items()},
+            },
+            why="FEAT-033..040 lineage history read under verified Coach ownership.",
+        )
     return {
         "athlete_id": athlete_id,
-        "features": {
-            feature: _list(feature, athlete_id, principal.tenant_id, principal.actor_id)
-            for feature in (
-                "FEAT-033", "FEAT-034", "FEAT-035", "FEAT-036",
-                "FEAT-037", "FEAT-038", "FEAT-039", "FEAT-040",
-            )
-        },
+        "features": features,
         "coach_final_authority": True,
         "execution_authorized": False,
     }
