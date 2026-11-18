@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "kaizo-coach-core-staging",
+  "name": "kaizo-system",
   "main": "cloudflare_worker.py",
   "compatibility_date": "2026-11-05",
   "compatibility_flags": ["python_workers"],
