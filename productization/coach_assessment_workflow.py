@@ -620,19 +620,19 @@ def create_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: st
 
 
 def get_state_snapshot(*, tenant_id: str, coach_actor_id: str, athlete_id: str,
-                       snapshot_id: str) -> dict[str, Any] | None:
+                       snapshot_id: str, lock: bool = False) -> dict[str, Any] | None:
     if persistence.is_postgres_enabled():
         with persistence.connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT s.snapshot_id,s.athlete_id,s.assessment_id,s.snapshot_type,
-                              s.measurements,s.kpis,s.captured_by,s.captured_at,s.created_at
-                       FROM kaizo_state_snapshots s
-                       JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=s.athlete_id
-                       WHERE o.tenant_id=%s AND o.coach_actor_id=%s
-                         AND s.athlete_id=%s AND s.snapshot_id=%s""",
-                    (tenant_id, coach_actor_id, athlete_id, snapshot_id),
-                )
+                sql = """SELECT s.snapshot_id,s.athlete_id,s.assessment_id,s.snapshot_type,
+                                s.measurements,s.kpis,s.captured_by,s.captured_at,s.created_at
+                         FROM kaizo_state_snapshots s
+                         JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=s.athlete_id
+                         WHERE o.tenant_id=%s AND o.coach_actor_id=%s
+                           AND s.athlete_id=%s AND s.snapshot_id=%s"""
+                if lock:
+                    sql += " FOR SHARE OF s"
+                cur.execute(sql, (tenant_id, coach_actor_id, athlete_id, snapshot_id))
                 row = cur.fetchone()
         return _snapshot(row) if row else None
     if not _owned_in_memory(tenant_id=tenant_id, coach_actor_id=coach_actor_id,
