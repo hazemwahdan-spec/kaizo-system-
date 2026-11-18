@@ -303,6 +303,25 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     next_child_insert = next(i for i in insert_indexes if i > session_lock_indexes[0])
     assert session_lock_indexes[0] < next_child_insert, statements
     assert any("JOIN KAIZO_COACH_ATHLETE_OWNERSHIP" in query for query in normalized), statements
+    parent_record_locks = [
+        query for query in normalized
+        if "FROM KAIZO_TRAINING_WORKFLOW_RECORDS R" in query
+        and "FOR UPDATE OF O,R" in query
+    ]
+    assert len(parent_record_locks) >= 10, statements
+    assert any("FROM KAIZO_DECISION_RECORDS D" in query and "FOR SHARE OF D" in query
+               for query in normalized), statements
+    assert any("FROM KAIZO_COACH_DRILL_LIBRARY" in query and "FOR UPDATE" in query
+               for query in normalized), statements
+    assert any("FROM KAIZO_PROBLEM_STATEMENTS P" in query and "FOR UPDATE OF O,P" in query
+               for query in normalized), statements
+    assert any("FROM KAIZO_COACH_PROBLEM_DRILL_LINKS L" in query and "FOR UPDATE OF O,L" in query
+               for query in normalized), statements
+    baseline_locks = [
+        query for query in normalized
+        if "FROM KAIZO_STATE_SNAPSHOTS S" in query and "FOR SHARE OF S" in query
+    ]
+    assert len(baseline_locks) >= 2, statements
     assert not any(
         query.lstrip().startswith(("CREATE TABLE", "ALTER TABLE", "CREATE INDEX"))
         for query in normalized
@@ -330,6 +349,24 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
             )
             audit = cur.fetchone()
             assert audit == (coach, "FEAT-033_RECORDED", tenant)
+            cur.execute(
+                """SELECT action,COUNT(*) FROM kaizo_audit_logs
+                   WHERE tenant_id=%s AND who=%s AND action=ANY(%s)
+                     AND new_value->>'athlete_id'=%s
+                   GROUP BY action""",
+                (tenant, coach, [
+                    "FEAT-033_RECORDED", "FEAT-034_RECORDED", "FEAT-035_RECORDED",
+                    "FEAT-036_RECORDED", "FEAT-037_RECORDED", "FEAT-038_RECORDED",
+                    "FEAT-039_RECORDED", "FEAT-040_RECORDED",
+                ], athlete_id),
+            )
+            audit_actions = {row[0]: row[1] for row in cur.fetchall()}
+            assert set(audit_actions) == {
+                "FEAT-033_RECORDED", "FEAT-034_RECORDED", "FEAT-035_RECORDED",
+                "FEAT-036_RECORDED", "FEAT-037_RECORDED", "FEAT-038_RECORDED",
+                "FEAT-039_RECORDED", "FEAT-040_RECORDED",
+            }
+            assert all(count == 1 for count in audit_actions.values())
 
     # A different Coach cannot read the record, even in the same tenant.
     other_headers = {**headers, "X-KAIZO-Actor": coach + "-OTHER"}
@@ -598,3 +635,69 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
         headers={"Authorization": invalid_signature},
     ).status_code == 401
+
+
+
+def test_training_child_record_rolls_back_when_tenant_audit_fails(monkeypatch):
+    assert persistence.is_postgres_enabled()
+    persistence.initialize()
+    tenant = "TENANT-" + uuid4().hex
+    coach = "COACH-" + uuid4().hex
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id=tenant, coach_actor_id=coach,
+        display_name="FEAT-034 audit rollback acceptance",
+    )
+    headers = {
+        "X-KAIZO-Actor": coach,
+        "X-KAIZO-Role": "coach",
+        "X-KAIZO-Tenant": tenant,
+    }
+    decision_id, drill_id, _baseline, _kpi, evidence_id = seed_authoritative_feat033_sources(
+        tenant, coach, athlete["athlete_id"],
+    )
+    feat033 = client.post(
+        "/api/v1/training-workflow/feat-033/decision-drill",
+        headers=headers,
+        json={
+            "athlete_id": athlete["athlete_id"], "decision_id": decision_id,
+            "drill_id": drill_id, "rationale": "Parent record for rollback test",
+            "evidence_refs": [evidence_id],
+        },
+    )
+    assert feat033.status_code == 201, feat033.text
+    session_id = seed_owned_session(tenant, coach, athlete["athlete_id"], decision_id)
+    original_append = persistence.append_tenant_audit
+
+    def fail_child_audit(**kwargs):
+        if kwargs.get("action") == "FEAT-034_RECORDED":
+            raise RuntimeError("simulated FEAT-034 tenant audit failure")
+        return original_append(**kwargs)
+
+    monkeypatch.setattr(persistence, "append_tenant_audit", fail_child_audit)
+    response = client.post(
+        "/api/v1/training-workflow/feat-034/drill-prescription",
+        headers=headers,
+        json={
+            "athlete_id": athlete["athlete_id"], "decision_id": decision_id,
+            "session_id": session_id, "drill_id": drill_id,
+            "objective": "Rollback child if audit cannot be stored",
+            "dosage": {"sets": 3, "reps": 5},
+        },
+    )
+    assert response.status_code == 500, response.text
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_training_workflow_records
+                   WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s
+                     AND feature_id='FEAT-034'""",
+                (tenant, coach, athlete["athlete_id"]),
+            )
+            assert cur.fetchone()[0] == 0
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_audit_logs
+                   WHERE tenant_id=%s AND who=%s AND action='FEAT-034_RECORDED'
+                     AND new_value->>'athlete_id'=%s""",
+                (tenant, coach, athlete["athlete_id"]),
+            )
+            assert cur.fetchone()[0] == 0
