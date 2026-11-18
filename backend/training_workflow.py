@@ -628,7 +628,7 @@ def prescribe_drill(
     principal = _headers(authorization, actor_id, role, tenant_id, owner, req.athlete_id)
     _require_authority(principal)
     predecessor = _prior_record("FEAT-033", req.athlete_id, principal,
-        lambda r, p: r.get("decision_id") == req.decision_id and p.get("drill_id") == req.drill_id)
+        lambda r, p: r.get("decision_id") == req.decision_id and p.get("drill_id") == req.drill_id, lock=True)
     d = req.dosage
     if not d or any(k not in d for k in ("sets", "reps")):
         raise HTTPException(400, "dosage requires sets and reps")
@@ -652,7 +652,7 @@ def record_execution_cues(
     if any(not item.strip() for item in req.cues + req.checklist):
         raise HTTPException(400, "cues and checklist items must be non-empty")
     predecessor = _prior_record("FEAT-034", req.athlete_id, principal,
-        lambda r, p: r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
+        lambda r, p: r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id, lock=True)
     return _save_with_owned_session("FEAT-035", req.athlete_id, req.model_dump(), principal,
         decision_id=predecessor.get("decision_id"), session_id=req.session_id)
 
@@ -672,9 +672,9 @@ def capture_training_response(
     if not req.response or not req.kpi_values:
         raise HTTPException(400, "response and kpi_values are required")
     prescription = _prior_record("FEAT-034", req.athlete_id, principal,
-        lambda r, p: r.get("record_id") == req.prescription_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
+        lambda r, p: r.get("record_id") == req.prescription_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id, lock=True)
     cues = _prior_record("FEAT-035", req.athlete_id, principal,
-        lambda r, p: r.get("record_id") == req.execution_cue_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
+        lambda r, p: r.get("record_id") == req.execution_cue_record_id and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id, lock=True)
     if cues.get("decision_id") != prescription.get("decision_id"):
         raise HTTPException(409, detail="prescription and execution cues do not share the same decision lineage")
     return _save_with_owned_session("FEAT-036", req.athlete_id, req.model_dump(), principal, decision_id=prescription.get("decision_id"), session_id=req.session_id)
@@ -695,7 +695,7 @@ def capture_retest(
     if not req.baseline_reference.strip() or not req.retest_values:
         raise HTTPException(400, "baseline_reference and retest_values are required")
     response_record = _prior_record("FEAT-036", req.athlete_id, principal,
-        lambda r, p: r.get("record_id") == req.response_record_id and r.get("session_id") == req.session_id)
+        lambda r, p: r.get("record_id") == req.response_record_id and r.get("session_id") == req.session_id, lock=True)
     response_payload = response_record.get("payload") or {}
     if isinstance(response_payload, str): response_payload = json.loads(response_payload)
     _, baseline_values = _baseline_snapshot_for_response(
@@ -728,8 +728,8 @@ def compare_before_after(
     _require_authority(principal)
     if not req.baseline or not req.current or not req.comparison_method.strip():
         raise HTTPException(400, "baseline, current and comparison_method are required")
-    response_record = _prior_record("FEAT-036", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.response_record_id)
-    retest_record = _prior_record("FEAT-037", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.retest_record_id and r.get("session_id") == response_record.get("session_id"))
+    response_record = _prior_record("FEAT-036", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.response_record_id, lock=True)
+    retest_record = _prior_record("FEAT-037", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.retest_record_id and r.get("session_id") == response_record.get("session_id"), lock=True)
     response_payload = response_record.get("payload") or {}
     retest_payload = retest_record.get("payload") or {}
     if isinstance(response_payload, str): response_payload = json.loads(response_payload)
@@ -767,7 +767,7 @@ def update_progress_state(
     _require_authority(principal)
     if not req.state:
         raise HTTPException(400, "state is required")
-    comparison = _prior_record("FEAT-038", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.comparison_record_id)
+    comparison = _prior_record("FEAT-038", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.comparison_record_id, lock=True)
     return _save_with_verified_evidence(
         "FEAT-039", req.athlete_id, req.model_dump(), principal,
         decision_id=comparison.get("decision_id"),
@@ -790,7 +790,7 @@ def create_next_decision_trigger(
     _require_authority(principal)
     if not req.trigger_type.strip() or not req.trigger_reason.strip():
         raise HTTPException(400, "trigger_type and trigger_reason are required")
-    progress = _prior_record("FEAT-039", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.progress_record_id)
+    progress = _prior_record("FEAT-039", req.athlete_id, principal, lambda r, p: r.get("record_id") == req.progress_record_id, lock=True)
     if progress.get("session_id") != req.session_id:
         raise HTTPException(409, detail="next-decision trigger session does not match the linked progress record")
     progress_payload = progress.get("payload") or {}
@@ -807,6 +807,7 @@ def create_next_decision_trigger(
         lambda r, p: r.get("record_id") == comparison_id
         and r.get("decision_id") == progress.get("decision_id")
         and r.get("session_id") == req.session_id,
+        lock=True,
     )
     if comparison_id not in req.required_evidence:
         raise HTTPException(409, detail="required_evidence must include the linked FEAT-038 comparison record")
