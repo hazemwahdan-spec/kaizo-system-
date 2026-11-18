@@ -131,7 +131,7 @@ def _lock_primary_owner(cur: Any, *, tenant_id: str, coach_actor_id: str, athlet
     cur.execute(
         """SELECT athlete_id FROM kaizo_coach_athlete_ownership
            WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s
-           FOR KEY SHARE""",
+           FOR UPDATE""",
         (tenant_id, coach_actor_id, athlete_id),
     )
     if cur.fetchone() is None:
