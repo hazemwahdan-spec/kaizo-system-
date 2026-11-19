@@ -150,10 +150,19 @@ def list_actor_traces(
                     (tenant, actor, athlete_id, limit),
                 )
                 rows = cur.fetchall()
-        return {"athlete_id": athlete_id, "traces": [
-            {"trace_id": r[0], "action": r[1], "occurred_at": r[2],
-             "evidence_refs": r[3], "correlation_id": r[4]} for r in rows
-        ], "coach_final_authority": True, "execution_authorized": False}
+                traces = [
+                    {"trace_id": r[0], "action": r[1], "occurred_at": r[2],
+                     "evidence_refs": r[3], "correlation_id": r[4]} for r in rows
+                ]
+                evidence_service._audit(
+                    principal, tenant, "COACH_FEAT052_ACTOR_TRACES_READ", None,
+                    {"athlete_id": athlete_id,
+                     "trace_ids": [record["trace_id"] for record in traces],
+                     "result_count": len(traces)},
+                    evidence_service._now(),
+                )
+        return {"athlete_id": athlete_id, "traces": traces,
+                "coach_final_authority": True, "execution_authorized": False}
     except evidence_service.CoachEvidenceAuthorizationError as exc:
         raise HTTPException(status_code=404, detail="athlete not found in authenticated Coach scope") from exc
     except RuntimeError as exc:
@@ -186,10 +195,18 @@ def read_governance(
                     """SELECT governance_id,governance_status,metadata,version,updated_at
                        FROM kaizo_coach_scoped_governance
                        WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s
-                         AND resource_type=%s AND resource_id=%s""",
+                         AND resource_type=%s AND resource_id=%s
+                       FOR SHARE""",
                     (tenant, actor, athlete_id, resource_type, resource_id),
                 )
                 row = cur.fetchone()
+                evidence_service._audit(
+                    principal, tenant, "COACH_FEAT053_GOVERNANCE_READ", None,
+                    {"athlete_id": athlete_id, "resource_type": resource_type,
+                     "resource_id": resource_id, "found": row is not None,
+                     "version": int(row[3]) if row is not None else None},
+                    evidence_service._now(),
+                )
         if row is None:
             raise HTTPException(status_code=404, detail="governance record not found")
         return {"governance_id": row[0], "athlete_id": athlete_id,
