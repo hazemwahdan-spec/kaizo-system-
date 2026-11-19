@@ -1,53 +1,36 @@
-"""Cloudflare Workers entrypoint for the KAIZO FastAPI application.
+"""Cloudflare Workers entrypoint for the isolated KAIZO Coach Staging Worker.
 
-The isolated Staging Worker requires a Hyperdrive binding connected to the
-dedicated kaizo_coach_staging database. It refuses to initialize PostgreSQL
-against any other database name. In-memory mode is reserved for local dry runs.
+This Staging deployment is intentionally memory-only and must never connect to
+PostgreSQL, Hyperdrive, or any production persistence service.
 """
 from __future__ import annotations
 
-import asyncio
 import os
-from urllib.parse import unquote, urlparse
 
 from workers import WorkerEntrypoint, asgi
 
-# Import the Core app during Worker startup so Cloudflare can snapshot the
-# application rather than charging its full import cost to the first request.
-# app.py sets up the existing backend/ and productization/ import paths.
+# Import during startup so Cloudflare can snapshot the FastAPI application.
 from app import app
-import main as core
-import persistence
-
-_DATABASE_INITIALIZED = False
-_DATABASE_LOCK = asyncio.Lock()
-_STAGING_DATABASE_NAME = "kaizo_coach_staging"
 
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        global _DATABASE_INITIALIZED
-
-        hyperdrive = getattr(self.env, "HYPERDRIVE", None)
         environment = str(getattr(self.env, "KAIZO_ENVIRONMENT", "")).strip().lower()
+        persistence_mode = str(
+            getattr(self.env, "KAIZO_PERSISTENCE_MODE", "memory")
+        ).strip().lower()
 
-        if hyperdrive is not None:
-            if environment != "staging":
-                raise RuntimeError("KAIZO Worker refuses Hyperdrive outside the Staging environment")
-            connection_string = str(hyperdrive.connectionString)
-            database_name = unquote(urlparse(connection_string).path.lstrip("/").split("?", 1)[0])
-            if database_name != _STAGING_DATABASE_NAME:
-                raise RuntimeError("KAIZO Staging refuses a database other than kaizo_coach_staging")
-            os.environ["DATABASE_URL"] = connection_string
-            os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
-        else:
-            if environment == "staging":
-                raise RuntimeError("KAIZO Staging requires its isolated PostgreSQL Hyperdrive binding")
-            # Local dry-run mode is in-memory only; it is never accepted for Staging.
-            os.environ.pop("DATABASE_URL", None)
-            os.environ["KAIZO_PERSISTENCE_MODE"] = str(
-                getattr(self.env, "KAIZO_PERSISTENCE_MODE", "memory")
-            )
+        if environment != "staging":
+            raise RuntimeError("KAIZO Coach Worker accepts only the staging environment")
+        if getattr(self.env, "HYPERDRIVE", None) is not None:
+            raise RuntimeError("Memory-only Staging refuses any Hyperdrive binding")
+        if persistence_mode != "memory":
+            raise RuntimeError("KAIZO Coach Staging requires memory-only persistence")
+
+        # Fail closed: no database URL may leak into the in-memory Staging runtime.
+        os.environ.pop("DATABASE_URL", None)
+        os.environ["KAIZO_ENVIRONMENT"] = "staging"
+        os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
 
         for name, default in (
             ("KAIZO_IDENTITY_MODE", "oidc"),
@@ -60,16 +43,5 @@ class Default(WorkerEntrypoint):
         ):
             value = getattr(self.env, name, None)
             os.environ[name] = str(value if value is not None else default)
-
-        if hyperdrive is not None:
-            # Cloudflare recommends serializing synchronous PostgreSQL driver
-            # operations in Python Workers. The current KAIZO adapter uses
-            # synchronous psycopg calls, so guard the request boundary.
-            async with _DATABASE_LOCK:
-                if not _DATABASE_INITIALIZED:
-                    persistence.initialize()
-                    core.KNOWLEDGE_REPOSITORY.update(persistence.load_knowledge())
-                    _DATABASE_INITIALIZED = True
-                return await asgi.fetch(app, request, self.env)
 
         return await asgi.fetch(app, request, self.env)
