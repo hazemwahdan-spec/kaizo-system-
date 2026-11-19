@@ -18,7 +18,9 @@ on:
       - integration/coach-closure-evidence-audit-20261115
       - feat/coach-scoped-evidence-product-api-ui-20261115
       - fix/coach-server-authority-payload-20261117
+      - integration/coach-evidence-audit-rollback-unified-20261119
       - fix/coach-auth0-staging-live-proof-cross-scope-20261117
+      - integration/coach-evidence-audit-rollback-unified-20261119
   pull_request:
     branches:
       - main
