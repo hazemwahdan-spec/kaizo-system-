@@ -10,7 +10,8 @@ requires-python = ">=3.10"
 dependencies = [
   "fastapi==0.115.6",
   "uvicorn[standard]==0.34.0; python_version < '3.14'",
-  "psycopg[binary]==3.2.13",
+  "psycopg[binary]==3.2.13; python_version < '3.14'",
+  "psycopg==3.2.13; python_version >= '3.14'",
   "PyJWT[crypto]>=2.10,<3",
 ]
 
