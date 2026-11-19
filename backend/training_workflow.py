@@ -71,6 +71,11 @@ def _save(
     decision_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # Request-model compatibility fields are not authority. Persist only the
+    # server-derived Coach Final Authority and disabled-execution values.
+    payload = dict(payload)
+    payload["coach_final_authority"] = True
+    payload["execution_authorized"] = False
     record = {
         "record_id": str(uuid4()),
         "feature_id": feature_id,

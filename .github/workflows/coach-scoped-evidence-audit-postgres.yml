@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest
+        run: pip install -r requirements.txt pytest httpx
       - name: Compile scoped service and tests
         run: python -m py_compile backend/coach_scoped_evidence_runtime.py backend/test_coach_scoped_evidence_runtime_postgres.py
       - name: Run disposable PostgreSQL security regressions
