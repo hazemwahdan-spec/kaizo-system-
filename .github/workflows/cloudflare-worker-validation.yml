@@ -8,14 +8,13 @@ on:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
       - "pyproject.toml"
+      - "requirements.txt"
       - "app.py"
       - "backend/**"
       - "productization/**"
       - "frontend/**"
       - ".github/workflows/cloudflare-worker-validation.yml"
   pull_request:
-    branches:
-      - main
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
