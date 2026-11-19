@@ -1,4 +1,7 @@
-"""Apply only the four additive Coach evidence tables to an explicitly identified Staging DB."""
+"""Apply only the four additive Coach evidence tables to an explicitly identified Staging DB.
+
+This guarded preparation is Staging-only and deliberately refuses broad baseline DDL.
+"""
 from __future__ import annotations
 
 import os
