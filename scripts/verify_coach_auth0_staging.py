@@ -42,6 +42,8 @@ def main():
     base = os.environ["KAIZO_STAGING_API_URL"].strip().rstrip("/")
     token = os.environ["KAIZO_OIDC_BEARER_TOKEN"].strip()
     athlete_id = os.environ["KAIZO_STAGING_OWNED_ATHLETE_ID"].strip()
+    foreign_coach_id = os.environ.get("KAIZO_STAGING_FOREIGN_COACH_ATHLETE_ID", "").strip()
+    foreign_tenant_id = os.environ.get("KAIZO_STAGING_FOREIGN_TENANT_ATHLETE_ID", "").strip()
     staging_host = os.environ.get("KAIZO_STAGING_API_HOST", "").strip().lower().rstrip(".")
     production_host = os.environ.get("KAIZO_PRODUCTION_API_HOST", "").strip().lower().rstrip(".")
     parsed_base = urllib.parse.urlparse(base)
@@ -60,6 +62,10 @@ def main():
         raise RuntimeError("Refusing Auth0 proof: target host matches the configured Production API host")
     if not token or not athlete_id:
         raise RuntimeError("Staging Bearer token and owned athlete ID are required")
+    if not foreign_coach_id or not foreign_tenant_id:
+        raise RuntimeError("Separate foreign-Coach and foreign-tenant athlete IDs are required for live isolation proof")
+    if len({athlete_id, foreign_coach_id, foreign_tenant_id}) != 3:
+        raise RuntimeError("Owned, foreign-Coach, and foreign-tenant athlete IDs must be distinct")
 
     status, identity = request(base, "/api/v1/product/auth/oidc/verify", token)
     require_status("Auth0 JWT signature / issuer / audience / expiry verification", status, 200)
@@ -71,6 +77,9 @@ def main():
     athletes = roster.get("athletes", [])
     if not isinstance(athletes, list) or not any(str(row.get("athlete_id")) == athlete_id for row in athletes):
         raise RuntimeError("The supplied test athlete is not present in this authenticated Coach roster")
+    visible_ids = {str(row.get("athlete_id")) for row in athletes}
+    if foreign_coach_id in visible_ids or foreign_tenant_id in visible_ids:
+        raise RuntimeError("The authenticated Coach roster exposed an athlete from another Coach or tenant")
 
     encoded = urllib.parse.quote(athlete_id, safe="")
     status, _ = request(base, f"/api/v1/product/coach/athletes/{encoded}", token)
@@ -81,8 +90,9 @@ def main():
         "X-KAIZO-Tenant": "forged-tenant", "X-KAIZO-Resource-Owner": "foreign-athlete",
     })
     require_status("Verified token remains authoritative over spoofed identity headers", status, 200)
-    if not any(str(row.get("athlete_id")) == athlete_id for row in spoofed_roster.get("athletes", [])):
-        raise RuntimeError("Spoofed identity headers changed the authenticated Coach roster")
+    spoofed_visible_ids = {str(row.get("athlete_id")) for row in spoofed_roster.get("athletes", [])}
+    if athlete_id not in spoofed_visible_ids or foreign_coach_id in spoofed_visible_ids or foreign_tenant_id in spoofed_visible_ids:
+        raise RuntimeError("Spoofed identity headers changed or broadened the authenticated Coach roster")
 
     status, _ = request(base, "/api/v1/product/coach/athletes")
     require_status("Anonymous Coach API denial", status, 401)
@@ -96,11 +106,13 @@ def main():
     })
     require_status("Caller-supplied identity header spoofing denial", status, 401)
 
-    foreign_id = os.getenv("KAIZO_STAGING_FOREIGN_ATHLETE_ID", "").strip()
-    if foreign_id:
-        encoded_foreign = urllib.parse.quote(foreign_id, safe="")
-        status, _ = request(base, f"/api/v1/product/coach/athletes/{encoded_foreign}", token)
-        require_status("Cross-Coach / cross-tenant athlete denial", status, 404)
+    encoded_foreign_coach = urllib.parse.quote(foreign_coach_id, safe="")
+    status, _ = request(base, f"/api/v1/product/coach/athletes/{encoded_foreign_coach}", token)
+    require_status("Cross-Coach athlete denial within the same tenant", status, 404)
+
+    encoded_foreign_tenant = urllib.parse.quote(foreign_tenant_id, safe="")
+    status, _ = request(base, f"/api/v1/product/coach/athletes/{encoded_foreign_tenant}", token)
+    require_status("Cross-tenant athlete denial", status, 404)
 
     wrong_audience_token = os.getenv("KAIZO_OIDC_WRONG_AUDIENCE_TOKEN", "").strip()
     if wrong_audience_token:
