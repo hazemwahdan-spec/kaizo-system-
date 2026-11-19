@@ -19,6 +19,7 @@ on:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
       - "pyproject.toml"
+      - "requirements.txt"
       - "app.py"
       - "backend/**"
       - "productization/**"
