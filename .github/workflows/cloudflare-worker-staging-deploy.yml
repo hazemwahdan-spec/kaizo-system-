@@ -2,9 +2,6 @@ name: Cloudflare Free Memory-only Staging Deploy
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/cloudflare-free-memory-staging-20261119
 
 permissions:
   contents: read
