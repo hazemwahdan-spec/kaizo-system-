@@ -10,9 +10,10 @@
 
 ## Deploy staging
 
-1. Add GitHub repository Actions secrets named `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-2. The API token should be scoped to the account and have permission to edit Workers scripts.
-3. Open Actions → **Cloudflare Free Staging Deploy** → Run workflow.
+1. Add the GitHub repository Actions secret `CLOUDFLARE_API_TOKEN`.
+2. Scope the Cloudflare API token to the account and grant `Workers Scripts: Edit`.
+3. The workflow pins the public Cloudflare Account ID from the account dashboard; do not create an Actions secret for `CLOUDFLARE_ACCOUNT_ID`.
+4. Open Actions → **Cloudflare Free Staging Deploy** → Run workflow.
 
 The workflow deploys only the isolated `kaizo-coach-core-staging` Worker. It does not connect to Neon or alter production data.
 
