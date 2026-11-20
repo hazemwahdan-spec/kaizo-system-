@@ -13,7 +13,6 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       # Public Cloudflare Account ID from the account dashboard URL.
-      # Keep this out of Actions secrets to prevent account-ID drift.
       CLOUDFLARE_ACCOUNT_ID: "962a31c413bed22002379d4e0a42cfe8"
     steps:
       - uses: actions/checkout@v4
@@ -21,18 +20,76 @@ jobs:
         with:
           node-version: "22"
       - uses: astral-sh/setup-uv@v6
-      - name: Verify Cloudflare credentials are configured
+
+      - name: Verify Cloudflare token identity and account permissions
         shell: bash
         run: |
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Missing Cloudflare account ID"; exit 1; }
-          echo "Target Cloudflare account: $CLOUDFLARE_ACCOUNT_ID"
-          echo "Target Worker: kaizo-coach-core-staging"
+
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+
+          token = os.environ["CLOUDFLARE_API_TOKEN"]
+          account_id = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+          base = "https://api.cloudflare.com/client/v4"
+
+          def request(path, label):
+              req = urllib.request.Request(
+                  base + path,
+                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as response:
+                      payload = json.loads(response.read().decode("utf-8"))
+              except urllib.error.HTTPError as exc:
+                  # Never print request headers or token material.
+                  body = exc.read().decode("utf-8", "replace")
+                  try:
+                      details = json.loads(body)
+                      messages = "; ".join(
+                          str(item.get("message", ""))
+                          for item in details.get("errors", [])
+                      )
+                  except Exception:
+                      messages = "Cloudflare returned a non-JSON error"
+                  print(f"::error::{label} failed (HTTP {exc.code}): {messages or 'permission or account mismatch'}")
+                  sys.exit(1)
+              if not payload.get("success"):
+                  messages = "; ".join(
+                      str(item.get("message", ""))
+                      for item in payload.get("errors", [])
+                  )
+                  print(f"::error::{label} rejected: {messages or 'Cloudflare API returned success=false'}")
+                  sys.exit(1)
+              return payload.get("result")
+
+          identity = request("/user/tokens/verify", "Cloudflare token verification")
+          status = (identity or {}).get("status", "unknown")
+          if status != "active":
+              print(f"::error::Cloudflare API token is not active (status={status}). Replace the CLOUDFLARE_API_TOKEN repository secret.")
+              sys.exit(1)
+
+          scripts = request(f"/accounts/{account_id}/workers/scripts?per_page=100", "Cloudflare account Workers access")
+          print(f"Cloudflare token status: {status}")
+          print(f"Cloudflare account access: verified for {account_id}")
+          names = [item.get("id") for item in (scripts or []) if isinstance(item, dict)]
+          target = "kaizo-coach-core-staging"
+          print(f"Target Worker present in script inventory: {'yes' if target in names else 'no'}")
+          if target not in names:
+              print("::notice::The staging Worker is not in the current script inventory; Wrangler will attempt deployment. If deployment reports 'No access to the specified service', recreate the token with Account-level Workers Scripts Edit access and update the CLOUDFLARE_API_TOKEN repository secret.")
+          PY
+
       - name: Install Python Worker dependencies
         run: |
           uv python install 3.13
           uv sync --dev --no-install-project --python 3.13
+
       - name: Deploy isolated in-memory staging Worker
         shell: bash
         run: |
