@@ -30,6 +30,10 @@ def _ensure_schema() -> None:
 
 def _principal(authorization, actor_id, role, tenant_id, owner, athlete_id):
     principal = verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
+    if principal.verified and not persistence.is_postgres_enabled():
+        raise HTTPException(
+            503, detail="verified Coach Digital Twin routes require durable PostgreSQL"
+        )
     athlete = coach_roster.get_owned_athlete(
         tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
         athlete_id=athlete_id,
@@ -52,6 +56,34 @@ def _scope_check(cur, athlete_id, principal):
     )
     if cur.fetchone() is None:
         raise HTTPException(404, detail="athlete not found in Coach scope")
+
+
+def _verified_athlete_evidence(cur, athlete_id: str, coach_actor_id: str, evidence_refs: List[str]) -> None:
+    """Lock only VERIFIED, non-E0 evidence belonging to this exact athlete."""
+    refs = [str(item).strip() for item in evidence_refs]
+    if (not refs or any(not item for item in refs)
+            or len(refs) != len(set(refs))):
+        raise HTTPException(409, detail="FEAT-042 evidence_refs must be non-empty and unique")
+    cur.execute(
+        """SELECT evidence_id,evidence_level,status,verified_by
+           FROM kaizo_evidence_records
+           WHERE evidence_id=ANY(%s)
+             AND LOWER(subject_type)='athlete' AND subject_id=%s
+             AND verified_by=%s
+           FOR SHARE""",
+        (refs, athlete_id, coach_actor_id),
+    )
+    valid = {
+        str(row[0]) for row in cur.fetchall()
+        if str(row[1] or "").strip().upper() != "E0"
+        and str(row[2] or "").strip().upper() == "VERIFIED"
+        and str(row[3] or "").strip() == coach_actor_id
+    }
+    if valid != set(refs):
+        raise HTTPException(
+            409,
+            detail="FEAT-042 requires VERIFIED, non-E0 evidence verified by this Coach for the same athlete",
+        )
 
 
 def _get_state(athlete_id: str, principal: Any) -> Optional[Dict[str, Any]]:
@@ -87,6 +119,9 @@ def _persist_update(state: Dict[str, Any], history: Dict[str, Any],
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             _scope_check(cur,state["entity_id"],principal)
+            # Evidence locks, state version, history and tenant audit share this
+            # transaction; no caller-supplied or cross-athlete evidence survives.
+            _verified_athlete_evidence(cur, state["entity_id"], principal.actor_id, history["evidence_refs"])
             cur.execute(
                 """SELECT version,tenant_id,coach_actor_id FROM kaizo_digital_twin_state
                    WHERE entity_id=%s FOR UPDATE""",(state["entity_id"],))
@@ -131,6 +166,26 @@ def _persist_update(state: Dict[str, Any], history: Dict[str, Any],
         conn.commit()
 
 
+def _lock_owned_decision(cur, *, decision_id: str, athlete_id: str, principal: Any) -> None:
+    """Require the linked decision to belong to this exact Coach/tenant/athlete."""
+    cur.execute(
+        """SELECT d.decision_id
+           FROM kaizo_decision_records d
+           JOIN kaizo_coach_athlete_ownership o
+             ON o.athlete_id=d.athlete_id
+           WHERE d.decision_id=%s
+             AND d.athlete_id=%s
+             AND d.coach_id=%s
+             AND o.tenant_id=%s
+             AND o.coach_actor_id=%s
+           FOR SHARE OF d,o""",
+        (decision_id, athlete_id, principal.actor_id,
+         principal.tenant_id, principal.actor_id),
+    )
+    if cur.fetchone() is None:
+        raise HTTPException(404, detail="decision not found in Coach scope")
+
+
 def _save_link(record: Dict[str, Any], principal: Any) -> None:
     if not persistence.is_postgres_enabled():
         _MEMORY_LINKS.append(record)
@@ -138,6 +193,10 @@ def _save_link(record: Dict[str, Any], principal: Any) -> None:
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             _scope_check(cur,record["entity_id"],principal)
+            _lock_owned_decision(
+                cur, decision_id=record["decision_id"],
+                athlete_id=record["entity_id"], principal=principal,
+            )
             cur.execute(
                 """SELECT 1 FROM kaizo_digital_twin_state
                    WHERE entity_id=%s AND version=%s AND tenant_id=%s AND coach_actor_id=%s
