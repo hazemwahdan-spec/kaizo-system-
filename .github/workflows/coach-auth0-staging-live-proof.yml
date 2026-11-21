@@ -44,9 +44,12 @@ jobs:
       - name: Require Auth0 Staging test token
         shell: bash
         run: |
-          if [ -z "$KAIZO_OIDC_BEARER_TOKEN" ]; then
-            echo "KAIZO_OIDC_BEARER_TOKEN repository secret is required."
-            exit 1
-          fi
+          required_secrets=(KAIZO_OIDC_BEARER_TOKEN KAIZO_OIDC_NO_PRODUCT_TOKEN KAIZO_OIDC_NONCOACH_TOKEN KAIZO_OIDC_WRONG_AUDIENCE_TOKEN)
+          for secret_name in "${required_secrets[@]}"; do
+            if [ -z "${!secret_name}" ]; then
+              echo "$secret_name repository secret is required for complete negative-authorization coverage."
+              exit 1
+            fi
+          done
       - name: Run live Auth0 Coach authorization checks (GET only)
         run: python scripts/verify_coach_auth0_staging.py
