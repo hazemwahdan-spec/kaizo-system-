@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "frontend" / "app.js").read_text()
 INDEX = (ROOT / "frontend" / "index.html").read_text()
+AUTH = (ROOT / "frontend" / "auth.js").read_text()
 
 def test_four_commercial_roles_are_present():
     for role in ("academy", "coach", "athlete", "parent"):
@@ -327,3 +328,10 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
     assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
     assert '"X-KAIZO-Actor"' not in APP
     assert '"X-KAIZO-Tenant"' not in APP
+
+
+def test_auth0_requests_product_permission_for_login_and_silent_tokens():
+    assert 'scope: "product"' in AUTH
+    assert 'authorizationParams: authorizationParams()' in AUTH
+    assert 'getAccessTokenSilently: () => client.getTokenSilently({ authorizationParams: authorizationParams() })' in AUTH
+    assert 'loginWithRedirect: () => client.loginWithRedirect({ authorizationParams: authorizationParams() })' in AUTH
