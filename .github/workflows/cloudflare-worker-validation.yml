@@ -52,6 +52,8 @@ jobs:
           uv sync --dev --no-install-project --python 3.13
       - name: Verify Staging memory guard precedes Core import
         run: python backend/test_cloudflare_worker_import_guard.py
+      - name: Verify Staging deploy workflow token preflight and branch guard
+        run: python backend/test_cloudflare_staging_deploy_workflow.py
       - name: Bundle Cloudflare Python Worker without deploying
         shell: bash
         run: |
