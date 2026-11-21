@@ -2,32 +2,29 @@
 
 ## Safety boundary
 
-- The staging Worker serves the existing static Coach UI and the existing FastAPI Core.
-- Staging uses in-memory persistence by design. It is not a source of truth and must not receive real athlete records.
-- OIDC remains enabled. The API does not trust client-supplied actor, role, or tenant headers.
-- The staging configuration has no Hyperdrive binding and contains no database credentials.
-- Deployment is manual only; pushes and pull requests do not publish a Worker.
+- The isolated Worker is named `kaizo-coach-core-staging`; the existing `kaizo-system` Worker is a separate Production service.
+- This Worker is intentionally memory-only. It has no Hyperdrive binding and no database credentials. It may serve the static Coach UI and basic Core surface, but it is **not** a durable Coach API: verified Coach Product API requests fail closed with HTTP 503 until a separate Staging API is connected to allowlisted PostgreSQL.
+- Do not use the memory-only Worker for real athlete records, PostgreSQL persistence proof, audit durability proof, or Auth0 cross-scope acceptance.
+- OIDC remains enabled. Actor, role, tenant, and ownership are derived from the verified token and server-side ownership records; caller-supplied identity headers are not trusted.
+- Cloudflare's Git-connected status for `kaizo-system` refers to the existing Production Worker. A failed build there is not a Staging deployment or Staging acceptance result.
 
-## Deploy staging
+## Deploy the isolated memory-only Worker
 
-1. Add GitHub repository Actions secrets named `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-2. The API token should be scoped to the account and have permission to edit Workers scripts.
-3. Open Actions → **Cloudflare Free Staging Deploy** → Run workflow.
+1. Configure the GitHub repository Actions secret `CLOUDFLARE_API_TOKEN`. Do **not** create a `CLOUDFLARE_ACCOUNT_ID` secret; the public Account ID is pinned in the workflow.
+2. The Cloudflare token must be active and have Account-level Workers Scripts Edit permission. The workflow verifies token status and account script access before building.
+3. Open Actions → **Cloudflare Free Memory-only Staging Deploy** → Run workflow. Select the exact branch `fix/coach-staging-target-guardrails-20261121`; the workflow rejects other refs.
+4. The workflow validates the isolated Worker name and memory-only settings, checks the import guard, runs a Wrangler dry-run, and only then deploys `kaizo-coach-core-staging`.
 
-The workflow deploys only the isolated `kaizo-coach-core-staging` Worker. It does not connect to Neon or alter production data.
+If token verification returns HTTP 401, stop and replace the repository secret with a valid active API token. Never paste token values into chat, logs, issues, or source control.
 
-## Production database is deliberately not wired yet
+## Durable Coach Staging is a separate target
 
-Before connecting any production database:
+The memory-only Worker is not the target for the durable Coach acceptance workflows.
 
-1. Rotate the Neon database password that was previously stored in the retired Railway environment.
-2. Create a separate Neon branch for staging verification; do not test against the live athlete database.
-3. Create a Cloudflare Hyperdrive configuration for that branch with query caching disabled. Stale cached ownership or authorization reads are not acceptable.
-4. Add the resulting Hyperdrive ID as the `HYPERDRIVE` binding in `wrangler.jsonc`.
-5. Verify persistence, Coach-to-Coach isolation, tenant isolation, audit durability, and read-after-write behavior before considering production.
+- **Schema preparation:** `.github/workflows/coach-scoped-evidence-staging-schema.yml` requires GitHub Environment `staging`, secret `KAIZO_STAGING_DATABASE_URL`, and trusted variables `KAIZO_STAGING_DB_HOST` and `KAIZO_PRODUCTION_DB_HOST`. It verifies the exact Staging database target and adds only the four Coach-scoped evidence tables; it does not call repository-wide `persistence.initialize()`.
+- **Auth0 live proof:** `.github/workflows/coach-auth0-staging-live-proof.yml` uses the trusted `KAIZO_STAGING_API_URL` variable and repository/environment OIDC test secrets. It performs GET-only authorization checks. Its API target must be a separate Staging API connected to the same allowlisted PostgreSQL database.
+- Before either workflow is run, confirm the exact Staging API host and database host, configure the required environment variables/secrets without exposing their values, and obtain explicit approval for that Staging target.
 
-The Worker uses the Hyperdrive connection string at runtime. It must never be copied into source control or chat. Synchronous PostgreSQL operations are serialized in the Worker entrypoint as required by Cloudflare's Python Workers guidance.
+## Production remains separate
 
-## Free-plan constraints
-
-Cloudflare Workers Free currently allows 100,000 requests/day and 10 ms CPU time per HTTP request. Hyperdrive Free allows 100,000 SQL statements/day. Python Workers support for Hyperdrive is documented, but the Python Hyperdrive integration is still a newer runtime path. These limits must be measured with the real Coach flows; this staging setup is not a claim of production readiness.
+No Production database, Auth0 Production settings, Cloudflare Production Worker, or Railway configuration is changed by these Staging workflows. Production deployment identity, Health, OpenAPI, and live security checks remain a separate acceptance gate.
