@@ -240,6 +240,50 @@ def test_problem_to_drill_link_requires_published_drill_and_same_scope_evidence(
     assert cross.status_code == 409
 
 
+def test_problem_to_drill_link_rejects_same_coach_drill_from_another_athlete(monkeypatch):
+    client, headers, resources, evidence = _setup(monkeypatch)
+    first = resources["coach-a"]
+    tenant, actor = "ACADEMY-A", "auth0|coach-a"
+
+    second_athlete = coach_roster.create_owned_athlete(
+        tenant_id=tenant, coach_actor_id=actor, display_name="Second Coach-A Athlete")
+    second_assessment = coach_assessment_workflow.create_assessment(
+        tenant_id=tenant, coach_actor_id=actor, athlete_id=second_athlete["athlete_id"],
+        template_id="SECOND-ATHLETE-BASELINE", measurements={"entry_quality": 8})
+    second_evidence_id = "PROGRESSION-EVIDENCE-SECOND-ATHLETE"
+    evidence[second_evidence_id] = {
+        "evidence_id": second_evidence_id, "subject_type": "assessment",
+        "subject_id": second_assessment["assessment_id"], "evidence_level": "E3",
+        "status": "VERIFIED", "source_ref": "assessment://second-athlete-test",
+        "claim": "Second athlete entry quality measured.",
+        "observed_value": {"entry_quality": 8}, "verified_by": "trusted-fixture",
+        "verified_at": "2026-11-21T00:00:00Z", "notes": None,
+    }
+    second_resource = {"assessment": second_assessment, "evidence_id": second_evidence_id}
+    second_drill_path = f"/api/v1/product/coach/athletes/{second_athlete['athlete_id']}/drill-library"
+    created = client.post(second_drill_path, headers=headers["coach-a"], json=_drill_payload(second_resource))
+    assert created.status_code == 201, created.text
+    drill = created.json()
+    approved = client.post(
+        second_drill_path + f"/{drill['drill_id']}/coach-review",
+        headers=headers["coach-a"],
+    )
+    assert approved.status_code == 200, approved.text
+
+    first_athlete_id = first["athlete"]["athlete_id"]
+    link_path = f"/api/v1/product/coach/athletes/{first_athlete_id}/problems/{first['problem']['problem_id']}/drill-links"
+    rejected = client.post(
+        link_path, headers=headers["coach-a"],
+        json={
+            "drill_id": drill["drill_id"],
+            "rationale": "Cross-athlete drill linkage must be rejected.",
+            "evidence_ids": [first["evidence_id"]],
+        },
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert client.get(link_path, headers=headers["coach-a"]).json()["drill_links"] == []
+
+
 def test_progression_drill_and_constraint_apis_require_bearer_and_hide_legacy_routes(monkeypatch):
     client, headers, resources, evidence = _setup(monkeypatch)
     r = resources["coach-a"]
