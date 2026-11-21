@@ -377,6 +377,19 @@ def _validate_initial_decision_drill(req: "DecisionDrillRequest", principal: Any
                   and item.get("approved_by") == principal.actor_id), None)
     if drill is None:
         raise HTTPException(status_code=409, detail="drill_id is not a Coach-reviewed published drill in this Coach scope")
+    source_assessment_id = str(drill.get("source_assessment_id") or "").strip()
+    source_assessment = (
+        coach_assessment_workflow.get_assessment(
+            tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+            athlete_id=req.athlete_id, assessment_id=source_assessment_id,
+        )
+        if source_assessment_id else None
+    )
+    if source_assessment is None:
+        raise HTTPException(
+            status_code=409,
+            detail="drill source assessment is not in this Coach/tenant/athlete scope",
+        )
     links = coach_progression_workflow.list_problem_drill_links(
         tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
         athlete_id=req.athlete_id, problem_id=problem_id,
@@ -388,6 +401,11 @@ def _validate_initial_decision_drill(req: "DecisionDrillRequest", principal: Any
                  and item.get("coach_actor_id") == principal.actor_id), None)
     if link is None:
         raise HTTPException(status_code=409, detail="drill has no verified problem-drill link for this decision and athlete")
+    if str(link.get("assessment_id") or "").strip() != str(decision.get("assessment_id") or "").strip():
+        raise HTTPException(
+            status_code=409,
+            detail="problem-drill link assessment must match the recorded decision assessment",
+        )
     linked_evidence = set(link.get("evidence_ids") or [])
     if not req.evidence_refs or not set(req.evidence_refs).issubset(linked_evidence):
         raise HTTPException(status_code=409, detail="FEAT-033 evidence_refs must come from the verified problem-drill link evidence")
