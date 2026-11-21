@@ -22,6 +22,7 @@ on:
       - fix/coach-auth0-staging-live-proof-cross-scope-20261117
       - integration/coach-evidence-audit-rollback-unified-20261119
       - fix/cloudflare-worker-import-memory-guard-20261120
+      - fix/coach-staging-target-guardrails-20261121
   pull_request:
     branches:
       - main
@@ -50,6 +51,7 @@ on:
       - fix/coach-postgres-verified-evidence-fixture-20261114
       - integration/coach-closure-evidence-audit-20261115
       - fix/coach-server-authority-payload-20261117
+      - fix/cloudflare-worker-import-memory-guard-20261120
 
 jobs:
   validate-persistence-adapter:
@@ -112,6 +114,8 @@ jobs:
         run: PYTHONPATH=..:. pytest -q test_coach_auth0_staging_live_proof.py
       - name: Compile guarded Staging schema preparation
         run: python -m py_compile ../scripts/apply_coach_scoped_evidence_staging_schema.py
+      - name: Verify Staging schema host and database allowlist
+        run: PYTHONPATH=..:. pytest -q test_coach_staging_schema_target_guard.py
       - name: Verify FEAT-042..045 scoped Digital Twin state cycle
         run: PYTHONPATH=..:. pytest -q test_state_cycle.py test_feat_041_digital_twin.py
       - name: Verify scoped Digital Twin PostgreSQL persistence and atomic audit rollback
