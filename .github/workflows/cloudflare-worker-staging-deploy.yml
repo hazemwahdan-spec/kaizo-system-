@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "hazemwahdan-spec/kaizo-system-" || { echo "Unexpected repository"; exit 1; }
-          test "$GITHUB_REF_NAME" = "fix/cloudflare-free-memory-staging-20261119" || { echo "Staging-only branch guard rejected this ref"; exit 1; }
+          test "$GITHUB_REF_NAME" = "fix/coach-staging-target-guardrails-20261121" || { echo "Staging-only branch guard rejected this ref"; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing CLOUDFLARE_ACCOUNT_ID repository secret"; exit 1; }
           python - <<'PY'
@@ -40,6 +40,8 @@ jobs:
           assert not config.get("hyperdrive"), "Hyperdrive is forbidden in free memory-only Staging"
           print("PASS: isolated Worker name, staging environment, memory persistence, no Hyperdrive")
           PY
+      - name: Verify memory-only import guard
+        run: python backend/test_cloudflare_worker_import_guard.py
       - name: Install Python 3.13 Worker dependencies
         run: |
           uv python install 3.13
