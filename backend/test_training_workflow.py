@@ -227,13 +227,16 @@ def test_feat033_resolves_authoritative_decision_published_drill_and_same_scope_
         "who":"coach-1","action":"COACH_DECISION_RECORD_RECORDED","tenant_id":"tenant-1",
         "new_value":decision,
     }])
+    monkeypatch.setattr(training_workflow.coach_assessment_workflow, "get_assessment",
+        lambda **kwargs: {"assessment_id":kwargs["assessment_id"],"athlete_id":kwargs["athlete_id"]})
     monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_drills",
-        lambda **kwargs: [{"drill_id":"DR1","status":"PUBLISHED","coach_review":True,
-                           "approved_by":"coach-1"}])
+        lambda **kwargs: [{"drill_id":"DR1","source_assessment_id":"ASSESS-1",
+                           "status":"PUBLISHED","coach_review":True,"approved_by":"coach-1"}])
     monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_problem_drill_links",
         lambda **kwargs: [{"link_id":"L1","problem_id":"P1","drill_id":"DR1",
-                           "athlete_id":ATHLETE_ID,"tenant_id":"tenant-1",
-                           "coach_actor_id":"coach-1","evidence_ids":["REF-015"]}])
+                           "athlete_id":ATHLETE_ID,"assessment_id":"ASSESS-1",
+                           "tenant_id":"tenant-1","coach_actor_id":"coach-1",
+                           "evidence_ids":["REF-015"]}])
     req = training_workflow.DecisionDrillRequest(
         athlete_id=ATHLETE_ID,decision_id="D1",drill_id="DR1",
         rationale="Targets entry timing",evidence_refs=["REF-015"])
@@ -267,9 +270,11 @@ def test_feat033_rejects_foreign_decision_unreviewed_drill_and_missing_problem_l
         "who":"coach-1","action":"COACH_DECISION_RECORD_RECORDED","tenant_id":"tenant-1",
         "new_value":trusted_decision,
     }])
+    monkeypatch.setattr(training_workflow.coach_assessment_workflow, "get_assessment",
+        lambda **kwargs: {"assessment_id":kwargs["assessment_id"],"athlete_id":kwargs["athlete_id"]})
     monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_drills",
-        lambda **kwargs: [{"drill_id":"DR1","status":"DRAFT","coach_review":False,
-                           "approved_by":None}])
+        lambda **kwargs: [{"drill_id":"DR1","source_assessment_id":"ASSESS-1",
+                           "status":"DRAFT","coach_review":False,"approved_by":None}])
     with pytest.raises(HTTPException) as denied_drill:
         _VALIDATE_INITIAL_SOURCES(req, principal)
     assert denied_drill.value.status_code == 409
@@ -282,3 +287,44 @@ def test_feat033_rejects_foreign_decision_unreviewed_drill_and_missing_problem_l
     with pytest.raises(HTTPException) as denied_link:
         _VALIDATE_INITIAL_SOURCES(req, principal)
     assert denied_link.value.status_code == 409
+
+
+def test_feat033_rejects_foreign_drill_assessment_and_mismatched_problem_link_assessment(monkeypatch):
+    monkeypatch.setattr(persistence, "is_postgres_enabled", lambda: False)
+    principal = SimpleNamespace(actor_id="coach-1", tenant_id="tenant-1")
+    req = training_workflow.DecisionDrillRequest(
+        athlete_id=ATHLETE_ID, decision_id="D1", drill_id="DR1",
+        rationale="Targets entry timing", evidence_refs=["REF-015"])
+    decision = {
+        "decision_id": "D1", "athlete_id": ATHLETE_ID, "coach_id": "coach-1",
+        "status": "RECORDED", "problem_id": "P1", "assessment_id": "ASSESS-1",
+    }
+    drill = {
+        "drill_id": "DR1", "source_assessment_id": "ASSESS-1",
+        "status": "PUBLISHED", "coach_review": True, "approved_by": "coach-1",
+    }
+    link = {
+        "link_id": "L1", "problem_id": "P1", "drill_id": "DR1",
+        "athlete_id": ATHLETE_ID, "assessment_id": "ASSESS-OTHER",
+        "tenant_id": "tenant-1", "coach_actor_id": "coach-1",
+        "evidence_ids": ["REF-015"],
+    }
+    monkeypatch.setattr(coach_decision_workflow, "get_recorded_decision_for_scope",
+        lambda **kwargs: decision)
+    monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_drills",
+        lambda **kwargs: [drill])
+    monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_problem_drill_links",
+        lambda **kwargs: [link])
+    monkeypatch.setattr(training_workflow.coach_assessment_workflow, "get_assessment",
+        lambda **kwargs: {"assessment_id": kwargs["assessment_id"], "athlete_id": kwargs["athlete_id"]})
+
+    with pytest.raises(HTTPException) as mismatched_link:
+        _VALIDATE_INITIAL_SOURCES(req, principal)
+    assert mismatched_link.value.status_code == 409
+
+    link["assessment_id"] = "ASSESS-1"
+    monkeypatch.setattr(training_workflow.coach_assessment_workflow, "get_assessment",
+        lambda **kwargs: None)
+    with pytest.raises(HTTPException) as foreign_source:
+        _VALIDATE_INITIAL_SOURCES(req, principal)
+    assert foreign_source.value.status_code == 409
