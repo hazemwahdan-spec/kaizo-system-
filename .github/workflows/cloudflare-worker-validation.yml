@@ -17,6 +17,7 @@ on:
     branches:
       - main
       - integration/coach-closure-evidence-audit-20261115
+      - fix/staging-coach-schema-additive-only-20261119
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
