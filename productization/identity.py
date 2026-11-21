@@ -31,6 +31,7 @@ class Principal:
     resource_owner_id: str | None
     verified: bool
     source: str
+    permissions: frozenset[str] = frozenset()
 
 
 VALID_ROLES = {"academy", "coach", "athlete", "parent", "publisher"}
@@ -72,6 +73,16 @@ def _claims_to_principal(claims: dict[str, Any]) -> Principal:
         or claims.get("kaizo_tenant_id")
     )
     owner = claims.get(f"{namespace}resource_owner_id") or claims.get("resource_owner_id")
+    raw_permissions = claims.get("permissions", [])
+    if (
+        not isinstance(raw_permissions, list)
+        or any(not isinstance(permission, str) or not permission.strip()
+               for permission in raw_permissions)
+    ):
+        raise IdentityNotConfiguredError(
+            "verified identity permissions claim must be an array of non-empty strings"
+        )
+    permissions = frozenset(raw_permissions)
     if not actor_id or role not in VALID_ROLES or not tenant_id:
         raise IdentityNotConfiguredError(
             "verified identity is missing required KAIZO claims: sub, role, tenant_id"
@@ -83,6 +94,20 @@ def _claims_to_principal(claims: dict[str, Any]) -> Principal:
         resource_owner_id=str(owner) if owner is not None else None,
         verified=True,
         source="oidc_jwt",
+        permissions=permissions,
+    )
+
+
+def principal_has_permission(principal: Principal, permission: str) -> bool:
+    """Return true only for an exact permission present in a verified OIDC token."""
+    permissions = getattr(principal, "permissions", None)
+    return (
+        getattr(principal, "verified", False) is True
+        and getattr(principal, "source", None) == "oidc_jwt"
+        and isinstance(permission, str)
+        and bool(permission)
+        and isinstance(permissions, (set, frozenset))
+        and permission in permissions
     )
 
 
