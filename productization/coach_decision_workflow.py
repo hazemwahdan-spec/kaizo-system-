@@ -65,6 +65,71 @@ def _audit(*, tenant_id: str, coach_actor_id: str, action: str,
         })
 
 
+
+
+def _decision_for_scope_sql(cur: Any, *, tenant_id: str, coach_actor_id: str,
+                            athlete_id: str, decision_id: str,
+                            lock: bool = False) -> dict[str, Any] | None:
+    """Resolve a recorded decision only when its owner and audit provenance match."""
+    sql = """SELECT d.decision_id,d.candidate_id,d.diagnosis_id,d.problem_id,d.athlete_id,
+                    d.assessment_id,d.candidate_type,d.coach_action,d.coach_id,
+                    d.decision_summary,d.outcome_intent,d.status,d.recorded_at
+             FROM kaizo_decision_records d
+             JOIN kaizo_coach_athlete_ownership o ON o.athlete_id=d.athlete_id
+             WHERE d.decision_id=%s AND d.athlete_id=%s AND d.coach_id=%s
+               AND d.status='RECORDED'
+               AND o.tenant_id=%s AND o.coach_actor_id=%s
+               AND EXISTS (
+                   SELECT 1 FROM kaizo_audit_logs a
+                   WHERE a.action='COACH_DECISION_RECORD_RECORDED'
+                     AND a.who=%s AND a.tenant_id=%s
+                     AND a.new_value->>'decision_id'=d.decision_id
+                     AND a.new_value->>'athlete_id'=d.athlete_id
+               )"""
+    if lock:
+        sql += " FOR KEY SHARE OF d"
+    cur.execute(sql, (decision_id, athlete_id, coach_actor_id, tenant_id,
+                      coach_actor_id, coach_actor_id, tenant_id))
+    row = cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "decision_id": row[0], "candidate_id": row[1], "diagnosis_id": row[2],
+        "problem_id": row[3], "athlete_id": row[4], "assessment_id": row[5],
+        "candidate_type": row[6], "coach_action": row[7], "coach_id": row[8],
+        "decision_summary": row[9], "outcome_intent": row[10], "status": row[11],
+        "recorded_at": row[12], "coach_final_authority": True,
+        "execution_authorized": False,
+    }
+
+
+def get_recorded_decision_for_scope(*, tenant_id: str, coach_actor_id: str,
+                                    athlete_id: str, decision_id: str) -> dict[str, Any] | None:
+    """Return only a decision with same-athlete, same-Coach, same-tenant audit lineage."""
+    if persistence.is_postgres_enabled():
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                return _decision_for_scope_sql(
+                    cur, tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+                    athlete_id=athlete_id, decision_id=decision_id,
+                )
+    decision = _MEMORY_DECISIONS.get(decision_id)
+    if (not decision or decision.get("athlete_id") != athlete_id
+            or decision.get("coach_id") != coach_actor_id
+            or decision.get("status") != "RECORDED"):
+        return None
+    trusted = any(
+        item.get("action") == "COACH_DECISION_RECORD_RECORDED"
+        and item.get("who") == coach_actor_id
+        and item.get("tenant_id") == tenant_id
+        and isinstance(item.get("new_value"), dict)
+        and item["new_value"].get("decision_id") == decision_id
+        and item["new_value"].get("athlete_id") == athlete_id
+        for item in _MEMORY_AUDIT
+    )
+    return dict(decision) if trusted else None
+
+
 def _diagnosis_sql(cur: Any, *, tenant_id: str, coach_actor_id: str,
                    athlete_id: str, diagnosis_id: str, lock: bool = False):
     sql = """SELECT d.diagnosis_id,d.problem_id,d.athlete_id,d.assessment_id,
