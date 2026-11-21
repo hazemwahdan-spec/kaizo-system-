@@ -7,6 +7,13 @@ from __future__ import annotations
 
 import os
 
+# This Worker is Staging-only. Sanitize inherited process variables before
+# importing the Core app: backend/main.py performs persistence.initialize()
+# during import whenever PostgreSQL mode is enabled.
+os.environ["KAIZO_ENVIRONMENT"] = "staging"
+os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
+os.environ.pop("DATABASE_URL", None)
+
 from workers import WorkerEntrypoint, asgi
 
 # Import during startup so Cloudflare can snapshot the FastAPI application.
