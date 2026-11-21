@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 import sys
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qsl, unquote, urlparse
 
 
 EXPECTED_STAGING_DATABASE = "kaizo_coach_staging"
@@ -31,6 +31,22 @@ def validate_staging_database_target(
         raise RuntimeError("Refusing schema change: target host matches the configured Production DB host")
     if target_host != staging_host:
         raise RuntimeError("DATABASE_URL host does not match the trusted KAIZO_STAGING_DB_HOST")
+
+    # libpq permits target parameters such as host, hostaddr and dbname in
+    # the URI query string. Reject them so they cannot override the validated
+    # authority host or database path when psycopg opens the connection.
+    query_keys = {
+        key.lower()
+        for key, _ in parse_qsl(parsed.query, keep_blank_values=True)
+    }
+    forbidden_target_overrides = query_keys & {
+        "host", "hostaddr", "port", "dbname", "service", "servicefile",
+    }
+    if forbidden_target_overrides:
+        names = ", ".join(sorted(forbidden_target_overrides))
+        raise RuntimeError(
+            "DATABASE_URL query must not override connection target parameters: " + names
+        )
 
     database_name = unquote(parsed.path.lstrip("/"))
     if not database_name or "/" in database_name:
