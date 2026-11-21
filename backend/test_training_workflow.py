@@ -280,8 +280,8 @@ def test_feat033_rejects_foreign_decision_unreviewed_drill_and_missing_problem_l
     assert denied_drill.value.status_code == 409
 
     monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_drills",
-        lambda **kwargs: [{"drill_id":"DR1","status":"PUBLISHED","coach_review":True,
-                           "approved_by":"coach-1"}])
+        lambda **kwargs: [{"drill_id":"DR1","source_assessment_id":"ASSESS-1",
+                           "status":"PUBLISHED","coach_review":True,"approved_by":"coach-1"}])
     monkeypatch.setattr(training_workflow.coach_progression_workflow, "list_problem_drill_links",
         lambda **kwargs: [])
     with pytest.raises(HTTPException) as denied_link:
