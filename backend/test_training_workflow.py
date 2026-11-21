@@ -18,6 +18,7 @@ from productization import coach_assessment_workflow, coach_decision_workflow, c
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from training_workflow import router, reset_memory_state
 
 _VALIDATE_INITIAL_SOURCES = training_workflow._validate_initial_decision_drill
