@@ -5,6 +5,7 @@ on:
     branches:
       - feat/coach-athlete-ownership-boundary
       - fix/cloudflare-worker-import-memory-guard-20261120
+      - fix/coach-staging-target-guardrails-20261121
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
@@ -20,6 +21,7 @@ on:
       - integration/coach-closure-evidence-audit-20261115
       - fix/staging-coach-schema-additive-only-20261119
       - fix/cloudflare-free-memory-staging-20261119
+      - fix/cloudflare-worker-import-memory-guard-20261120
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
