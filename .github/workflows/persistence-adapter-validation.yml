@@ -102,8 +102,12 @@ jobs:
         run: PYTHONPATH=. pytest -q test_feature_runtime.py
       - name: Verify durable Coach athlete ownership, decision cycles, and tenant audit
         run: PYTHONPATH=..:. pytest -q ../productization/test_coach_roster_postgres.py ../productization/test_coach_groups_postgres.py ../productization/test_coach_athlete_lifecycle_postgres.py ../productization/test_coach_athlete_decision_history_postgres.py ../productization/test_coach_decision_cycles_postgres.py
-      - name: Verify FEAT-033..040 and same-athlete progression lineage, ownership and atomic audit
-        run: PYTHONPATH=..:. pytest -q ../productization/test_training_workflow_postgres.py ../productization/test_coach_progression_workflow_postgres.py ../productization/test_coach_progression_workflow_api.py test_training_workflow.py
+      - name: Verify FEAT-033..040 and same-athlete progression PostgreSQL lineage
+        run: PYTHONPATH=..:. pytest -q ../productization/test_training_workflow_postgres.py ../productization/test_coach_progression_workflow_postgres.py
+      - name: Verify same-athlete progression API regression tests in isolated memory mode
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_progression_workflow_api.py
+      - name: Verify FEAT-033..040 route validation in isolated memory mode
+        run: PYTHONPATH=..:. pytest -q test_training_workflow.py
       - name: Verify FEAT-047..050 and FEAT-052..053 scoped evidence and atomic audit
         run: PYTHONPATH=..:. pytest -q test_coach_scoped_evidence_runtime_postgres.py
       - name: Verify protected FEAT-047..050 and FEAT-052..053 Product API routes
