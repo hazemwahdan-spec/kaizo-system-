@@ -47,6 +47,42 @@ def test_accepts_only_the_allowlisted_staging_host_and_database():
             "identify exactly one PostgreSQL database",
         ),
         (
+            "postgresql://user:masked@staging-db.example:5432/kaizo_coach_staging?host=production-db.example",
+            "staging-db.example",
+            "production-db.example",
+            "query must not override connection target parameters",
+        ),
+        (
+            "postgresql://user:masked@staging-db.example:5432/kaizo_coach_staging?hostaddr=203.0.113.10",
+            "staging-db.example",
+            "production-db.example",
+            "query must not override connection target parameters",
+        ),
+        (
+            "postgresql://user:masked@staging-db.example:5432/kaizo_coach_staging?dbname=production",
+            "staging-db.example",
+            "production-db.example",
+            "query must not override connection target parameters",
+        ),
+        (
+            "postgresql://user:masked@staging-db.example:5432/kaizo_coach_staging?service=production",
+            "staging-db.example",
+            "production-db.example",
+            "query must not override connection target parameters",
+        ),
+        (
+            "postgresql://user:masked@staging-db.example:5432/kaizo_coach_staging?servicefile=%2Ftmp%2Fpg_service.conf",
+            "staging-db.example",
+            "production-db.example",
+            "query must not override connection target parameters",
+        ),
+        (
+            "postgresql://user:masked@staging-db.example:5432/kaizo_coach_staging?%68ost=production-db.example",
+            "staging-db.example",
+            "production-db.example",
+            "query must not override connection target parameters",
+        ),
+        (
             "mysql://user:masked@staging-db.example:3306/kaizo_coach_staging",
             "staging-db.example",
             "production-db.example",
