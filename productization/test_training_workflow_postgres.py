@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 import persistence
 import training_workflow
-from productization import coach_roster
+from productization import coach_assessment_workflow, coach_roster
 from training_workflow import router
 
 app = FastAPI()
@@ -29,10 +29,30 @@ client = TestClient(app, raise_server_exceptions=False)
 def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
     decision = "DEC-" + uuid4().hex
     problem = "PROB-" + uuid4().hex
-    assessment = "ASSESS-" + uuid4().hex
     drill = "DRILL-" + uuid4().hex
     link = "LINK-" + uuid4().hex
-    now = "2026-11-10T00:00:00+00:00"
+    evidence_id = "EVIDENCE-" + uuid4().hex
+    now = "2026-11-12T00:00:00+00:00"
+    assessment_record = coach_assessment_workflow.create_assessment(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+        template_id="FEAT033-POSTGRES", measurements={"entry_success": 4},
+    )
+    assessment = assessment_record["assessment_id"]
+    kpi_id = "KPI-ENTRY-SUCCESS-" + uuid4().hex
+    definition = coach_assessment_workflow.create_kpi_definition(
+        tenant_id=tenant, coach_actor_id=coach, kpi_id=kpi_id,
+        name="Entry success", metric_name="entry_success", unit="count",
+        target=6.0, direction="higher_is_better",
+    )
+    capture = coach_assessment_workflow.create_kpi_capture(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+        kpi_id=definition["kpi_id"], value=4, assessment_id=assessment,
+    )
+    baseline_snapshot = coach_assessment_workflow.create_state_snapshot(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+        assessment_id=assessment, snapshot_type="baseline",
+        kpi_capture_ids=[capture["capture_id"]],
+    )
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO kaizo_problem_statements
@@ -48,6 +68,14 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
                         'Improve entry timing','Increase successful entries','RECORDED',%s)""",
                 (decision,"CAND-"+uuid4().hex,"DIAG-"+uuid4().hex,problem,athlete_id,
                  assessment,coach,now))
+            cur.execute("""INSERT INTO kaizo_evidence_records
+                (evidence_id,subject_type,subject_id,evidence_level,status,source_ref,claim,
+                 observed_value,verified_by,verified_at,notes)
+                VALUES (%s,'assessment',%s,'E3','VERIFIED',%s,%s,%s::jsonb,%s,%s,%s)""",
+                (evidence_id,assessment,"coach-assessment:"+assessment,
+                 "Verified assessment evidence for FEAT-033",
+                 json.dumps({"entry_success":4}),coach,now,
+                 "Disposable PostgreSQL acceptance fixture"))
             cur.execute("""INSERT INTO kaizo_coach_drill_library
                 (drill_id,tenant_id,coach_actor_id,source_assessment_id,payload,status,
                  coach_review,created_by,approved_by,approved_at,created_at,updated_at)
@@ -58,8 +86,9 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
             cur.execute("""INSERT INTO kaizo_coach_problem_drill_links
                 (link_id,tenant_id,coach_actor_id,problem_id,drill_id,athlete_id,
                  assessment_id,rationale,evidence_ids,created_by,created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,'Targets recorded decision','["REF-POSTGRES"]'::jsonb,%s,%s)""",
-                (link,tenant,coach,problem,drill,athlete_id,assessment,coach,now))
+                VALUES (%s,%s,%s,%s,%s,%s,%s,'Targets recorded decision',%s::jsonb,%s,%s)""",
+                (link,tenant,coach,problem,drill,athlete_id,assessment,
+                 json.dumps([evidence_id]),coach,now))
             cur.execute("""INSERT INTO kaizo_audit_logs
                 (timestamp,who,action,old_value,new_value,why,tenant_id)
                 VALUES (%s,%s,'COACH_DECISION_RECORD_RECORDED',NULL,%s::jsonb,
@@ -67,7 +96,33 @@ def seed_authoritative_feat033_sources(tenant, coach, athlete_id):
                 (now,coach,json.dumps({"decision_id":decision,"athlete_id":athlete_id,
                                        "coach_id":coach,"problem_id":problem,"status":"RECORDED"}),tenant))
         conn.commit()
-    return decision, drill
+    return decision, drill, baseline_snapshot["snapshot_id"], kpi_id, evidence_id
+
+
+
+def seed_owned_session(tenant, coach, athlete_id, decision_id, created_by=None):
+    actor = created_by or coach
+    plan_id = "PLAN-" + uuid4().hex
+    session_id = "SESSION-" + uuid4().hex
+    now = "2026-11-14T00:00:00+00:00"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_training_plans
+                   (plan_id,athlete_id,decision_id,title,objective,constraints,status,created_by,created_at)
+                   VALUES (%s,%s,%s,'Workflow test plan','Verify session lineage','{}'::jsonb,'DRAFT',%s,%s)""",
+                (plan_id, athlete_id, decision_id, actor, now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_training_sessions
+                   (session_id,plan_id,athlete_id,title,duration_minutes,blocks,status,created_by,created_at)
+                   VALUES (%s,%s,%s,'Workflow test session',30,
+                           '[{"name":"Technical block","duration_minutes":30}]'::jsonb,
+                           'DRAFT',%s,%s)""",
+                (session_id, plan_id, athlete_id, actor, now),
+            )
+        conn.commit()
+    return session_id
 
 
 def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
@@ -84,13 +139,13 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, baseline_snapshot_id, kpi_id, evidence_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
         "drill_id": drill_id,
         "rationale": "PostgreSQL ownership and audit acceptance",
-        "evidence_refs": ["REF-POSTGRES"],
+        "evidence_refs": [evidence_id],
         "selected_by": "SPOOFED-CLIENT-IDENTITY",
     }
     def unexpected_request_ddl():
@@ -147,7 +202,25 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert record["payload"]["problem_drill_link_id"]
 
     athlete_id = athlete["athlete_id"]
-    session_id = "SESSION-" + uuid4().hex
+    session_id = seed_owned_session(tenant, coach, athlete_id, decision_id)
+    wrong_decision_session = seed_owned_session(
+        tenant, coach, athlete_id, "DIFFERENT-" + uuid4().hex,
+    )
+    wrong_owner_session = seed_owned_session(
+        tenant, coach, athlete_id, decision_id, created_by=coach + "-OTHER",
+    )
+    for invalid_session in (wrong_decision_session, wrong_owner_session):
+        invalid_session_response = client.post(
+            "/api/v1/training-workflow/feat-034/drill-prescription",
+            headers=headers,
+            json={
+                "athlete_id": athlete_id, "decision_id": decision_id,
+                "session_id": invalid_session, "drill_id": drill_id,
+                "objective": "Reject foreign session", "dosage": {"sets": 3, "reps": 5},
+            },
+        )
+        assert invalid_session_response.status_code == 409, invalid_session_response.text
+
     def post(feature, suffix, body):
         result = client.post(f"/api/v1/training-workflow/feat-{feature}/{suffix}",
                              json={"athlete_id":athlete_id, **body}, headers=headers)
@@ -169,23 +242,30 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "session_id":session_id,"drill_id":drill_id,
         "prescription_record_id":prescription["record_id"],
         "execution_cue_record_id":cues["record_id"],
-        "response":{"quality":"GOOD"},"kpi_values":{"entry_success":4}})
+        "response":{"quality":"GOOD"},"kpi_values":{kpi_id:4}})
     bad_retest = client.post("/api/v1/training-workflow/feat-037/retest",headers=headers,json={
         "athlete_id":athlete_id,"session_id":session_id,
         "response_record_id":training_response["record_id"],
-        "baseline_reference":training_response["record_id"],
-        "retest_values":{"different_kpi":6},"evidence_refs":["REF-POSTGRES"]})
+        "baseline_reference":baseline_snapshot_id,
+        "retest_values":{"different_kpi":6},"evidence_refs":[evidence_id]})
     assert bad_retest.status_code == 409, bad_retest.text
     retest = post("037","retest",{
         "session_id":session_id,"response_record_id":training_response["record_id"],
-        "baseline_reference":training_response["record_id"],
-        "retest_values":{"entry_success":6},"evidence_refs":["REF-POSTGRES"]})
+        "baseline_reference":baseline_snapshot_id,
+        "retest_values":{kpi_id:6},"evidence_refs":[evidence_id]})
     comparison = post("038","before-after",{
         "response_record_id":training_response["record_id"],"retest_record_id":retest["record_id"],
-        "baseline":{"entry_success":4},"current":{"entry_success":6},
+        "baseline":{kpi_id:4},"current":{kpi_id:6},
         "comparison_method":"same_kpi_absolute_change"})
     progress = post("039","progress-state",{
-        "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"},"evidence_refs":["REF-POSTGRES"]})
+        "comparison_record_id":comparison["record_id"],"state":{"status":"IMPROVING"},"evidence_refs":[evidence_id]})
+    unlinked_trigger = client.post("/api/v1/training-workflow/feat-040/next-decision-trigger",
+        headers=headers,json={
+            "athlete_id":athlete_id,"session_id":session_id,
+            "progress_record_id":progress["record_id"],
+            "trigger_type":"RETEST_COMPLETE","trigger_reason":"Coach reviewed progress",
+            "required_evidence":[evidence_id]})
+    assert unlinked_trigger.status_code == 409, unlinked_trigger.text
     trigger = post("040","next-decision-trigger",{
         "session_id":session_id,"progress_record_id":progress["record_id"],
         "trigger_type":"RETEST_COMPLETE","trigger_reason":"Coach reviewed progress",
@@ -208,8 +288,14 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         i for i, query in enumerate(normalized)
         if "INSERT INTO KAIZO_TRAINING_WORKFLOW_RECORDS" in query
     ]
-    assert lock_indexes and insert_indexes, statements
+    session_lock_indexes = [
+        i for i, query in enumerate(normalized)
+        if "FROM KAIZO_TRAINING_SESSIONS S" in query and "FOR UPDATE OF O,S,T" in query
+    ]
+    assert lock_indexes and insert_indexes and session_lock_indexes, statements
     assert lock_indexes[0] < insert_indexes[0], statements
+    next_child_insert = next(i for i in insert_indexes if i > session_lock_indexes[0])
+    assert session_lock_indexes[0] < next_child_insert, statements
     assert any("JOIN KAIZO_COACH_ATHLETE_OWNERSHIP" in query for query in normalized), statements
     assert not any(
         query.lstrip().startswith(("CREATE TABLE", "ALTER TABLE", "CREATE INDEX"))
@@ -242,6 +328,70 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert denied.status_code == 404
 
 
+def test_missing_or_unverified_evidence_is_rejected_before_workflow_write():
+    assert persistence.is_postgres_enabled()
+    persistence.initialize()
+    tenant = "TENANT-" + uuid4().hex
+    coach = "COACH-" + uuid4().hex
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id=tenant, coach_actor_id=coach,
+        display_name="FEAT-033 evidence rejection acceptance",
+    )
+    headers = {
+        "X-KAIZO-Actor": coach,
+        "X-KAIZO-Role": "coach",
+        "X-KAIZO-Tenant": tenant,
+    }
+    decision_id, drill_id, _baseline, _kpi, _verified_evidence = seed_authoritative_feat033_sources(
+        tenant, coach, athlete["athlete_id"],
+    )
+    missing_evidence = "MISSING-EVIDENCE-" + uuid4().hex
+    # The route first requires the requested reference to be linked to the
+    # authoritative problem/drill pair, then revalidates its durable evidence
+    # row and status. Include the missing ID in that link to exercise the
+    # second check rather than only the link-membership guard.
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE kaizo_coach_problem_drill_links
+                   SET evidence_ids=%s::jsonb
+                   WHERE athlete_id=%s AND drill_id=%s
+                     AND tenant_id=%s AND coach_actor_id=%s""",
+                (json.dumps([_verified_evidence, missing_evidence]),
+                 athlete["athlete_id"], drill_id, tenant, coach),
+            )
+            assert cur.rowcount == 1
+        conn.commit()
+    response = client.post(
+        "/api/v1/training-workflow/feat-033/decision-drill",
+        headers=headers,
+        json={
+            "athlete_id": athlete["athlete_id"],
+            "decision_id": decision_id,
+            "drill_id": drill_id,
+            "rationale": "Reject evidence that is not in the verified decision scope",
+            "evidence_refs": [missing_evidence],
+        },
+    )
+    assert response.status_code == 409, response.text
+    assert "evidence not found" in response.text
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_training_workflow_records
+                   WHERE athlete_id=%s AND decision_id=%s AND feature_id='FEAT-033'""",
+                (athlete["athlete_id"], decision_id),
+            )
+            assert cur.fetchone()[0] == 0
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_audit_logs
+                   WHERE tenant_id=%s AND who=%s AND action='FEAT-033_RECORDED'
+                     AND new_value->>'decision_id'=%s""",
+                (tenant, coach, decision_id),
+            )
+            assert cur.fetchone()[0] == 0
+
+
 def test_audit_failure_rolls_back_workflow_record():
     assert persistence.is_postgres_enabled()
     persistence.initialize()
@@ -256,13 +406,13 @@ def test_audit_failure_rolls_back_workflow_record():
         "X-KAIZO-Role": "coach",
         "X-KAIZO-Tenant": tenant,
     }
-    decision_id, drill_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
+    decision_id, drill_id, baseline_snapshot_id, kpi_id, evidence_id = seed_authoritative_feat033_sources(tenant, coach, athlete["athlete_id"])
     payload = {
         "athlete_id": athlete["athlete_id"],
         "decision_id": decision_id,
         "drill_id": drill_id,
         "rationale": "Audit failure must roll back record",
-        "evidence_refs": ["REF-POSTGRES"],
+        "evidence_refs": [evidence_id],
     }
     trigger = "kaizo_test_reject_workflow_audit"
     function = "kaizo_test_reject_workflow_audit_fn"
@@ -342,7 +492,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
 
     monkeypatch.setattr(identity, "PyJWKClient", LocalJWKClient)
 
-    def bearer(actor, tenant, role="coach", signing_key=trusted_key):
+    def bearer(actor, tenant, role="coach", signing_key=trusted_key, permissions=("product",)):
         now = int(time.time())
         claims = {
             "sub": actor,
@@ -350,6 +500,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
             "aud": audience,
             "iat": now,
             "exp": now + 300,
+            "permissions": list(permissions),
             "https://kaizo.system/kaizo_role": role,
             "https://kaizo.system/tenant_id": tenant,
         }
@@ -368,7 +519,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         coach_actor_id=coach,
         display_name="OIDC FEAT-033 PostgreSQL acceptance",
     )
-    decision_id, drill_id = seed_authoritative_feat033_sources(
+    decision_id, drill_id, _baseline_snapshot_id, _kpi_id, evidence_id = seed_authoritative_feat033_sources(
         tenant, coach, athlete["athlete_id"]
     )
     path = "/api/v1/training-workflow/feat-033/decision-drill"
@@ -377,7 +528,7 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         "decision_id": decision_id,
         "drill_id": drill_id,
         "rationale": "Verified OIDC Coach ownership acceptance",
-        "evidence_refs": ["REF-POSTGRES"],
+        "evidence_refs": [evidence_id],
         "selected_by": "FORGED-CLIENT-IDENTITY",
     }
 
@@ -402,6 +553,13 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
     )
     assert own_read.status_code == 200, own_read.text
     assert len(own_read.json()["features"]["FEAT-033"]) == 1
+
+    no_product_permission = bearer(coach, tenant, permissions=())
+    permission_denied = client.get(
+        f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
+        headers={"Authorization": no_product_permission},
+    )
+    assert permission_denied.status_code == 403, permission_denied.text
 
     other_coach = bearer("auth0|other-coach-" + uuid4().hex, tenant)
     other_tenant = bearer("auth0|foreign-tenant-coach-" + uuid4().hex,

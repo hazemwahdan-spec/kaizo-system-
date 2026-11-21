@@ -114,11 +114,12 @@ def test_list_traces_never_initializes_schema_or_writes(monkeypatch):
     def forbidden_schema_write():
         raise AssertionError("GET must not initialize or modify schema")
     class Cursor:
-        def __init__(self): self.calls = 0
+        def __init__(self): self.calls = 0; self.queries = []
         def __enter__(self): return self
         def __exit__(self, *args): pass
         def execute(self, query, *args):
             self.calls += 1
+            self.queries.append(query)
             assert query.lstrip().upper().startswith("SELECT")
         def fetchone(self): return ("kaizo_coach_product_action_traces",)
         def fetchall(self): return []
@@ -133,7 +134,11 @@ def test_list_traces_never_initializes_schema_or_writes(monkeypatch):
         tenant_id="TENANT-A", coach_actor_id="coach-A", athlete_id=athlete["athlete_id"]
     )
     assert result["status"] == "NO_TRACES"
-    assert conn.cur.calls == 2
+    assert conn.cur.calls == 3
+    assert "FROM kaizo_coach_athlete_ownership" in conn.cur.queries[0]
+    assert "FOR KEY SHARE" in conn.cur.queries[0]
+    assert "to_regclass" in conn.cur.queries[1]
+    assert "FROM kaizo_coach_product_action_traces" in conn.cur.queries[2]
 
 
 def test_trace_rejects_unverified_history_record(monkeypatch):

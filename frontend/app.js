@@ -14,25 +14,26 @@ const COACH_WORKFLOW_STEPS={
 };
 async function trainingWorkflowCall(path,opts={}){const token=await productAccessToken();opts.headers={...(opts.headers||{}),"Authorization":"Bearer "+token};const response=await fetch(API+"/training-workflow"+path,opts);const raw=await response.text();let data;try{data=raw?JSON.parse(raw):null}catch(_){data={message:"Core returned a non-JSON response",response_excerpt:raw.slice(0,500)}}if(!response.ok)throw new Error("HTTP "+response.status+" "+response.statusText+": "+JSON.stringify(data));if(data===null)throw new Error("Core returned an empty response");return data;}
 let coachTrainingLineageData=null;
+let coachDecisionWorkspaceData=null;
 function coachWorkflowRecord(feature){const rows=coachTrainingLineageData?.features?.["FEAT-"+feature]||[];return rows.length?rows[rows.length-1]:null;}
 function coachWorkflowRecordPayload(record){if(!record)return {};const value=record.payload||{};if(typeof value==="string"){try{return JSON.parse(value)}catch(_){return {}}}return value;}
-function coachWorkflowExample(){const feature=document.getElementById("coachWorkflowFeature")?.value||"033";const r33=coachWorkflowRecord("033"),r34=coachWorkflowRecord("034"),r35=coachWorkflowRecord("035"),r36=coachWorkflowRecord("036"),r37=coachWorkflowRecord("037"),r38=coachWorkflowRecord("038"),r39=coachWorkflowRecord("039");const p33=coachWorkflowRecordPayload(r33),p34=coachWorkflowRecordPayload(r34),p36=coachWorkflowRecordPayload(r36),p37=coachWorkflowRecordPayload(r37);const drillId=p33.drill_id||currentCoachDrillId||"";const sessionId=r34?.session_id||r35?.session_id||r36?.session_id||r37?.session_id||r38?.session_id||r39?.session_id||currentCoachSessionId||"";const examples={
+function coachWorkflowExample(){const feature=document.getElementById("coachWorkflowFeature")?.value||"033";const r33=coachWorkflowRecord("033"),r34=coachWorkflowRecord("034"),r35=coachWorkflowRecord("035"),r36=coachWorkflowRecord("036"),r37=coachWorkflowRecord("037"),r38=coachWorkflowRecord("038"),r39=coachWorkflowRecord("039");const p33=coachWorkflowRecordPayload(r33),p34=coachWorkflowRecordPayload(r34),p36=coachWorkflowRecordPayload(r36),p37=coachWorkflowRecordPayload(r37);const decisionId=r33?.decision_id||r34?.decision_id||r36?.decision_id||currentCoachDecisionId||"";const decision=(coachDecisionWorkspaceData?.decisions||[]).find(item=>String(item.decision_id)===String(decisionId));const baselineSnapshot=(coachDecisionWorkspaceData?.state_snapshots||[]).filter(item=>item.snapshot_type==="baseline"&&String(item.assessment_id)===String(decision?.assessment_id)&&item.captured_by===decision?.coach_id).sort((left,right)=>String(right.captured_at||"").localeCompare(String(left.captured_at||"")))[0];const baselineValues=Object.fromEntries((Array.isArray(baselineSnapshot?.kpis)?baselineSnapshot.kpis:[]).filter(item=>item&&item.kpi_id!==undefined&&item.value!==undefined).map(item=>[String(item.kpi_id),item.value]));const responseKeys=Object.keys(p36.kpi_values||baselineValues);const baselineForResponse=Object.fromEntries(responseKeys.filter(key=>Object.prototype.hasOwnProperty.call(baselineValues,key)).map(key=>[key,baselineValues[key]]));const drillId=p33.drill_id||currentCoachDrillId||"";const sessionId=r34?.session_id||r35?.session_id||r36?.session_id||r37?.session_id||r38?.session_id||r39?.session_id||currentCoachSessionId||"";const examples={
  "033":{decision_id:currentCoachDecisionId||"",drill_id:currentCoachDrillId||"",rationale:"Coach rationale linking this published drill to the recorded decision",evidence_refs:[]},
  "034":{decision_id:r33?.decision_id||currentCoachDecisionId||"",session_id:sessionId,drill_id:drillId,objective:"Session objective",dosage:{sets:3,reps:5},constraints:[]},
  "035":{session_id:sessionId,drill_id:coachWorkflowRecordPayload(r34).drill_id||drillId,cues:["Coach cue"],checklist:["Observable checkpoint"]},
- "036":{session_id:sessionId,drill_id:coachWorkflowRecordPayload(r34).drill_id||drillId,prescription_record_id:r34?.record_id||"",execution_cue_record_id:r35?.record_id||"",response:{quality:"RECORDED"},kpi_values:{entry_success:0}},
- "037":{session_id:sessionId,response_record_id:r36?.record_id||"",baseline_reference:r36?.record_id||"",retest_values:p36.kpi_values||{},evidence_refs:[]},
- "038":{response_record_id:r36?.record_id||"",retest_record_id:r37?.record_id||"",baseline:p36.kpi_values||{},current:p37.retest_values||{},comparison_method:"same_kpi_absolute_change"},
+ "036":{session_id:sessionId,drill_id:coachWorkflowRecordPayload(r34).drill_id||drillId,prescription_record_id:r34?.record_id||"",execution_cue_record_id:r35?.record_id||"",response:{quality:"RECORDED"},kpi_values:baselineValues},
+ "037":{session_id:sessionId,response_record_id:r36?.record_id||"",baseline_reference:baselineSnapshot?.snapshot_id||"",retest_values:p36.kpi_values||{},evidence_refs:[]},
+ "038":{response_record_id:r36?.record_id||"",retest_record_id:r37?.record_id||"",baseline:baselineForResponse,current:p37.retest_values||{},comparison_method:"same_kpi_absolute_change"},
  "039":{comparison_record_id:r38?.record_id||"",state:{status:"REVIEW_REQUIRED",decision_note:"Coach interpretation"},evidence_refs:[]},
  "040":{session_id:sessionId,progress_record_id:r39?.record_id||"",trigger_type:"RETEST_COMPLETE",trigger_reason:"Coach-reviewed progress requires a new decision",required_evidence:r38?.record_id?[r38.record_id]:[]}
 };const editor=document.getElementById("coachWorkflowPayload");if(editor)editor.value=JSON.stringify(examples[feature],null,2);}
 async function loadCoachTrainingLineage(){const athleteId=selectedCoachAthleteId,target=document.getElementById("coachFeat033040Output");if(!target)return;if(!athleteId){target.textContent="Select an owned Coach athlete first.";return;}target.textContent="Loading owned FEAT-033–040 records…";try{const data=await trainingWorkflowCall("/athletes/"+encodeURIComponent(athleteId));if(selectedCoachAthleteId!==String(athleteId))return;coachTrainingLineageData=data;coachWorkflowExample();target.textContent=pretty({athlete_id:data.athlete_id,features:data.features,coach_final_authority:data.coach_final_authority,execution_authorized:data.execution_authorized});}catch(error){target.textContent="Training evidence chain unavailable: "+String(error&&error.message||error);}}
-async function submitCoachTrainingLineage(){const athleteId=selectedCoachAthleteId,target=document.getElementById("coachFeat033040Output"),feature=document.getElementById("coachWorkflowFeature")?.value,editor=document.getElementById("coachWorkflowPayload");if(!athleteId){target.textContent="Select an owned athlete first.";return;}let payload;try{payload=JSON.parse(editor.value||"{}");}catch(error){target.textContent="Invalid JSON: "+error.message;return;}payload.athlete_id=athleteId;payload.coach_final_authority=true;if(currentCoachDecisionId&&!payload.decision_id&&feature<="034")payload.decision_id=currentCoachDecisionId;if(currentCoachSessionId&&!payload.session_id&&feature>="034")payload.session_id=currentCoachSessionId;target.textContent="Saving FEAT-"+feature+" under verified Coach ownership…";try{const result=await trainingWorkflowCall("/feat-"+feature+"/"+COACH_WORKFLOW_STEPS[feature],{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});target.textContent=pretty({saved_record:result,execution_authorized:result.execution_authorized});await loadCoachTrainingLineage();}catch(error){target.textContent="FEAT-"+feature+" was not saved: "+String(error&&error.message||error);}}
+async function submitCoachTrainingLineage(){const athleteId=selectedCoachAthleteId,target=document.getElementById("coachFeat033040Output"),feature=document.getElementById("coachWorkflowFeature")?.value,editor=document.getElementById("coachWorkflowPayload");if(!athleteId){target.textContent="Select an owned athlete first.";return;}let payload;try{payload=JSON.parse(editor.value||"{}");}catch(error){target.textContent="Invalid JSON: "+error.message;return;}payload.athlete_id=athleteId;if(currentCoachDecisionId&&!payload.decision_id&&feature<="034")payload.decision_id=currentCoachDecisionId;if(currentCoachSessionId&&!payload.session_id&&feature>="034")payload.session_id=currentCoachSessionId;target.textContent="Saving FEAT-"+feature+" under verified Coach ownership…";try{const result=await trainingWorkflowCall("/feat-"+feature+"/"+COACH_WORKFLOW_STEPS[feature],{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});target.textContent=pretty({saved_record:result,execution_authorized:result.execution_authorized});await loadCoachTrainingLineage();}catch(error){target.textContent="FEAT-"+feature+" was not saved: "+String(error&&error.message||error);}}
 async function kaizoLogin(){try{if(window.KAIZO_AUTH_READY)await window.KAIZO_AUTH_READY;if(!window.KAIZO_AUTH)throw new Error(window.KAIZO_AUTH_INIT_ERROR||"Auth0 SPA is not configured.");await window.KAIZO_AUTH.loginWithRedirect()}catch(e){const view=document.getElementById("roleView");view.textContent=String(e&&e.message?e.message:e)}}
 async function productAccessToken(){if(window.KAIZO_AUTH_READY)await window.KAIZO_AUTH_READY;const auth=window.KAIZO_AUTH;if(!auth||typeof auth.getAccessTokenSilently!=="function")throw new Error(window.KAIZO_AUTH_INIT_ERROR||"AUTHENTICATION_REQUIRED: verified Auth0 SPA session is not initialized. Role selection and X-KAIZO headers are not credentials.");const token=await auth.getAccessTokenSilently();if(!token)throw new Error("AUTHENTICATION_REQUIRED: no verified access token was issued.");return token}
 function actorForRole(role){return ({coach:"coach-demo",academy:"academy-demo",athlete:"ATH-001",parent:"parent-demo"})[role]}
 function ownerForRole(role){return role==="athlete"?"ATH-001":role==="parent"?"ATH-001":role==="coach"?"ATH-001":""}
-async function renderProductRole(){ const role=roleSelect.value; document.getElementById("roleCaption").textContent="Commercial Product Surface · "+role+" · execution authorization disabled"; try{const nav=await productCall("/navigation"); document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"chips\">"+nav.surfaces.map(x=>"<span class=\"chip\">"+x+"</span>").join("")+"</div><div class=\"governance\">Coach Final Authority: <b>"+nav.coach_final_authority+"</b> · Execution Authorized: <b>"+nav.execution_authorized+"</b></div>"; if(role==="coach"){document.getElementById("roleView").innerHTML=coachDashboard();await loadCoachDashboard();await loadCoachRoster();await loadCoachGroups()} else if(role==="athlete"){const p=await productCall("/athletes/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>My Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else if(role==="parent"){const p=await productCall("/parents/linked/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>Linked Athlete Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else {document.getElementById("roleView").innerHTML="<h3>Academy Dashboard</h3><p class=\"muted\">Academy surfaces are tenant-scoped. Group/coach management remains server-authorized.</p>"}}catch(e){const message=String(e&&e.message?e.message:e);document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"notice\">API request failed. Diagnostic details are shown below.</div>";document.getElementById("roleView").innerHTML="<h3>KAIZO request diagnostic</h3><p class=\"notice\">"+escapeHtml(message)+"</p><p class=\"muted\">A frontend/API error is not an authorization decision. Verify the Core response and server-side authorization before closing this issue.</p>"}}
+async function renderProductRole(){ const role=roleSelect.value; document.getElementById("roleCaption").textContent="Commercial Product Surface · "+role+" · execution authorization disabled"; try{const nav=await productCall("/navigation"); document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"chips\">"+nav.surfaces.map(x=>"<span class=\"chip\">"+x+"</span>").join("")+"</div><div class=\"governance\">Coach Final Authority: <b>"+nav.coach_final_authority+"</b> · Execution Authorized: <b>"+nav.execution_authorized+"</b></div>"; if(role==="coach"){document.getElementById("roleView").innerHTML=coachDashboard();await loadCoachDashboard();await loadCoachRoster();await loadCoachGroups();await loadCoachAcademies()} else if(role==="athlete"){const p=await productCall("/athletes/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>My Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else if(role==="parent"){const p=await productCall("/parents/linked/ATH-001/progress?resource_tenant_id=demo-academy");document.getElementById("roleView").innerHTML="<h3>Linked Athlete Progress</h3><pre class=\"output\">"+pretty(p)+"</pre>"} else {document.getElementById("roleView").innerHTML="<h3>Academy Dashboard</h3><p class=\"muted\">Academy surfaces are tenant-scoped. Group/coach management remains server-authorized.</p>"}}catch(e){const message=String(e&&e.message?e.message:e);document.getElementById("productNav").innerHTML="<h3>Product Navigation</h3><div class=\"notice\">API request failed. Diagnostic details are shown below.</div>";document.getElementById("roleView").innerHTML="<h3>KAIZO request diagnostic</h3><p class=\"notice\">"+escapeHtml(message)+"</p><p class=\"muted\">A frontend/API error is not an authorization decision. Verify the Core response and server-side authorization before closing this issue.</p>"}}
 renderProductRole();
 
 
@@ -85,6 +86,7 @@ let currentCoachProblemId=null;
 let currentCoachDiagnosisId=null;
 let currentCoachCandidateId=null;
 let currentCoachDecisionId=null;
+let currentCoachTwinStateVersion=null;
 let currentCoachPlanId=null;
 let currentCoachSessionId=null;
 let currentCoachLibraryItemId=null;
@@ -157,7 +159,7 @@ async function viewCoachAthlete(athleteId){
  }
  selectedCoachAthleteId=String(athleteId);
  currentCoachDecisionCycleId=null;
- currentCoachDecisionId=null;currentCoachSessionId=null;currentCoachDrillId=null;coachTrainingLineageData=null;
+ currentCoachDecisionId=null;currentCoachTwinStateVersion=null;currentCoachSessionId=null;currentCoachDrillId=null;coachTrainingLineageData=null;coachDecisionWorkspaceData=null;
  if(list)list.style.display="none";
  if(detail)detail.textContent="Loading athlete from your verified Coach scope…";
  if(panel)panel.innerHTML="";
@@ -187,14 +189,14 @@ async function viewCoachAthlete(athleteId){
    '<section id="athleteStatusHistorySection" hidden><h4>Status history</h4><div id="athleteStatusHistory">Loading history…</div></section>'+
    '<section id="athleteDecisionCyclesSection" hidden><h4>Decision-cycle history</h4><div id="athleteDecisionCycles">Loading persisted decision cycles…</div></section>'+
    '<section id="athleteDecisionExecutionSection" hidden><h4>Coach decision and adaptation</h4><p class="muted">This creates a durable, athlete-scoped decision cycle and records adaptation against its exact ID. Coach Final Authority remains active; execution is not authorized.</p><form id="coachDecisionCycleForm" class="coach-roster-form" onsubmit="createCoachDecisionCycle(event)"><label for="coachDecisionCaseId">Case reference</label><input id="coachDecisionCaseId" maxlength="120" required placeholder="e.g. U15-CASE-001"><label for="coachDecisionChoice">Coach decision</label><input id="coachDecisionChoice" maxlength="500" required placeholder="Describe the selected coaching decision"><label for="coachIntervention">Planned intervention</label><input id="coachIntervention" maxlength="500" required placeholder="Describe the intervention"><label for="coachResponseKpi">Response / KPI observation</label><input id="coachResponseKpi" maxlength="500" required placeholder="Record the observed response"><label for="coachRetest">Retest result</label><input id="coachRetest" maxlength="500" required placeholder="Record the retest result"><button type="submit">Save decision cycle</button></form><div id="coachDecisionCycleNotice" class="notice">Select an athlete and record the Coach decision.</div><pre id="coachDecisionCycleReadback" class="output"></pre><form id="coachAdaptationForm" class="coach-roster-form" hidden onsubmit="adaptCoachDecisionCycle(event)"><h5>Record adaptation for the saved cycle</h5><label for="coachAdaptationCommonCore">Common Core to preserve</label><input id="coachAdaptationCommonCore" maxlength="500" required placeholder="Principle that must remain unchanged"><label for="coachAdaptationBasis">Dynamic input / adaptation basis</label><input id="coachAdaptationBasis" maxlength="500" required placeholder="Current readiness or performance evidence"><label for="coachAdaptationChange">Individual adjustment</label><input id="coachAdaptationChange" maxlength="500" required placeholder="Specific adjustment"><button type="submit">Save adaptation</button></form></section>'+
-   '<section id="coachDigitalTwinSection" hidden><h4>Digital Twin state (FEAT-042/043)</h4><p class="muted">Versioned state for this athlete, protected by verified Coach ownership and evidence references. Execution remains disabled.</p><form id="coachDigitalTwinForm" class="coach-roster-form" onsubmit="saveCoachDigitalTwinState(event)"><label for="coachTwinCaseId">Case reference</label><input id="coachTwinCaseId" maxlength="120" required placeholder="e.g. U15-CASE-001"><label for="coachTwinSourceEvent">Source event</label><input id="coachTwinSourceEvent" maxlength="120" required placeholder="e.g. RETEST_COMPLETED"><label for="coachTwinEvidenceRefs">Evidence references (comma-separated)</label><input id="coachTwinEvidenceRefs" maxlength="500" required placeholder="REF-001, REF-002"><label for="coachTwinState">State data (JSON)</label><textarea id="coachTwinState" rows="4" required>{\"readiness\":\"medium\",\"kpi\":{}}</textarea><button type="submit">Save Digital Twin state</button></form><div id="coachDigitalTwinNotice" class="notice">Select an athlete to load its scoped Digital Twin state.</div><pre id="coachDigitalTwinReadback" class="output"></pre><h5>State history</h5><div id="coachDigitalTwinHistory"></div></section>'+
+   '<section id="coachDigitalTwinSection" hidden><h4>Digital Twin state and decision linkage (FEAT-042–045)</h4><p class="muted">Versioned state for this athlete, protected by verified Coach ownership and evidence references. Execution remains disabled.</p><form id="coachDigitalTwinForm" class="coach-roster-form" onsubmit="saveCoachDigitalTwinState(event)"><label for="coachTwinCaseId">Case reference</label><input id="coachTwinCaseId" maxlength="120" required placeholder="e.g. U15-CASE-001"><label for="coachTwinSourceEvent">Source event</label><input id="coachTwinSourceEvent" maxlength="120" required placeholder="e.g. RETEST_COMPLETED"><label for="coachTwinEvidenceRefs">Evidence references (comma-separated)</label><input id="coachTwinEvidenceRefs" maxlength="500" required placeholder="REF-001, REF-002"><label for="coachTwinState">State data (JSON)</label><textarea id="coachTwinState" rows="4" required>{\"readiness\":\"medium\",\"kpi\":{}}</textarea><button type="submit">Save Digital Twin state</button></form><div class="coach-roster-form"><button type="button" onclick="linkCoachDecisionToDigitalTwinState()">Link current Coach decision to this state (FEAT-044)</button><button type="button" class="secondary" onclick="loadCoachNextState()">Load linked next-state context (FEAT-045)</button></div><div id="coachDigitalTwinLinkNotice" class="notice">Record a Coach decision and save a Digital Twin state before linking.</div><pre id="coachDigitalTwinLinkReadback" class="output" aria-live="polite"></pre><div id="coachDigitalTwinNotice" class="notice">Select an athlete to load its scoped Digital Twin state.</div><pre id="coachDigitalTwinReadback" class="output"></pre><h5>State history</h5><div id="coachDigitalTwinHistory"></div></section>'+
    '<section id="athleteDecisionWorkspaceSection" hidden><h4>Decision-cycle workspace</h4><p class="muted">Read-only view of persisted assessments, attached evidence, diagnosis, Coach decisions, training and retest records.</p><div id="athleteDecisionWorkspaceNotice" class="notice">Loading persisted decision-cycle evidence…</div><div id="athleteDecisionWorkspaceContent"></div></section>'+
    '<section id="athleteActionHistorySection" hidden><h4>Coach action history</h4><p class="muted">Only tenant-scoped events attributable to this verified Coach are shown. FEAT-044 state links are related lineage; their actor is not verified.</p><div id="athleteActionHistoryNotice" class="notice">Loading recorded actions…</div><div id="athleteActionHistoryContent"></div></section>'+
    '<section id="athleteAuditReviewSection" hidden><h4>Coach-scoped audit review</h4><p class="muted">Search is restricted to this selected athlete and the verified Coach/tenant scope.</p><label for="coachAuditQuery">Search term</label><input id="coachAuditQuery" maxlength="200" placeholder="Enter an action, decision, or reason"><button type="button" onclick="loadCoachAthleteAuditReview()">Search verified audit</button><div id="athleteAuditReviewNotice" class="notice">Enter a search term to review this athlete’s verified audit events.</div><div id="athleteAuditReviewContent"></div></section>';
   loadCoachAthleteStatusHistory(athleteId);
   loadCoachAthleteDecisionCycles(athleteId);
   loadCoachDigitalTwinState(athleteId);
-  loadCoachDecisionWorkspace(athleteId);
+  await loadCoachDecisionWorkspace(athleteId);
   loadCoachAssessmentData(athleteId);
   loadCoachProblemAnalysis(athleteId);
   loadCoachDrillLibrary();
@@ -211,8 +213,8 @@ async function loadCoachDigitalTwinState(athleteId){
  if(!notice||!readback||!history)return;
  notice.textContent="Loading Digital Twin state in verified Coach scope…";readback.textContent="";history.textContent="";
  try{const state=await stateCycleCall("/state-cycle/feat-042/digital-twin-state/"+encodeURIComponent(athleteId));
-  if(selectedCoachAthleteId!==String(athleteId))return;readback.textContent=pretty(state);notice.textContent="Scoped Digital Twin state loaded · version "+state.version+". Execution remains disabled.";
- }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;notice.textContent=String(e&&e.message?e.message:e).includes("404")?"No Digital Twin state recorded yet.":"Digital Twin read unavailable: "+String(e&&e.message?e.message:e)}
+  if(selectedCoachAthleteId!==String(athleteId))return;currentCoachTwinStateVersion=Number.isInteger(Number(state.version))?Number(state.version):null;readback.textContent=pretty(state);notice.textContent="Scoped Digital Twin state loaded · version "+state.version+". Execution remains disabled.";
+ }catch(e){if(selectedCoachAthleteId!==String(athleteId))return;currentCoachTwinStateVersion=null;notice.textContent=String(e&&e.message?e.message:e).includes("404")?"No Digital Twin state recorded yet.":"Digital Twin read unavailable: "+String(e&&e.message?e.message:e)}
  try{const data=await stateCycleCall("/state-cycle/feat-043/state-history/"+encodeURIComponent(athleteId));
   if(selectedCoachAthleteId!==String(athleteId))return;const rows=Array.isArray(data.versions)?data.versions:[];
   history.innerHTML=rows.length?rows.map(x=>"<p><strong>Version "+escapeHtml(x.version)+"</strong> · "+escapeHtml(x.source_event||"")+" · "+escapeHtml(x.recorded_at||"")+"</p>").join(""):"<p class=\"muted\">No recorded state history.</p>";
@@ -227,9 +229,38 @@ async function saveCoachDigitalTwinState(event){
  const caseId=document.getElementById("coachTwinCaseId").value.trim(),sourceEvent=document.getElementById("coachTwinSourceEvent").value.trim(),evidenceRefs=document.getElementById("coachTwinEvidenceRefs").value.split(",").map(x=>x.trim()).filter(Boolean);
  if(!caseId||!sourceEvent||!evidenceRefs.length){notice.textContent="Case, source event, and at least one evidence reference are required.";return}
  notice.textContent="Saving versioned state with Coach ownership and audit…";
- try{const result=await stateCycleCall("/state-cycle/feat-042/digital-twin-state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entity_id:athleteId,state,source_event:sourceEvent,case_id:caseId,evidence_refs:evidenceRefs,coach_final_authority:true})});
+ try{const result=await stateCycleCall("/state-cycle/feat-042/digital-twin-state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entity_id:athleteId,state,source_event:sourceEvent,case_id:caseId,evidence_refs:evidenceRefs})});
   if(selectedCoachAthleteId!==String(athleteId))return;notice.textContent="Digital Twin state saved · version "+result.state.version+". Coach Final Authority retained; execution disabled.";readback.textContent=pretty(result);await loadCoachDigitalTwinState(athleteId);
  }catch(e){notice.textContent="Digital Twin state was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function linkCoachDecisionToDigitalTwinState(){
+ const athleteId=selectedCoachAthleteId,decisionId=currentCoachDecisionId,notice=document.getElementById("coachDigitalTwinLinkNotice"),readback=document.getElementById("coachDigitalTwinLinkReadback");
+ if(!notice||!readback)return;
+ if(!athleteId){notice.textContent="Select an athlete from your verified Coach roster first.";return}
+ if(!decisionId){notice.textContent="Record or select a Coach decision (FEAT-025) for this athlete before linking.";return}
+ const version=Number(currentCoachTwinStateVersion);
+ if(!Number.isInteger(version)||version<1){notice.textContent="Save or load a persisted Digital Twin state before linking.";return}
+ const stateRef=athleteId+":v"+version;
+ notice.textContent="Linking the recorded Coach decision to the current owned Digital Twin state…";readback.textContent="";
+ try{
+  const created=await stateCycleCall("/state-cycle/feat-044/decision-state-link",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entity_id:athleteId,decision_id:decisionId,state_version:version,state_ref:stateRef})});
+  const verified=await stateCycleCall("/state-cycle/feat-044/decision-state-link/"+encodeURIComponent(decisionId)+"?athlete_id="+encodeURIComponent(athleteId));
+  if(selectedCoachAthleteId!==String(athleteId)||currentCoachDecisionId!==String(decisionId))return;
+  notice.textContent="Decision linked to the verified Digital Twin state · version "+version+". Execution remains disabled.";
+  readback.textContent=pretty({created,verified,execution_authorized:false});
+ }catch(e){notice.textContent="Decision-state link was not saved: "+String(e&&e.message?e.message:e)}
+}
+async function loadCoachNextState(){
+ const athleteId=selectedCoachAthleteId,decisionId=currentCoachDecisionId,notice=document.getElementById("coachDigitalTwinLinkNotice"),readback=document.getElementById("coachDigitalTwinLinkReadback");
+ if(!notice||!readback)return;
+ if(!athleteId||!decisionId){notice.textContent="Select an owned athlete and a recorded Coach decision first.";return}
+ notice.textContent="Loading the next-state context from the owned Digital Twin and linked decision…";readback.textContent="";
+ try{
+  const result=await stateCycleCall("/state-cycle/feat-045/next-state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({athlete_id:athleteId,decision_id:decisionId})});
+  if(selectedCoachAthleteId!==String(athleteId)||currentCoachDecisionId!==String(decisionId))return;
+  notice.textContent="Next-state context loaded from verified Coach scope. Execution remains disabled.";
+  readback.textContent=pretty(result);
+ }catch(e){notice.textContent="Next-state context was not loaded: "+String(e&&e.message?e.message:e)}
 }
 async function createCoachDecisionCycle(event){
  event.preventDefault();
@@ -330,16 +361,18 @@ async function loadCoachDecisionWorkspace(athleteId){
  try{
   const data=await productCall("/coach/athletes/"+encodeURIComponent(athleteId)+"/decision-workspace");
   if(selectedCoachAthleteId!==String(athleteId))return;
+  coachDecisionWorkspaceData=data;
   if(data.status==="INSUFFICIENT_EVIDENCE"||data.available===false){
-   notice.textContent=data.message||"Insufficient durable evidence. Workspace data is unavailable.";return;
+   coachDecisionWorkspaceData=null;notice.textContent=data.message||"Insufficient durable evidence. Workspace data is unavailable.";return;
   }
   if(data.status==="NO_RECORDED_CYCLE"){
-   notice.textContent=data.message||"No persisted decision-cycle records exist for this athlete.";return;
+   coachDecisionWorkspaceData=null;notice.textContent=data.message||"No persisted decision-cycle records exist for this athlete.";return;
   }
   notice.textContent="Read-only workspace · persisted source records only · "+(data.missing_optional_tables||[]).length+" optional source table(s) unavailable.";
   content.innerHTML=renderCoachDecisionWorkspace(data);
  }catch(e){
   if(selectedCoachAthleteId!==String(athleteId))return;
+  coachDecisionWorkspaceData=null;
   notice.textContent="Decision workspace unavailable: "+String(e&&e.message?e.message:e);
   content.textContent="No workspace data is displayed when authentication or authorization fails.";
  }
@@ -569,7 +602,13 @@ function coachDashboard(){return `
     <article class="coach-metric"><span class="muted">Decision records</span><strong>Read-only</strong><small>Review existing persisted cycles. New decisions and adaptations are written through the verified Coach-owned API; Digital Twin state uses the separately scoped state-cycle API.</small></article>
     <article class="coach-metric"><span class="muted">Scoped audit review</span><strong>Per athlete</strong><small>Select an owned athlete and use the Audit review tab to search verified Coach actions.</small></article>
   </div>
-  <section id="coach-roster" class="coach-roster"><div class="coach-roster-head"><div><h3>My Athlete Roster</h3><p class="muted">Only athletes assigned to the authenticated coach in the authenticated tenant are shown.</p></div><button class="secondary" onclick="loadCoachRoster()">Refresh roster</button></div><form id="coachAthleteForm" class="coach-roster-form" onsubmit="createCoachAthlete(event)"><label for="newAthleteName">Athlete name</label><input id="newAthleteName" name="display_name" maxlength="120" required placeholder="Enter athlete name"><button type="submit">Add athlete to my roster</button></form><div class="coach-roster-form"><label for="athleteRosterSearch">Search my athletes</label><input id="athleteRosterSearch" type="search" maxlength="120" placeholder="Search by name or athlete ID" oninput="filterCoachRoster()"><button class="secondary" type="button" onclick="returnCoachRoster()">Back to roster</button></div><div id="coachRosterNotice" class="notice" role="status">Sign in with a verified Coach account to load your roster.</div><div id="coachRosterList" class="coach-roster-list"></div><pre id="coachAthleteDetail" class="output" aria-live="polite"></pre><div id="coachAthleteLifecycle" class="coach-roster" aria-live="polite"></div></section><section id="coach-groups" class="coach-roster"><div class="coach-roster-head"><div><h3>My Training Groups</h3><p class="muted">Groups and membership are restricted to your verified Coach and tenant scope.</p></div><button class="secondary" onclick="loadCoachGroups()">Refresh groups</button></div><form class="coach-roster-form" onsubmit="createCoachGroup(event)"><label for="newCoachGroupName">Group name</label><input id="newCoachGroupName" maxlength="100" required placeholder="e.g. U15 competition group"><button type="submit">Create group</button></form><div class="row"><label for="groupAthleteSelect">My athlete</label><select id="groupAthleteSelect"><option value="">Load your roster first</option></select></div><div id="coachGroupsNotice" class="notice" role="status">Sign in as Coach to load your groups.</div><div id="coachGroupsList"></div></section><section class="coach-legacy-actions notice" aria-live="polite">
+  <section id="coach-roster" class="coach-roster"><div class="coach-roster-head"><div><h3>My Athlete Roster</h3><p class="muted">Only athletes assigned to the authenticated coach in the authenticated tenant are shown.</p></div><button class="secondary" onclick="loadCoachRoster()">Refresh roster</button></div><form id="coachAthleteForm" class="coach-roster-form" onsubmit="createCoachAthlete(event)"><label for="newAthleteName">Athlete name</label><input id="newAthleteName" name="display_name" maxlength="120" required placeholder="Enter athlete name"><button type="submit">Add athlete to my roster</button></form><div class="coach-roster-form"><label for="athleteRosterSearch">Search my athletes</label><input id="athleteRosterSearch" type="search" maxlength="120" placeholder="Search by name or athlete ID" oninput="filterCoachRoster()"><button class="secondary" type="button" onclick="returnCoachRoster()">Back to roster</button></div><div id="coachRosterNotice" class="notice" role="status">Sign in with a verified Coach account to load your roster.</div><div id="coachRosterList" class="coach-roster-list"></div><pre id="coachAthleteDetail" class="output" aria-live="polite"></pre><div id="coachAthleteLifecycle" class="coach-roster" aria-live="polite"></div></section>  <section id=\"coach-academy-roster\" class=\"coach-roster\">
+    <div class=\"coach-roster-head\"><div><h3>Academy Assignments</h3><p class=\"muted\">Read-only list of athletes explicitly assigned to you in an Academy where your membership is active. This does not grant access to athlete longitudinal records.</p></div><button class=\"secondary\" type=\"button\" onclick=\"loadCoachAcademies()\">Refresh academies</button></div>
+    <div class=\"coach-roster-form\"><label for=\"coachAcademySelect\">My Academy memberships</label><select id=\"coachAcademySelect\" onchange=\"loadCoachAcademyAssignedRoster()\"><option value=\"\">Loading active memberships…</option></select></div>
+    <div id=\"coachAcademyRosterNotice\" class=\"notice\" role=\"status\">Academy assignments require a verified Coach session.</div>
+    <div id=\"coachAcademyRosterList\" class=\"coach-roster-list\"></div>
+  </section>
+<section id="coach-groups" class="coach-roster"><div class="coach-roster-head"><div><h3>My Training Groups</h3><p class="muted">Groups and membership are restricted to your verified Coach and tenant scope.</p></div><button class="secondary" onclick="loadCoachGroups()">Refresh groups</button></div><form class="coach-roster-form" onsubmit="createCoachGroup(event)"><label for="newCoachGroupName">Group name</label><input id="newCoachGroupName" maxlength="100" required placeholder="e.g. U15 competition group"><button type="submit">Create group</button></form><div class="row"><label for="groupAthleteSelect">My athlete</label><select id="groupAthleteSelect"><option value="">Load your roster first</option></select></div><div id="coachGroupsNotice" class="notice" role="status">Sign in as Coach to load your groups.</div><div id="coachGroupsList"></div></section><section class="coach-legacy-actions notice" aria-live="polite">
   <h3>Protected Coach workflow boundary</h3>
   <p>Decision and adaptation are available in the protected Coach decision-cycle section above. Legacy unscoped Core routes remain retired. Digital Twin state read/write and version history are available in the selected athlete panel through the protected state-cycle API; no unscoped request is sent.</p>
 </section>
@@ -583,6 +622,43 @@ async function health(){try{const j=await call("/health");healthEl.textContent="
 const healthEl=document.getElementById("health");
 
 health();
+
+async function loadCoachAcademies(){
+ const select=document.getElementById("coachAcademySelect"),notice=document.getElementById("coachAcademyRosterNotice"),list=document.getElementById("coachAcademyRosterList");
+ if(!select||!notice||!list)return;
+ notice.textContent="Loading your active Academy memberships…";list.innerHTML="";
+ try{
+  const data=await productCall("/coach/academies");
+  const academies=Array.isArray(data.academies)?data.academies:[];
+  const previous=select.value;
+  select.innerHTML='<option value="">Select an Academy</option>'+academies.map(a=>'<option value="'+escapeHtml(a.academy_id)+'">'+escapeHtml(a.academy_name||a.academy_id)+'</option>').join("");
+  if(previous&&academies.some(a=>String(a.academy_id)===previous))select.value=previous;
+  notice.textContent=academies.length+" active Academy membership(s) found. Select one to view only your assigned roster.";
+  if(select.value)await loadCoachAcademyAssignedRoster();
+  else if(!academies.length)list.innerHTML='<p class="muted">No active Academy memberships are linked to this Coach identity.</p>';
+ }catch(error){
+  select.innerHTML='<option value="">Academy memberships unavailable</option>';
+  notice.textContent="Academy memberships unavailable: "+String(error&&error.message?error.message:error);
+  list.innerHTML='<p class="muted">No Academy roster data is displayed when authentication or authorization fails.</p>';
+ }
+}
+async function loadCoachAcademyAssignedRoster(){
+ const select=document.getElementById("coachAcademySelect"),notice=document.getElementById("coachAcademyRosterNotice"),list=document.getElementById("coachAcademyRosterList");
+ const academyId=select?.value;
+ if(!notice||!list)return;
+ if(!academyId){notice.textContent="Select an Academy where your Coach membership is active.";list.innerHTML="";return;}
+ notice.textContent="Loading explicitly assigned Academy athletes…";list.innerHTML="";
+ try{
+  const data=await productCall("/coach/academies/"+encodeURIComponent(academyId)+"/athletes");
+  if(data.longitudinal_access_granted!==false)throw new Error("Unexpected access scope; roster was not displayed.");
+  const athletes=Array.isArray(data.athletes)?data.athletes:[];
+  notice.textContent=athletes.length+" athlete(s) actively assigned to you in this Academy. Longitudinal access is not granted by this roster.";
+  list.innerHTML=athletes.length?athletes.map(a=>'<article class="coach-athlete-row"><span><strong>'+escapeHtml(a.display_name||a.athlete_id)+'</strong><small class="muted"> · '+escapeHtml(a.athlete_id)+'</small></span><span class="muted">'+escapeHtml(a.status||"")+'</span></article>').join(""):'<p class="muted">No active athlete assignments were found for this Coach in this Academy.</p>';
+ }catch(error){
+  notice.textContent="Academy roster unavailable: "+String(error&&error.message?error.message:error);
+  list.innerHTML='<p class="muted">No roster data is displayed when authentication or authorization fails.</p>';
+ }
+}
 
 async function loadCoachGroups(){
  const notice=document.getElementById("coachGroupsNotice"),list=document.getElementById("coachGroupsList"),select=document.getElementById("groupAthleteSelect");

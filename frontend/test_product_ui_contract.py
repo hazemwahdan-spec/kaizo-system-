@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "frontend" / "app.js").read_text()
 INDEX = (ROOT / "frontend" / "index.html").read_text()
+AUTH = (ROOT / "frontend" / "auth.js").read_text()
 
 def test_four_commercial_roles_are_present():
     for role in ("academy", "coach", "athlete", "parent"):
@@ -311,9 +312,13 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
     assert 'function loadCoachTrainingLineage()' in APP
     assert 'function submitCoachTrainingLineage()' in APP
     assert 'payload.athlete_id=athleteId' in APP
-    assert 'payload.coach_final_authority=true' in APP
+    assert 'payload.coach_final_authority=true' not in APP
     assert 'loadCoachTrainingLineage();' in APP
     assert 'coachTrainingLineageData=data' in APP
+    assert 'coachDecisionWorkspaceData=data' in APP
+    assert 'baseline_reference:baselineSnapshot?.snapshot_id||""' in APP
+    assert 'baseline:baselineForResponse' in APP
+    assert 'payload.coach_final_authority=true' not in APP
     assert 'r33?.decision_id' in APP
     assert 'r34?.record_id' in APP
     assert 'r35?.record_id' in APP
@@ -327,3 +332,45 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
     assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
     assert '"X-KAIZO-Actor"' not in APP
     assert '"X-KAIZO-Tenant"' not in APP
+
+
+def test_auth0_requests_product_permission_for_login_and_silent_tokens():
+    assert 'scope: "product academy:read"' in AUTH
+    assert 'authorizationParams: authorizationParams()' in AUTH
+    assert 'getAccessTokenSilently: () => client.getTokenSilently({ authorizationParams: authorizationParams() })' in AUTH
+    assert 'loginWithRedirect: () => client.loginWithRedirect({ authorizationParams: authorizationParams() })' in AUTH
+
+
+def test_coach_ui_links_recorded_decision_to_owned_digital_twin_state():
+    assert 'currentCoachTwinStateVersion' in APP
+    assert 'currentCoachDecisionId' in APP
+    assert 'stateCycleCall("/state-cycle/feat-044/decision-state-link"' in APP
+    assert 'stateCycleCall("/state-cycle/feat-044/decision-state-link/"+encodeURIComponent(decisionId)+"?athlete_id="+encodeURIComponent(athleteId))' in APP
+    assert 'stateCycleCall("/state-cycle/feat-045/next-state"' in APP
+    assert 'state_ref:stateRef' in APP
+    assert 'decision_id:decisionId' in APP
+    assert 'function linkCoachDecisionToDigitalTwinState()' in APP
+    assert 'function loadCoachNextState()' in APP
+    assert 'execution_authorized:true' not in APP.replace(" ", "").lower()
+
+
+def test_coach_academy_roster_uses_verified_membership_and_assignment_apis():
+    assert 'productCall("/coach/academies")' in APP
+    assert 'productCall("/coach/academies/"+encodeURIComponent(academyId)+"/athletes")' in APP
+    assert "coachAcademySelect" in APP
+    assert "coachAcademyRosterList" in APP
+    assert "longitudinal_access_granted!==false" in APP
+    assert "Longitudinal access is not granted by this roster." in APP
+
+
+def test_academy_assigned_roster_does_not_link_into_primary_owner_longitudinal_workspace():
+    assert "loadCoachAcademyAssignedRoster" in APP
+    assert 'viewCoachAthlete(a.athlete_id)' not in APP
+    assert 'productCall("/coach/academies/"+encodeURIComponent(academyId)+"/athletes")' in APP
+
+
+def test_auth0_requests_product_and_academy_read_for_each_token_flow():
+    auth = (ROOT / "frontend" / "auth.js").read_text()
+    assert 'scope: "product academy:read"' in auth
+    assert 'getTokenSilently({ authorizationParams: authorizationParams() })' in auth
+    assert 'loginWithRedirect({ authorizationParams: authorizationParams() })' in auth
