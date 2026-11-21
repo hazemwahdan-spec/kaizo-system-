@@ -16,6 +16,8 @@ import persistence
 import training_workflow
 from productization import coach_assessment_workflow, coach_decision_workflow, coach_roster
 from types import SimpleNamespace
+
+import pytest
 from training_workflow import router, reset_memory_state
 
 _VALIDATE_INITIAL_SOURCES = training_workflow._validate_initial_decision_drill
