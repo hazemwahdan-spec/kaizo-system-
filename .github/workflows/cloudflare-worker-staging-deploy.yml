@@ -8,6 +8,9 @@ permissions:
 
 jobs:
   deploy-staging:
+    # The Cloudflare credential is only exposed to a manually dispatched run
+    # whose workflow definition and Wrangler config come from the trusted main branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
