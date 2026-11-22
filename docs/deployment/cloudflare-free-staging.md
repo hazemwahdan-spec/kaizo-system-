@@ -8,14 +8,27 @@
 - OIDC remains enabled. Actor, role, tenant, and ownership are derived from the verified token and server-side ownership records; caller-supplied identity headers are not trusted.
 - Cloudflare's Git-connected status for `kaizo-system` refers to the existing Production Worker. A failed build there is not a Staging deployment or Staging acceptance result.
 
+## Cloudflare Git-connected build boundary
+
+The repository-root `wrangler.jsonc` is intentionally pinned to `kaizo-coach-core-staging`. It must not be renamed to `kaizo-system` to make the existing Production Git integration pass: that would point this Staging-only, memory-only configuration at the Production Worker.
+
+Cloudflare Workers Builds requires the Worker name in the dashboard to match the `name` in the Wrangler configuration. Therefore:
+
+- The existing Production Worker `kaizo-system` must use its own Production configuration/repository root, or have this repository-root Staging build integration disconnected.
+- If Git-connected builds are desired for this configuration, connect them to the Staging Worker `kaizo-coach-core-staging`.
+- The manual GitHub Actions workflow below is a separate Staging deployment path; it does not require the Production Worker Git integration.
+
+Do not treat a failed `Workers Builds: kaizo-system` check as evidence that the isolated Staging Worker was deployed or that Staging runtime acceptance failed.
+
 ## Deploy the isolated memory-only Worker
 
-1. Configure the GitHub repository Actions secret `CLOUDFLARE_API_TOKEN`. Do **not** create a `CLOUDFLARE_ACCOUNT_ID` secret; the public Account ID is pinned in the workflow.
-2. The Cloudflare token must be active and have Account-level Workers Scripts Edit permission. The workflow verifies token status and account script access before building.
-3. Open Actions → **Cloudflare Free Memory-only Staging Deploy** → Run workflow. Select the exact branch `fix/coach-staging-target-guardrails-20261121`; the workflow rejects other refs.
-4. The workflow validates the isolated Worker name and memory-only settings, checks the import guard, runs a Wrangler dry-run, and only then deploys `kaizo-coach-core-staging`.
+1. Configure the GitHub repository Actions secret named `CLOUDFLARE_API_TOKEN` with the **full token secret value** copied once from Cloudflare. The Cloudflare display label (for example, `KAIZO-CLOUDFLARE-DEPLOY`) is not the GitHub secret name.
+2. Use an active token with Account-level Workers Scripts Edit permission. The workflow first verifies an Account API token at `/accounts/{account_id}/tokens/verify`, then falls back to the User API token verification endpoint if needed. It next checks access to the account's Worker scripts.
+3. Do **not** create a `CLOUDFLARE_ACCOUNT_ID` secret; the public Account ID is pinned in the workflow. Never paste token values into chat, logs, issues, or source control.
+4. Open Actions → **Cloudflare Free Memory-only Staging Deploy** → Run workflow. Run it from `main` or an approved `fix/coach-staging-*` branch.
+5. The workflow validates the isolated Worker name and memory-only settings, checks the import guard, runs a Wrangler dry-run, and only then deploys `kaizo-coach-core-staging`.
 
-If token verification returns HTTP 401, stop and replace the repository secret with a valid active API token. Never paste token values into chat, logs, issues, or source control.
+A token beginning with `cfat_` is an Account API token; one beginning with `cfut_` is a User API token. If both verification endpoints return HTTP 401, replace the GitHub secret with the full, active token value. Do not share the token itself.
 
 ## Durable Coach Staging is a separate target
 
