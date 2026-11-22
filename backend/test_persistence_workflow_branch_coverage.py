@@ -16,7 +16,7 @@ def _branch_names(section: str) -> set[str]:
 
 def test_stacked_coach_closure_bases_trigger_persistence_validation():
     source = WORKFLOW.read_text(encoding="utf-8")
-    pull_request = source.split("  pull_request:\\n", 1)[1].split("\\njobs:", 1)[0]
+    pull_request = source.split("  pull_request:\\n", 1)[1].split("\njobs:", 1)[0]
     branches = _branch_names(pull_request)
     expected = {
         "fix/staging-coach-schema-additive-only-20261119",
