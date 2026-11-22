@@ -24,7 +24,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "hazemwahdan-spec/kaizo-system-" || { echo "Unexpected repository"; exit 1; }
-          test "$GITHUB_REF_NAME" = "fix/coach-staging-target-guardrails-20261121" || { echo "Staging-only branch guard rejected this ref"; exit 1; }
+          case "$GITHUB_REF_NAME" in
+            main|fix/coach-staging-*) ;;
+            *) echo "Staging deploy is restricted to main or fix/coach-staging-* branches."; exit 1 ;;
+          esac
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing Cloudflare account ID"; exit 1; }
           python - <<'PY'
@@ -60,7 +63,7 @@ jobs:
           account_id = os.environ["CLOUDFLARE_ACCOUNT_ID"]
           base = "https://api.cloudflare.com/client/v4"
 
-          def request(path, label):
+          def request(path, label, allow_auth_fallback=False):
               req = urllib.request.Request(
                   base + path,
                   headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -69,6 +72,7 @@ jobs:
                   with urllib.request.urlopen(req, timeout=20) as response:
                       payload = json.loads(response.read().decode("utf-8"))
               except urllib.error.HTTPError as exc:
+                  # Account API tokens and user API tokens have different verify endpoints.
                   # Never print request headers or token material.
                   body = exc.read().decode("utf-8", "replace")
                   try:
@@ -79,6 +83,9 @@ jobs:
                       )
                   except Exception:
                       messages = "Cloudflare returned a non-JSON error"
+                  if allow_auth_fallback and exc.code in (401, 403):
+                      print(f"::notice::{label} did not accept this token scope; trying the alternate verification endpoint.")
+                      return None
                   print(f"::error::{label} failed (HTTP {exc.code}): {messages or 'permission or account mismatch'}")
                   sys.exit(1)
               if not payload.get("success"):
@@ -86,11 +93,20 @@ jobs:
                       str(item.get("message", ""))
                       for item in payload.get("errors", [])
                   )
+                  if allow_auth_fallback:
+                      print(f"::notice::{label} did not accept this token scope; trying the alternate verification endpoint.")
+                      return None
                   print(f"::error::{label} rejected: {messages or 'Cloudflare API returned success=false'}")
                   sys.exit(1)
               return payload.get("result")
 
-          identity = request("/user/tokens/verify", "Cloudflare token verification")
+          identity = request(
+              f"/accounts/{account_id}/tokens/verify",
+              "Cloudflare account token verification",
+              allow_auth_fallback=True,
+          )
+          if identity is None:
+              identity = request("/user/tokens/verify", "Cloudflare user token verification")
           status = (identity or {}).get("status", "unknown")
           if status != "active":
               print(f"::error::Cloudflare API token is not active (status={status}). Replace the CLOUDFLARE_API_TOKEN repository secret.")
