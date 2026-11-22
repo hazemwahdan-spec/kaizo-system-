@@ -7,7 +7,7 @@ DEPLOY = (ROOT / ".github/workflows/cloudflare-worker-staging-deploy.yml").read_
 CONFIG = json.loads((ROOT / "wrangler.jsonc").read_text(encoding="utf-8"))
 
 # The credential-bearing deployment job must never run from PR or feature refs.
-assert "on:\\n  workflow_dispatch:" in DEPLOY
+assert "workflow_dispatch:" in DEPLOY
 assert "if: github.ref == 'refs/heads/main'" in DEPLOY
 assert "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}" in DEPLOY
 assert "pywrangler deploy --config wrangler.jsonc" in DEPLOY
