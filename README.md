@@ -23,6 +23,12 @@ Engineering and preservation repository for the KAIZO software/methodology ecosy
 - No silent content rewriting.
 - No destructive source deletion.
 
+## Latest repository consistency review — 2026-11-22
+
+- `docs/audits/repository-consistency-review-2026-11-22.md` records a repository-document consistency check.
+- The 2026-09-29 Library inventory remains a dated baseline; it was not re-counted in the 2026-11-22 repository review.
+- Binary transfer remains incomplete; no production deployment or PACK-A closure is claimed.
+
 ## Audit & transfer controls
 
 - `docs/audits/master-artifact-inventory.md`
