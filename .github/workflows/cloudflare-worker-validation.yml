@@ -10,22 +10,20 @@ on:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
       - "pyproject.toml"
+      - "requirements.txt"
       - "app.py"
       - "backend/**"
       - "productization/**"
       - "frontend/**"
       - ".github/workflows/cloudflare-worker-validation.yml"
   pull_request:
-    branches:
-      - main
-      - integration/coach-closure-evidence-audit-20261115
-      - fix/staging-coach-schema-additive-only-20261119
-      - fix/cloudflare-free-memory-staging-20261119
-      - fix/cloudflare-worker-import-memory-guard-20261120
+    # This workflow is validation-only (dry-run build, no deploy). Run it for
+    # every PR target branch so stacked Coach PRs cannot bypass Worker checks.
     paths:
       - "cloudflare_worker.py"
       - "wrangler.jsonc"
       - "pyproject.toml"
+      - "requirements.txt"
       - "app.py"
       - "backend/**"
       - "productization/**"
