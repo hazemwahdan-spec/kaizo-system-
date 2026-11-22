@@ -81,9 +81,11 @@ def main():
     # workflow's four-table Staging scope. Fail closed unless prerequisites
     # already exist from the separately managed Staging baseline.
     prerequisites = (
+        "kaizo_athletes",
         "kaizo_coach_athlete_ownership",
         "kaizo_evidence_records",
         "kaizo_audit_logs",
+        "kaizo_training_sessions",
     )
     with persistence.connection() as conn:
         with conn.cursor() as cur:
