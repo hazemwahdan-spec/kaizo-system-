@@ -93,10 +93,25 @@ jobs:
           uv python install 3.13
           uv sync --dev --no-install-project --python 3.13
 
+      - name: Verify staging-only Wrangler target before deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path("wrangler.jsonc").read_text(encoding="utf-8"))
+          assert config.get("name") == "kaizo-coach-core-staging", "Refusing to deploy: unexpected Worker name"
+          assert config.get("vars", {}).get("KAIZO_PERSISTENCE_MODE") == "memory", "Refusing to deploy: Staging must be memory-only"
+          assert not config.get("hyperdrive"), "Refusing to deploy: Hyperdrive is forbidden for this free Staging target"
+          print("PASS: deployment target is the isolated memory-only Staging Worker")
+          PY
+
       - name: Deploy isolated in-memory staging Worker
         shell: bash
         run: |
           set -euo pipefail
           mv requirements.txt "$RUNNER_TEMP/kaizo-root-requirements.txt"
           trap 'mv "$RUNNER_TEMP/kaizo-root-requirements.txt" requirements.txt' EXIT
-          uv run --no-sync --python 3.13 pywrangler deploy
+          uv run --no-sync --python 3.13 pywrangler deploy --config wrangler.jsonc
