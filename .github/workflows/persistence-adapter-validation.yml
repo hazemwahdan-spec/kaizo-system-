@@ -22,6 +22,7 @@ on:
       - fix/coach-auth0-staging-live-proof-cross-scope-20261117
       - integration/coach-evidence-audit-rollback-unified-20261119
       - fix/cloudflare-worker-import-memory-guard-20261120
+      - fix/persistence-validation-stacked-pr-coverage-20261122
   pull_request:
     branches:
       - main
