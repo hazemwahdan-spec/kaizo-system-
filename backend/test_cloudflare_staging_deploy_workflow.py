@@ -8,11 +8,14 @@ WORKFLOW = ROOT / ".github" / "workflows" / "cloudflare-worker-staging-deploy.ym
 def test_manual_worker_deploy_is_pinned_to_staging_and_preflights_token():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "workflow_dispatch:" in text
-    assert 'GITHUB_REF_NAME" = "fix/coach-staging-target-guardrails-20261121"' in text
+    assert 'case "$GITHUB_REF_NAME" in' in text
+    assert "main|fix/coach-staging-*)" in text
     assert 'CLOUDFLARE_ACCOUNT_ID: "962a31c413bed22002379d4e0a42cfe8"' in text
     assert "secrets.CLOUDFLARE_API_TOKEN" in text
     assert "secrets.CLOUDFLARE_ACCOUNT_ID" not in text
-    assert "/user/tokens/verify" in text
+    assert 'f"/accounts/{account_id}/tokens/verify"' in text
+    assert 'request("/user/tokens/verify"' in text
+    assert "allow_auth_fallback=True" in text
     assert "/accounts/{account_id}/workers/scripts?per_page=100" in text
     assert 'status != "active"' in text
     assert "Verify memory-only import guard" in text
