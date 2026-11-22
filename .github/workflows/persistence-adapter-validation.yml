@@ -22,6 +22,7 @@ on:
       - fix/coach-auth0-staging-live-proof-cross-scope-20261117
       - integration/coach-evidence-audit-rollback-unified-20261119
       - fix/cloudflare-worker-import-memory-guard-20261120
+      - fix/persistence-validation-stacked-pr-coverage-20261122
   pull_request:
     branches:
       - main
@@ -50,6 +51,9 @@ on:
       - fix/coach-postgres-verified-evidence-fixture-20261114
       - integration/coach-closure-evidence-audit-20261115
       - fix/coach-server-authority-payload-20261117
+      - fix/staging-coach-schema-additive-only-20261119
+      - fix/cloudflare-free-memory-staging-20261119
+      - fix/cloudflare-worker-import-memory-guard-20261120
 
 jobs:
   validate-persistence-adapter:
@@ -86,6 +90,8 @@ jobs:
         run: pip install pytest PyJWT[crypto]
       - name: Compile backend
         run: python -m compileall -q .
+      - name: Verify stacked Coach closure PR bases trigger persistence validation
+        run: PYTHONPATH=. pytest -q test_persistence_workflow_branch_coverage.py
       - name: Run persistence integration test
         run: PYTHONPATH=. python tests/test_persistence_integration.py
       - name: Import application with PostgreSQL mode
