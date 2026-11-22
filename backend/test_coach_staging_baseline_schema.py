@@ -11,7 +11,7 @@ baseline = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(baseline)
 
 
-def test_minimal_baseline_is_additive_verified_and_idempotent(monkeypatch):
+def test_minimal_baseline_is_additive_verified_and_idempotent():
     import os
 
     database_url = os.environ["DATABASE_URL"]
