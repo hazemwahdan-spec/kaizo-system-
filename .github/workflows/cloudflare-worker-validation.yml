@@ -52,6 +52,8 @@ jobs:
         run: python backend/test_cloudflare_worker_import_guard.py
       - name: Verify Staging deploy workflow token preflight and branch guard
         run: python backend/test_cloudflare_staging_deploy_workflow.py
+      - name: Verify Python Worker dependency markers and aligned Psycopg pins
+        run: python backend/test_cloudflare_worker_dependency_contract.py
       - name: Bundle Cloudflare Python Worker without deploying
         shell: bash
         run: |

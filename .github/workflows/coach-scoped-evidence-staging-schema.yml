@@ -33,5 +33,7 @@ jobs:
             echo "KAIZO_STAGING_DATABASE_URL secret plus KAIZO_STAGING_DB_HOST and KAIZO_PRODUCTION_DB_HOST repository variables are required."
             exit 1
           fi
+      - name: Apply minimal Coach Staging baseline (additive only)
+        run: python scripts/apply_coach_staging_baseline.py
       - name: Apply additive Coach evidence schema to Staging only
         run: python scripts/apply_coach_scoped_evidence_staging_schema.py

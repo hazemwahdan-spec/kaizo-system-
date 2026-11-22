@@ -54,6 +54,7 @@ on:
       - fix/coach-server-authority-payload-20261117
       - fix/cloudflare-worker-import-memory-guard-20261120
       - fix/coach-staging-target-guardrails-20261121
+      - fix/coach-drill-same-athlete-lineage-20261121
 
 jobs:
   validate-persistence-adapter:
@@ -122,6 +123,8 @@ jobs:
         run: python -m py_compile ../scripts/apply_coach_scoped_evidence_staging_schema.py
       - name: Verify Staging schema host and database allowlist
         run: PYTHONPATH=..:. pytest -q test_coach_staging_schema_target_guard.py
+      - name: Verify minimal Coach Staging baseline on isolated PostgreSQL schema
+        run: PYTHONPATH=..:. pytest -q test_coach_staging_baseline_schema.py
       - name: Verify FEAT-042..045 scoped Digital Twin state cycle
         run: PYTHONPATH=..:. pytest -q test_state_cycle.py test_feat_041_digital_twin.py
       - name: Verify scoped Digital Twin PostgreSQL persistence and atomic audit rollback
