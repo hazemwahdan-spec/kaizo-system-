@@ -103,3 +103,24 @@ def test_rejects_wrong_or_ambiguous_database_targets(
         schema_guard.validate_staging_database_target(
             database_url, staging_host, production_host
         )
+
+
+def test_staging_database_and_auth0_secret_workflows_are_main_branch_only():
+    workflows = {
+        ROOT / ".github" / "workflows" / "coach-scoped-evidence-staging-schema.yml":
+            "prepare-staging-schema",
+        ROOT / ".github" / "workflows" / "coach-auth0-staging-live-proof.yml":
+            "auth0-coach-live-proof",
+    }
+    for path, job in workflows.items():
+        source = path.read_text(encoding="utf-8")
+        expected = (
+            f"  {job}:\\n"
+            "    # "
+        )
+        assert expected in source, f"{path.name} must document the protected job"
+        assert (
+            f"  {job}:\\n"
+            f"    # " in source
+            and "    if: github.ref == 'refs/heads/main'\\n" in source
+        ), f"{path.name} must restrict secret-bearing Staging execution to main"
