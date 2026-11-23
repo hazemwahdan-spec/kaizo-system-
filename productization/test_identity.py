@@ -70,7 +70,12 @@ def _local_oidc_token(private_key, **overrides):
         "exp": now + 300,
         "https://kaizo.system/kaizo_role": "coach",
         "https://kaizo.system/tenant_id": "TENANT-A",
+        "https://kaizo.system/academy_id": "ACADEMY-A",
         "https://kaizo.system/resource_owner_id": "ATHLETE-A",
+        "permissions": [
+            "academy:read", "academy:tenant:bind", "academy:membership:manage",
+            "academy:athlete:enroll", "academy:coach:assign",
+        ],
     }
     claims.update(overrides)
     return jwt.encode(
@@ -123,9 +128,53 @@ def test_valid_rs256_bearer_derives_verified_coach_and_ignores_forged_headers(mo
     assert principal.actor_id == "auth0|verified-coach"
     assert principal.role == "coach"
     assert principal.tenant_id == "TENANT-A"
+    assert principal.academy_id == "ACADEMY-A"
     assert principal.resource_owner_id == "ATHLETE-A"
     assert principal.verified is True
     assert principal.source == "oidc_jwt"
+    assert principal.permissions == frozenset({
+        "academy:read", "academy:tenant:bind", "academy:membership:manage",
+        "academy:athlete:enroll", "academy:coach:assign",
+    })
+
+
+def test_permissions_are_exact_and_require_verified_oidc_principal():
+    from types import SimpleNamespace
+    from productization.identity import principal_has_permission
+
+    principal = SimpleNamespace(
+        verified=True, source="oidc_jwt",
+        permissions=frozenset({"academy:membership:manage"}),
+    )
+    assert principal_has_permission(principal, "academy:membership:manage")
+    assert not principal_has_permission(principal, "academy:manage")
+    assert not principal_has_permission(
+        SimpleNamespace(verified=False, source="development_headers",
+                        permissions=frozenset({"academy:membership:manage"})),
+        "academy:membership:manage",
+    )
+    assert not principal_has_permission(
+        SimpleNamespace(verified=True, source="oidc_jwt",
+                        permissions="academy:membership:manage"),
+        "academy:membership:manage",
+    )
+    assert not principal_has_permission(
+        SimpleNamespace(verified=True, source="oidc_jwt"),
+        "academy:membership:manage",
+    )
+
+
+@pytest.mark.parametrize("permissions", ["academy:read", [1], [""], None])
+def test_malformed_oidc_permissions_claim_is_rejected(permissions):
+    from productization.identity import IdentityNotConfiguredError, _claims_to_principal
+
+    with pytest.raises(IdentityNotConfiguredError, match="permissions claim"):
+        _claims_to_principal({
+            "sub": "auth0|coach",
+            "https://kaizo.system/kaizo_role": "coach",
+            "https://kaizo.system/tenant_id": "tenant-a",
+            "permissions": permissions,
+        })
 
 
 @pytest.mark.parametrize(
@@ -182,3 +231,26 @@ def test_rs256_bearer_requires_valid_role_and_tenant_claims(monkeypatch, claims)
 
     with pytest.raises(IdentityNotConfiguredError, match="missing required KAIZO claims"):
         resolve_principal("forged", "coach", "TENANT-A", None, f"Bearer {token}")
+
+
+def test_rs256_bearer_ignores_legacy_unnamespaced_academy_id(monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from productization.identity import resolve_principal
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    _configure_local_oidc(monkeypatch, private_key.public_key())
+    token = _local_oidc_token(
+        private_key,
+        **{
+            "https://kaizo.system/kaizo_role": "academy",
+            "https://kaizo.system/academy_id": None,
+            "academy_id": "LEGACY-UNNAMESPACED-ACADEMY",
+        },
+    )
+    principal = resolve_principal(
+        actor_id="forged-actor", role="academy", tenant_id="FORGED-TENANT",
+        resource_owner_id=None, authorization=f"Bearer {token}",
+    )
+    assert principal.role == "academy"
+    assert principal.tenant_id == "TENANT-A"
+    assert principal.academy_id is None

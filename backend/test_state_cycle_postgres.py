@@ -1,5 +1,6 @@
 """Disposable PostgreSQL acceptance for scoped Digital Twin state/history/audit."""
 import os
+import json
 os.environ["KAIZO_IDENTITY_MODE"]="development"
 os.environ["KAIZO_PERSISTENCE_MODE"]="postgres"
 
@@ -28,15 +29,41 @@ def _fixture():
     athlete=coach_roster.create_owned_athlete(
         tenant_id=tenant,coach_actor_id=coach,display_name="Digital Twin PostgreSQL acceptance"
     )
+    athlete_id=athlete["athlete_id"]
     headers={"X-KAIZO-Actor":coach,"X-KAIZO-Role":"coach","X-KAIZO-Tenant":tenant}
-    payload={"entity_id":athlete["athlete_id"],"state":{"kpi":7,"status":"IMPROVING"},
+    payload={"entity_id":athlete_id,"state":{"kpi":7,"status":"IMPROVING"},
              "source_event":"POSTGRES_RETEST","case_id":"CASE-"+uuid4().hex,
              "evidence_refs":["REF-PG"],"coach_final_authority":True}
-    return tenant,coach,athlete["athlete_id"],headers,payload
+    decision_id="DECISION-"+uuid4().hex
+    candidate_id="CANDIDATE-"+uuid4().hex
+    diagnosis_id="DIAGNOSIS-"+uuid4().hex
+    problem_id="PROBLEM-"+uuid4().hex
+    assessment_id="ASSESSMENT-"+uuid4().hex
+    now="2026-11-12T00:00:00+00:00"
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kaizo_decision_records
+                   (decision_id,candidate_id,diagnosis_id,problem_id,athlete_id,assessment_id,
+                    candidate_type,coach_action,coach_id,decision_summary,outcome_intent,status,recorded_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,'TECHNICAL_ADAPTATION','CONFIRM',%s,
+                           'Recorded Coach decision','Retest and compare','RECORDED',%s)""",
+                (decision_id,candidate_id,diagnosis_id,problem_id,athlete_id,assessment_id,coach,now),
+            )
+            cur.execute(
+                """INSERT INTO kaizo_audit_logs
+                   (timestamp,who,action,old_value,new_value,why,tenant_id)
+                   VALUES (%s,%s,'COACH_DECISION_RECORD_RECORDED',NULL,%s::jsonb,%s,%s)""",
+                (now,coach,json.dumps({"decision_id":decision_id,"athlete_id":athlete_id,
+                                       "coach_id":coach,"status":"RECORDED"}),
+                 "Trusted recorded decision fixture for state-cycle tests",tenant),
+            )
+        conn.commit()
+    return tenant,coach,athlete_id,headers,payload,decision_id
 
 
 def test_state_history_and_tenant_audit_persist_under_verified_scope():
-    tenant,coach,athlete,headers,payload=_fixture()
+    tenant,coach,athlete,headers,payload,_decision_id=_fixture()
     response=client.post("/api/v1/state-cycle/feat-042/digital-twin-state",json=payload,headers=headers)
     assert response.status_code==201,response.text
     body=response.json()
@@ -57,7 +84,7 @@ def test_state_history_and_tenant_audit_persist_under_verified_scope():
 
 
 def test_audit_failure_rolls_back_state_and_history():
-    tenant,coach,athlete,headers,payload=_fixture()
+    tenant,coach,athlete,headers,payload,_decision_id=_fixture()
     trigger="kaizo_test_reject_state_cycle_audit"
     function="kaizo_test_reject_state_cycle_audit_fn"
     with persistence.connection() as conn:
@@ -94,7 +121,7 @@ def test_audit_failure_rolls_back_state_and_history():
 
 
 def test_state_reads_recheck_current_ownership_inside_read_transaction(monkeypatch):
-    tenant, coach, athlete, headers, payload = _fixture()
+    tenant, coach, athlete, headers, payload, decision_id = _fixture()
     created = client.post(
         "/api/v1/state-cycle/feat-042/digital-twin-state",
         json=payload, headers=headers,
@@ -103,7 +130,7 @@ def test_state_reads_recheck_current_ownership_inside_read_transaction(monkeypat
     linked = client.post(
         "/api/v1/state-cycle/feat-044/decision-state-link",
         json={
-            "decision_id": "DECISION-" + uuid4().hex,
+            "decision_id": decision_id,
             "entity_id": athlete,
             "state_version": 1,
             "state_ref": f"{athlete}:v1",
