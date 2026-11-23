@@ -1,0 +1,39 @@
+name: Coach Scoped Evidence and Audit PostgreSQL
+on:
+  pull_request:
+    paths:
+      - backend/coach_scoped_evidence_runtime.py
+      - backend/test_coach_scoped_evidence_runtime_postgres.py
+      - .github/workflows/coach-scoped-evidence-audit-postgres.yml
+jobs:
+  coach-scoped-evidence-audit:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: kaizo_test
+          POSTGRES_USER: kaizo
+          POSTGRES_PASSWORD: kaizo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kaizo -d kaizo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KAIZO_PERSISTENCE_MODE: postgres
+      DATABASE_URL: postgresql://kaizo:kaizo_test@localhost:5432/kaizo_test
+      PYTHONPATH: backend:.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Compile scoped service and tests
+        run: python -m py_compile backend/coach_scoped_evidence_runtime.py backend/test_coach_scoped_evidence_runtime_postgres.py
+      - name: Run disposable PostgreSQL security regressions
+        run: pytest -q backend/test_coach_scoped_evidence_runtime_postgres.py

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 import persistence
-from productization import coach_roster
+from productization import coach_roster, coach_decision_workflow
 from productization.product_api import verified_coach_scope
 
 router = APIRouter(prefix="/api/v1/state-cycle", tags=["state-cycle"])
@@ -23,13 +23,16 @@ def _now() -> str:
 
 
 def _ensure_schema() -> None:
-    """Compatibility hook; canonical schema is provisioned by persistence.initialize()."""
-    if persistence.is_postgres_enabled():
-        persistence.initialize()
+    """Compatibility shim; startup/deployment owns schema provisioning, never a request."""
+    return None
 
 
 def _principal(authorization, actor_id, role, tenant_id, owner, athlete_id):
     principal = verified_coach_scope(authorization, actor_id, role, tenant_id, owner)
+    if principal.verified and not persistence.is_postgres_enabled():
+        raise HTTPException(
+            503, detail="verified Coach Digital Twin routes require durable PostgreSQL"
+        )
     athlete = coach_roster.get_owned_athlete(
         tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
         athlete_id=athlete_id,
@@ -52,6 +55,34 @@ def _scope_check(cur, athlete_id, principal):
     )
     if cur.fetchone() is None:
         raise HTTPException(404, detail="athlete not found in Coach scope")
+
+
+def _verified_athlete_evidence(cur, athlete_id: str, coach_actor_id: str, evidence_refs: List[str]) -> None:
+    """Lock only VERIFIED, non-E0 evidence belonging to this exact athlete."""
+    refs = [str(item).strip() for item in evidence_refs]
+    if (not refs or any(not item for item in refs)
+            or len(refs) != len(set(refs))):
+        raise HTTPException(409, detail="FEAT-042 evidence_refs must be non-empty and unique")
+    cur.execute(
+        """SELECT evidence_id,evidence_level,status,verified_by
+           FROM kaizo_evidence_records
+           WHERE evidence_id=ANY(%s)
+             AND LOWER(subject_type)='athlete' AND subject_id=%s
+             AND verified_by=%s
+           FOR SHARE""",
+        (refs, athlete_id, coach_actor_id),
+    )
+    valid = {
+        str(row[0]) for row in cur.fetchall()
+        if str(row[1] or "").strip().upper() != "E0"
+        and str(row[2] or "").strip().upper() == "VERIFIED"
+        and str(row[3] or "").strip() == coach_actor_id
+    }
+    if valid != set(refs):
+        raise HTTPException(
+            409,
+            detail="FEAT-042 requires VERIFIED, non-E0 evidence verified by this Coach for the same athlete",
+        )
 
 
 def _get_state(athlete_id: str, principal: Any) -> Optional[Dict[str, Any]]:
@@ -87,6 +118,8 @@ def _persist_update(state: Dict[str, Any], history: Dict[str, Any],
     with persistence.connection() as conn:
         with conn.cursor() as cur:
             _scope_check(cur,state["entity_id"],principal)
+            # Evidence, versioned state, history and tenant audit commit together.
+            _verified_athlete_evidence(cur, state["entity_id"], principal.actor_id, history["evidence_refs"])
             cur.execute(
                 """SELECT version,tenant_id,coach_actor_id FROM kaizo_digital_twin_state
                    WHERE entity_id=%s FOR UPDATE""",(state["entity_id"],))
@@ -133,11 +166,25 @@ def _persist_update(state: Dict[str, Any], history: Dict[str, Any],
 
 def _save_link(record: Dict[str, Any], principal: Any) -> None:
     if not persistence.is_postgres_enabled():
+        decision = coach_decision_workflow.get_recorded_decision_for_scope(
+            tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+            athlete_id=record["entity_id"], decision_id=record["decision_id"],
+        )
+        if decision is None:
+            raise HTTPException(409, detail="decision_id is not a recorded decision in this Coach/tenant/athlete scope")
         _MEMORY_LINKS.append(record)
         return
-    with persistence.connection() as conn:
+    # Decision, ownership, current Twin version, link and audit are checked/written
+    # in one transaction; a transfer or audit failure cannot leave a partial link.
+    with persistence.atomic_transaction() as conn:
         with conn.cursor() as cur:
             _scope_check(cur,record["entity_id"],principal)
+            decision = coach_decision_workflow._decision_for_scope_sql(
+                cur, tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+                athlete_id=record["entity_id"], decision_id=record["decision_id"], lock=True,
+            )
+            if decision is None:
+                raise HTTPException(409, detail="decision_id is not a recorded decision in this Coach/tenant/athlete scope")
             cur.execute(
                 """SELECT 1 FROM kaizo_digital_twin_state
                    WHERE entity_id=%s AND version=%s AND tenant_id=%s AND coach_actor_id=%s
@@ -160,7 +207,6 @@ def _save_link(record: Dict[str, Any], principal: Any) -> None:
                 (record["linked_at"],principal.actor_id,json.dumps(record),
                  "Decision linked to an owned, versioned Digital Twin state.",
                  principal.tenant_id))
-        conn.commit()
 
 
 def _latest_link(decision_id: Optional[str], athlete_id: str, principal: Any):
@@ -169,22 +215,41 @@ def _latest_link(decision_id: Optional[str], athlete_id: str, principal: Any):
             with conn.cursor() as cur:
                 _scope_check(cur, athlete_id, principal)
                 cur.execute(
-                    """SELECT link_id,decision_id,entity_id,state_version,state_ref,
-                              linked_by,linked_at,coach_final_authority,execution_authorized
-                       FROM kaizo_decision_state_links
-                       WHERE entity_id=%s AND tenant_id=%s AND coach_actor_id=%s
-                         AND (%s IS NULL OR decision_id=%s)
-                       ORDER BY linked_at DESC LIMIT 1""",
+                    """SELECT l.link_id,l.decision_id,l.entity_id,l.state_version,l.state_ref,
+                              l.linked_by,l.linked_at,l.coach_final_authority,l.execution_authorized
+                       FROM kaizo_decision_state_links l
+                       JOIN kaizo_decision_records d
+                         ON d.decision_id=l.decision_id AND d.athlete_id=l.entity_id
+                        AND d.coach_id=l.coach_actor_id AND d.status='RECORDED'
+                       JOIN kaizo_coach_athlete_ownership o
+                         ON o.athlete_id=l.entity_id AND o.tenant_id=l.tenant_id
+                        AND o.coach_actor_id=l.coach_actor_id
+                       WHERE l.entity_id=%s AND l.tenant_id=%s AND l.coach_actor_id=%s
+                         AND (%s IS NULL OR l.decision_id=%s)
+                         AND EXISTS (
+                             SELECT 1 FROM kaizo_audit_logs a
+                             WHERE a.action='COACH_DECISION_RECORD_RECORDED'
+                               AND a.who=l.coach_actor_id AND a.tenant_id=l.tenant_id
+                               AND a.new_value->>'decision_id'=d.decision_id
+                               AND a.new_value->>'athlete_id'=d.athlete_id
+                         )
+                       ORDER BY l.linked_at DESC LIMIT 1""",
                     (athlete_id,principal.tenant_id,principal.actor_id,decision_id,decision_id))
                 r=cur.fetchone()
         if r is None: return None
         return {"link_id":r[0],"decision_id":r[1],"entity_id":r[2],"state_version":r[3],
                 "state_ref":r[4],"linked_by":r[5],"linked_at":r[6],
                 "coach_final_authority":r[7],"execution_authorized":r[8]}
-    items=[x for x in _MEMORY_LINKS if x["entity_id"]==athlete_id
-           and x["tenant_id"]==principal.tenant_id and x["coach_actor_id"]==principal.actor_id
-           and (decision_id is None or x["decision_id"]==decision_id)]
-    return items[-1] if items else None
+    for item in reversed(_MEMORY_LINKS):
+        if (item["entity_id"] == athlete_id and item["tenant_id"] == principal.tenant_id
+                and item["coach_actor_id"] == principal.actor_id
+                and (decision_id is None or item["decision_id"] == decision_id)
+                and coach_decision_workflow.get_recorded_decision_for_scope(
+                    tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
+                    athlete_id=athlete_id, decision_id=item["decision_id"],
+                ) is not None):
+            return item
+    return None
 
 
 class DigitalTwinUpdateRequest(BaseModel):
@@ -211,9 +276,12 @@ class NextStateRequest(BaseModel):
     coach_final_authority: bool = True
 
 
-def _authority(value: bool):
-    if not value:
-        raise HTTPException(409,detail="Coach Final Authority is mandatory")
+def _authority(principal: Any):
+    # Caller-supplied coach_final_authority is compatibility data, never authorization.
+    if (getattr(principal, "role", None) != "coach"
+            or not getattr(principal, "actor_id", None)
+            or not getattr(principal, "tenant_id", None)):
+        raise HTTPException(403, detail="server-derived Coach authority is required")
 
 
 def _common_headers(authorization, actor_id, role, tenant_id, owner, athlete_id):
@@ -228,7 +296,7 @@ def update_digital_twin(req: DigitalTwinUpdateRequest,
     tenant_id: str|None=Header(None,alias="X-KAIZO-Tenant"),
     owner: str|None=Header(None,alias="X-KAIZO-Resource-Owner")):
     principal=_common_headers(authorization,actor_id,role,tenant_id,owner,req.entity_id)
-    _authority(req.coach_final_authority)
+    _authority(principal)
     if not req.state or not req.source_event.strip() or not req.case_id.strip():
         raise HTTPException(400,detail="state, source_event and case_id are required")
     current=_get_state(req.entity_id,principal)
@@ -302,7 +370,7 @@ def link_decision_to_state(req: StateLinkRequest,
     tenant_id: str|None=Header(None,alias="X-KAIZO-Tenant"),
     owner: str|None=Header(None,alias="X-KAIZO-Resource-Owner")):
     principal=_common_headers(authorization,actor_id,role,tenant_id,owner,req.entity_id)
-    _authority(req.coach_final_authority)
+    _authority(principal)
     if not req.decision_id.strip() or req.state_version<1:
         raise HTTPException(400,detail="decision_id and a positive state_version are required")
     state=_get_state(req.entity_id,principal)
@@ -342,7 +410,7 @@ def retrieve_next_state(req: NextStateRequest,
     tenant_id: str|None=Header(None,alias="X-KAIZO-Tenant"),
     owner: str|None=Header(None,alias="X-KAIZO-Resource-Owner")):
     principal=_common_headers(authorization,actor_id,role,tenant_id,owner,req.athlete_id)
-    _authority(req.coach_final_authority)
+    _authority(principal)
     state=_get_state(req.athlete_id,principal)
     if state is None: raise HTTPException(404,detail="no Digital Twin state in Coach scope")
     link=_latest_link(req.decision_id,req.athlete_id,principal)
