@@ -331,3 +331,42 @@ def test_feat033_rejects_foreign_drill_assessment_and_mismatched_problem_link_as
     with pytest.raises(HTTPException) as foreign_source:
         _VALIDATE_INITIAL_SOURCES(req, principal)
     assert foreign_source.value.status_code == 409
+
+
+def test_feat_033_to_040_lineage_reads_and_writes_stay_inside_owner_lock():
+    import ast
+    import inspect
+
+    expected = {
+        "select_decision_drill": {"_validate_initial_decision_drill", "_save_with_verified_evidence"},
+        "prescribe_drill": {"_prior_record", "_save_with_owned_session"},
+        "record_execution_cues": {"_prior_record", "_save_with_owned_session"},
+        "capture_training_response": {"_prior_record", "_save_with_owned_session"},
+        "capture_retest": {"_prior_record", "_baseline_snapshot_for_response", "_save_with_verified_evidence"},
+        "compare_before_after": {"_prior_record", "_baseline_snapshot_for_response", "_save_with_owned_session"},
+        "update_progress_state": {"_prior_record", "_save_with_verified_evidence"},
+        "create_next_decision_trigger": {"_prior_record", "_save_with_verified_evidence"},
+    }
+    for endpoint_name, required_calls in expected.items():
+        tree = ast.parse(inspect.getsource(getattr(training_workflow, endpoint_name)))
+        locked_call_sets = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.With):
+                continue
+            locked = any(
+                isinstance(item.context_expr, ast.Call)
+                and isinstance(item.context_expr.func, ast.Name)
+                and item.context_expr.func.id == "_locked_coach_write_scope"
+                for item in node.items
+            )
+            if locked:
+                calls = {
+                    call.func.id
+                    for call in ast.walk(node)
+                    if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                }
+                locked_call_sets.append(calls)
+        assert locked_call_sets, f"{endpoint_name} must hold the owner lock"
+        assert any(required_calls.issubset(calls) for calls in locked_call_sets), (
+            f"{endpoint_name} must validate parents and persist its child inside the same owner lock"
+        )
