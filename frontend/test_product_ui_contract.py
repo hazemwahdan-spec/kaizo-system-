@@ -374,3 +374,23 @@ def test_auth0_requests_product_and_academy_read_for_each_token_flow():
     assert 'scope: "product academy:read"' in auth
     assert 'getTokenSilently({ authorizationParams: authorizationParams() })' in auth
     assert 'loginWithRedirect({ authorizationParams: authorizationParams() })' in auth
+
+
+def test_coach_scoped_evidence_and_governance_ui_uses_product_bearer_api():
+    for function in (
+        "coachScopedEvidenceRequest", "createCoachEvidenceProvenance",
+        "changeCoachKnowledgeLifecycle", "searchCoachKnowledge",
+        "linkCoachKnowledgeToSession", "createCoachActorTrace",
+        "saveCoachGovernance", "loadCoachScopedEvidenceRecords", "loadCoachGovernanceRecord",
+    ):
+        assert f"function {function}(" in APP or f"async function {function}(" in APP
+    for route in (
+        "/knowledge", "/lifecycle", "/knowledge-links", "/actor-traces", "/governance",
+    ):
+        assert route in APP
+    assert '"Authorization":"Bearer "+token' in APP
+    assert 'data-athlete-section="coachEvidenceGovernanceSection"' in APP
+    assert '"coachEvidenceGovernanceSection"' in APP
+    assert 'X-KAIZO-Actor' not in APP
+    assert 'X-KAIZO-Tenant' not in APP
+    assert "execution_authorized:true" not in APP.replace(" ", "").lower()
