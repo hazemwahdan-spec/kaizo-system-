@@ -21,6 +21,8 @@ permissions:
 
 jobs:
   auth0-coach-live-proof:
+    # Bearer test credentials are exposed only to the reviewed default branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 5
