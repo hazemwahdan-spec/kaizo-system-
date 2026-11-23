@@ -8,8 +8,8 @@ from __future__ import annotations
 import os
 
 # This Worker is Staging-only. Sanitize inherited process variables before
-# importing the Core app: backend/main.py performs persistence.initialize()
-# during import whenever PostgreSQL mode is enabled (which Staging forbids).
+# importing the Core app: backend/main.py initializes PostgreSQL during import
+# when PostgreSQL mode is enabled; Staging forbids that mode.
 os.environ["KAIZO_ENVIRONMENT"] = "staging"
 os.environ["KAIZO_PERSISTENCE_MODE"] = "memory"
 os.environ.pop("DATABASE_URL", None)
