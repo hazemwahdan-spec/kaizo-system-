@@ -15,6 +15,7 @@
     ]
   },
   "vars": {
+    "KAIZO_ENVIRONMENT": "staging",
     "KAIZO_IDENTITY_MODE": "oidc",
     "KAIZO_PERSISTENCE_MODE": "memory",
     "KAIZO_OIDC_ISSUER": "https://kaizo-system.us.auth0.com/",
