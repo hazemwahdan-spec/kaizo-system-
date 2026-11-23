@@ -394,3 +394,13 @@ def test_coach_scoped_evidence_and_governance_ui_uses_product_bearer_api():
     assert 'X-KAIZO-Actor' not in APP
     assert 'X-KAIZO-Tenant' not in APP
     assert "execution_authorized:true" not in APP.replace(" ", "").lower()
+
+
+def test_auth0_client_and_audience_are_isolated_between_staging_and_production():
+    auth_config = (ROOT / "frontend" / "auth-config.js").read_text()
+    assert 'window.location.hostname === "kaizo-coach-core-staging.hazemwahdan.workers.dev"' in auth_config
+    assert '"k5s2COCSh3YDE0biqBK8V6TLxjfiwexW"' in auth_config
+    assert '"https://api.staging.kaizo.system"' in auth_config
+    assert '"gDX8EH7Nd91sBWZBcFKuVMma1wxKeq4e"' in auth_config
+    assert '"https://api.kaizo.system"' in auth_config
+    assert 'window.location.hostname === "kaizo-coach-production.up.railway.app"' in auth_config
