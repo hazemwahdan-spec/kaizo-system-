@@ -42,7 +42,7 @@ class Default(WorkerEntrypoint):
         for name, default in (
             ("KAIZO_IDENTITY_MODE", "oidc"),
             ("KAIZO_OIDC_ISSUER", "https://kaizo-system.us.auth0.com/"),
-            ("KAIZO_OIDC_AUDIENCE", "https://api.kaizo.system"),
+            ("KAIZO_OIDC_AUDIENCE", "https://api.staging.kaizo.system"),
             (
                 "KAIZO_OIDC_JWKS_URL",
                 "https://kaizo-system.us.auth0.com/.well-known/jwks.json",
