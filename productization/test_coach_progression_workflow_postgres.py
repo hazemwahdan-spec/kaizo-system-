@@ -177,6 +177,60 @@ def test_postgres_session_constraint_drill_review_and_problem_drill_link():
             assert cur.fetchone()[0] >= 4
 
 
+def test_postgres_problem_drill_link_rejects_drill_from_another_athlete_of_same_coach():
+    scope = _scope()
+    tenant, coach, athlete_id, _assessment_id, problem_id, evidence, _plan, _session = scope
+
+    other_athlete = coach_roster.create_owned_athlete(
+        tenant_id=tenant, coach_actor_id=coach, display_name="Second Progression Athlete")
+    other_assessment = coach_assessment_workflow.create_assessment(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=other_athlete["athlete_id"],
+        template_id="SECOND-ATHLETE-BASELINE", measurements={"entry_quality": 8})
+    other_evidence = {
+        "evidence_id": "EVID-" + uuid.uuid4().hex,
+        "subject_type": "assessment", "subject_id": other_assessment["assessment_id"],
+        "evidence_level": "E3", "status": "VERIFIED",
+        "source_ref": "assessment://second-athlete-progression-test",
+        "claim": "Second athlete entry quality measured.",
+        "observed_value": {"entry_quality": 8},
+        "verified_by": "trusted-test-fixture", "verified_at": "2026-11-21T00:00:00Z",
+        "notes": None,
+    }
+    persistence.upsert_evidence(other_evidence)
+    other_drill = coach_progression_workflow.create_drill(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=other_athlete["athlete_id"],
+        assessment_id=other_assessment["assessment_id"], drill_fields=_drill_fields(),
+        evidence_ids=[other_evidence["evidence_id"]],
+        source_refs=["coach-observation://second-athlete-entry"])
+    coach_progression_workflow.approve_drill(
+        tenant_id=tenant, coach_actor_id=coach, athlete_id=other_athlete["athlete_id"],
+        drill_id=other_drill["drill_id"])
+
+    with pytest.raises(coach_progression_workflow.CoachProgressionConflict, match="same athlete"):
+        coach_progression_workflow.create_problem_drill_link(
+            tenant_id=tenant, coach_actor_id=coach, athlete_id=athlete_id,
+            problem_id=problem_id, drill_id=other_drill["drill_id"],
+            rationale="A drill from another athlete must not attach to this problem.",
+            evidence_ids=[evidence["evidence_id"]],
+        )
+
+    with persistence.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_coach_problem_drill_links
+                   WHERE tenant_id=%s AND coach_actor_id=%s AND athlete_id=%s AND problem_id=%s""",
+                (tenant, coach, athlete_id, problem_id),
+            )
+            assert cur.fetchone()[0] == 0
+            cur.execute(
+                """SELECT COUNT(*) FROM kaizo_audit_logs
+                   WHERE tenant_id=%s AND who=%s AND action='COACH_PROBLEM_DRILL_LINK_CREATED'
+                     AND new_value->>'problem_id'=%s""",
+                (tenant, coach, problem_id),
+            )
+            assert cur.fetchone()[0] == 0
+
+
 @pytest.mark.parametrize("operation,table", [
     ("rule", "kaizo_coach_progression_rules"),
     ("constraint", "kaizo_coach_session_constraints"),

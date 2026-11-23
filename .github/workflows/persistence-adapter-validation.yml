@@ -16,6 +16,14 @@ on:
       - fix/coach-feat040-required-evidence-lineage-20261113
       - fix/coach-postgres-verified-evidence-fixture-20261114
       - integration/coach-closure-evidence-audit-20261115
+      - feat/coach-scoped-evidence-product-api-ui-20261115
+      - fix/coach-server-authority-payload-20261117
+      - integration/coach-evidence-audit-rollback-unified-20261119
+      - fix/coach-auth0-staging-live-proof-cross-scope-20261117
+      - integration/coach-evidence-audit-rollback-unified-20261119
+      - fix/cloudflare-worker-import-memory-guard-20261120
+      - fix/coach-staging-target-guardrails-20261121
+      - fix/coach-drill-same-athlete-lineage-20261121
   pull_request:
     branches:
       - main
@@ -43,6 +51,10 @@ on:
       - fix/coach-training-session-lineage-20261114
       - fix/coach-postgres-verified-evidence-fixture-20261114
       - integration/coach-closure-evidence-audit-20261115
+      - fix/coach-server-authority-payload-20261117
+      - fix/cloudflare-worker-import-memory-guard-20261120
+      - fix/coach-staging-target-guardrails-20261121
+      - fix/coach-drill-same-athlete-lineage-20261121
 
 jobs:
   validate-persistence-adapter:
@@ -91,10 +103,28 @@ jobs:
         run: PYTHONPATH=. pytest -q test_feature_runtime.py
       - name: Verify durable Coach athlete ownership, decision cycles, and tenant audit
         run: PYTHONPATH=..:. pytest -q ../productization/test_coach_roster_postgres.py ../productization/test_coach_groups_postgres.py ../productization/test_coach_athlete_lifecycle_postgres.py ../productization/test_coach_athlete_decision_history_postgres.py ../productization/test_coach_decision_cycles_postgres.py
-      - name: Verify FEAT-033..040 Coach workflow ownership and atomic audit
-        run: PYTHONPATH=..:. pytest -q ../productization/test_training_workflow_postgres.py
+      - name: Verify FEAT-033..040 and same-athlete progression PostgreSQL lineage
+        run: PYTHONPATH=..:. pytest -q ../productization/test_training_workflow_postgres.py ../productization/test_coach_progression_workflow_postgres.py
+      - name: Verify same-athlete progression API regression tests in isolated memory mode
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_progression_workflow_api.py
+      - name: Verify FEAT-033..040 route validation in isolated memory mode
+        run: PYTHONPATH=..:. pytest -q test_training_workflow.py
       - name: Verify FEAT-047..050 and FEAT-052..053 scoped evidence and atomic audit
         run: PYTHONPATH=..:. pytest -q test_coach_scoped_evidence_runtime_postgres.py
+      - name: Verify protected FEAT-047..050 and FEAT-052..053 Product API routes
+        run: PYTHONPATH=..:. pytest -q ../productization/test_coach_scoped_evidence_api.py
+      - name: Verify Coach UI Product API contract
+        run: PYTHONPATH=..:. pytest -q ../frontend/test_product_ui_contract.py
+      - name: Compile Auth0 Staging live-proof harness
+        run: python -m py_compile ../scripts/verify_coach_auth0_staging.py
+      - name: Verify Auth0 Staging live-proof contract and required cross-scope IDs
+        run: PYTHONPATH=..:. pytest -q test_coach_auth0_staging_live_proof.py
+      - name: Compile guarded Staging schema preparation
+        run: python -m py_compile ../scripts/apply_coach_scoped_evidence_staging_schema.py
+      - name: Verify Staging schema host and database allowlist
+        run: PYTHONPATH=..:. pytest -q test_coach_staging_schema_target_guard.py
+      - name: Verify minimal Coach Staging baseline on isolated PostgreSQL schema
+        run: PYTHONPATH=..:. pytest -q test_coach_staging_baseline_schema.py
       - name: Verify FEAT-042..045 scoped Digital Twin state cycle
         run: PYTHONPATH=..:. pytest -q test_state_cycle.py test_feat_041_digital_twin.py
       - name: Verify scoped Digital Twin PostgreSQL persistence and atomic audit rollback

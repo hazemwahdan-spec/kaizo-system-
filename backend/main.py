@@ -24,6 +24,7 @@ from state_cycle import router as state_cycle_router
 from reporting_runtime import router as reporting_runtime_router
 from competition_runtime import router as competition_runtime_router
 from academy_ops_runtime import router as academy_ops_runtime_router
+from productization.coach_scoped_evidence_api import router as coach_scoped_evidence_api_router
 
 app = FastAPI(
     title="KAIZO Core Engine API",
@@ -43,6 +44,7 @@ app.include_router(state_cycle_router)
 app.include_router(reporting_runtime_router)
 app.include_router(competition_runtime_router)
 app.include_router(academy_ops_runtime_router)
+app.include_router(coach_scoped_evidence_api_router)
 
 app.add_middleware(
     CORSMiddleware,

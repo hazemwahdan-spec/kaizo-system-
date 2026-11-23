@@ -835,6 +835,19 @@ def create_problem_drill_link(
                     raise CoachProgressionNotFound("drill not found in this Coach/tenant library")
                 if drill["status"] != "PUBLISHED" or not drill["coach_review"]:
                     raise CoachProgressionConflict("only Coach-reviewed PUBLISHED drills may be linked")
+                source_assessment_id = str(drill.get("source_assessment_id") or "").strip()
+                if not source_assessment_id:
+                    raise CoachProgressionConflict("drill must reference a persisted source assessment")
+                cur.execute(
+                    """SELECT assessment_id FROM kaizo_assessments
+                       WHERE assessment_id=%s AND athlete_id=%s
+                       FOR SHARE""",
+                    (source_assessment_id, athlete_id),
+                )
+                if cur.fetchone() is None:
+                    raise CoachProgressionConflict(
+                        "drill source assessment must belong to the same athlete as the linked problem"
+                    )
                 _validate_evidence_sql(cur, evidence_ids, athlete_id=athlete_id,
                                        problem_id=problem_id, assessment_id=problem["assessment_id"])
                 link = ProblemDrillLink(
@@ -871,6 +884,15 @@ def create_problem_drill_link(
             raise CoachProgressionNotFound("drill not found in this Coach/tenant library")
         if drill["status"] != "PUBLISHED" or not drill["coach_review"]:
             raise CoachProgressionConflict("only Coach-reviewed PUBLISHED drills may be linked")
+        from . import coach_assessment_workflow
+        source_assessment_id = str(drill.get("source_assessment_id") or "").strip()
+        if not source_assessment_id or coach_assessment_workflow.get_assessment(
+            tenant_id=tenant_id, coach_actor_id=coach_actor_id,
+            athlete_id=athlete_id, assessment_id=source_assessment_id,
+        ) is None:
+            raise CoachProgressionConflict(
+                "drill source assessment must belong to the same athlete as the linked problem"
+            )
         _validate_evidence_memory(evidence_ids, athlete_id=athlete_id,
                                   problem_id=problem_id, assessment_id=problem["assessment_id"])
         link = ProblemDrillLink(
