@@ -105,7 +105,10 @@ def test_rejects_wrong_or_ambiguous_database_targets(
         )
 
 
+
 def test_staging_database_and_auth0_secret_workflows_are_main_branch_only():
+    import re
+
     workflows = {
         ROOT / ".github" / "workflows" / "coach-scoped-evidence-staging-schema.yml":
             "prepare-staging-schema",
@@ -114,13 +117,11 @@ def test_staging_database_and_auth0_secret_workflows_are_main_branch_only():
     }
     for path, job in workflows.items():
         source = path.read_text(encoding="utf-8")
-        expected = (
-            f"  {job}:\\n"
-            "    # "
+        pattern = (
+            rf"(?m)^  {re.escape(job)}:\n"
+            rf"(?:^    .*\n)*?"
+            rf"^    if: github\.ref == 'refs/heads/main'$"
         )
-        assert expected in source, f"{path.name} must document the protected job"
-        assert (
-            f"  {job}:\\n"
-            f"    # " in source
-            and "    if: github.ref == 'refs/heads/main'\\n" in source
-        ), f"{path.name} must restrict secret-bearing Staging execution to main"
+        assert re.search(pattern, source), (
+            f"{path.name} must restrict its secret-bearing Staging job to main"
+        )
