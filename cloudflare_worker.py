@@ -1,14 +1,14 @@
 """Cloudflare Workers entrypoint for the KAIZO FastAPI application.
 
-The staging Worker deliberately uses in-memory persistence. Production can use
-Cloudflare Hyperdrive by adding the HYPERDRIVE binding in wrangler.jsonc; create
-that binding with caching disabled so Coach ownership and authorization reads
-cannot receive stale cached results. The connection string is never committed.
+The isolated Staging Worker requires a Hyperdrive binding connected to the
+dedicated kaizo_coach_staging database. It refuses to initialize PostgreSQL
+against any other database name. In-memory mode is reserved for local dry runs.
 """
 from __future__ import annotations
 
 import asyncio
 import os
+from urllib.parse import unquote, urlparse
 
 from workers import WorkerEntrypoint, asgi
 
@@ -21,6 +21,7 @@ import persistence
 
 _DATABASE_INITIALIZED = False
 _DATABASE_LOCK = asyncio.Lock()
+_STAGING_DATABASE_NAME = "kaizo_coach_staging"
 
 
 class Default(WorkerEntrypoint):
@@ -28,11 +29,21 @@ class Default(WorkerEntrypoint):
         global _DATABASE_INITIALIZED
 
         hyperdrive = getattr(self.env, "HYPERDRIVE", None)
+        environment = str(getattr(self.env, "KAIZO_ENVIRONMENT", "")).strip().lower()
+
         if hyperdrive is not None:
-            os.environ["DATABASE_URL"] = str(hyperdrive.connectionString)
+            if environment != "staging":
+                raise RuntimeError("KAIZO Worker refuses Hyperdrive outside the Staging environment")
+            connection_string = str(hyperdrive.connectionString)
+            database_name = unquote(urlparse(connection_string).path.lstrip("/").split("?", 1)[0])
+            if database_name != _STAGING_DATABASE_NAME:
+                raise RuntimeError("KAIZO Staging refuses a database other than kaizo_coach_staging")
+            os.environ["DATABASE_URL"] = connection_string
             os.environ["KAIZO_PERSISTENCE_MODE"] = "postgres"
         else:
-            # Staging stays isolated from production data.
+            if environment == "staging":
+                raise RuntimeError("KAIZO Staging requires its isolated PostgreSQL Hyperdrive binding")
+            # Local dry-run mode is in-memory only; it is never accepted for Staging.
             os.environ.pop("DATABASE_URL", None)
             os.environ["KAIZO_PERSISTENCE_MODE"] = str(
                 getattr(self.env, "KAIZO_PERSISTENCE_MODE", "memory")

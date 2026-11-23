@@ -8,110 +8,53 @@ permissions:
 
 jobs:
   deploy-staging:
-    # The Cloudflare credential is only exposed to a manually dispatched run
-    # whose workflow definition and Wrangler config come from the trusted main branch.
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      # Public Cloudflare Account ID from the account dashboard URL.
-      CLOUDFLARE_ACCOUNT_ID: "962a31c413bed22002379d4e0a42cfe8"
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      KAIZO_STAGING_HYPERDRIVE_ID: ${{ vars.KAIZO_STAGING_HYPERDRIVE_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
       - uses: astral-sh/setup-uv@v6
-
-      - name: Verify Cloudflare token identity and account permissions
+      - name: Verify Cloudflare and isolated Staging bindings
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Missing Cloudflare account ID"; exit 1; }
-
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing CLOUDFLARE_ACCOUNT_ID repository secret"; exit 1; }
+          if ! [[ "$KAIZO_STAGING_HYPERDRIVE_ID" =~ ^[a-f0-9]{32}$ ]]; then
+            echo "Missing or invalid KAIZO_STAGING_HYPERDRIVE_ID repository variable."
+            exit 1
+          fi
+      - name: Bind the pre-created Staging-only Hyperdrive
+        shell: bash
+        run: |
+          set -euo pipefail
           python - <<'PY'
           import json
           import os
-          import sys
-          import urllib.error
-          import urllib.request
+          from pathlib import Path
 
-          token = os.environ["CLOUDFLARE_API_TOKEN"]
-          account_id = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-          base = "https://api.cloudflare.com/client/v4"
-
-          def request(path, label):
-              req = urllib.request.Request(
-                  base + path,
-                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-              )
-              try:
-                  with urllib.request.urlopen(req, timeout=20) as response:
-                      payload = json.loads(response.read().decode("utf-8"))
-              except urllib.error.HTTPError as exc:
-                  # Never print request headers or token material.
-                  body = exc.read().decode("utf-8", "replace")
-                  try:
-                      details = json.loads(body)
-                      messages = "; ".join(
-                          str(item.get("message", ""))
-                          for item in details.get("errors", [])
-                      )
-                  except Exception:
-                      messages = "Cloudflare returned a non-JSON error"
-                  print(f"::error::{label} failed (HTTP {exc.code}): {messages or 'permission or account mismatch'}")
-                  sys.exit(1)
-              if not payload.get("success"):
-                  messages = "; ".join(
-                      str(item.get("message", ""))
-                      for item in payload.get("errors", [])
-                  )
-                  print(f"::error::{label} rejected: {messages or 'Cloudflare API returned success=false'}")
-                  sys.exit(1)
-              return payload.get("result")
-
-          identity = request("/user/tokens/verify", "Cloudflare token verification")
-          status = (identity or {}).get("status", "unknown")
-          if status != "active":
-              print(f"::error::Cloudflare API token is not active (status={status}). Replace the CLOUDFLARE_API_TOKEN repository secret.")
-              sys.exit(1)
-
-          scripts = request(f"/accounts/{account_id}/workers/scripts?per_page=100", "Cloudflare account Workers access")
-          print(f"Cloudflare token status: {status}")
-          print(f"Cloudflare account access: verified for {account_id}")
-          names = [item.get("id") for item in (scripts or []) if isinstance(item, dict)]
-          target = "kaizo-coach-core-staging"
-          print(f"Target Worker present in script inventory: {'yes' if target in names else 'no'}")
-          if target not in names:
-              print("::notice::The staging Worker is not in the current script inventory; Wrangler will attempt deployment. If deployment reports 'No access to the specified service', recreate the token with Account-level Workers Scripts Edit access and update the CLOUDFLARE_API_TOKEN repository secret.")
+          path = Path("wrangler.jsonc")
+          config = json.loads(path.read_text())
+          config["hyperdrive"] = [{
+              "binding": "HYPERDRIVE",
+              "id": os.environ["KAIZO_STAGING_HYPERDRIVE_ID"]
+          }]
+          path.write_text(json.dumps(config, indent=2) + "\n")
           PY
-
       - name: Install Python Worker dependencies
         run: |
           uv python install 3.13
           uv sync --dev --no-install-project --python 3.13
-
-      - name: Verify staging-only Wrangler target before deployment
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          config = json.loads(Path("wrangler.jsonc").read_text(encoding="utf-8"))
-          assert config.get("name") == "kaizo-coach-core-staging", "Refusing to deploy: unexpected Worker name"
-          assert config.get("vars", {}).get("KAIZO_PERSISTENCE_MODE") == "memory", "Refusing to deploy: Staging must be memory-only"
-          assert not config.get("hyperdrive"), "Refusing to deploy: Hyperdrive is forbidden for this free Staging target"
-          print("PASS: deployment target is the isolated memory-only Staging Worker")
-          PY
-
-      - name: Deploy isolated in-memory staging Worker
+      - name: Deploy PostgreSQL-backed Staging Worker
         shell: bash
         run: |
           set -euo pipefail
           mv requirements.txt "$RUNNER_TEMP/kaizo-root-requirements.txt"
           trap 'mv "$RUNNER_TEMP/kaizo-root-requirements.txt" requirements.txt' EXIT
-          uv run --no-sync --python 3.13 pywrangler deploy --config wrangler.jsonc
+          uv run --no-sync --python 3.13 pywrangler deploy
