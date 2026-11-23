@@ -147,6 +147,8 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         "rationale": "PostgreSQL ownership and audit acceptance",
         "evidence_refs": [evidence_id],
         "selected_by": "SPOOFED-CLIENT-IDENTITY",
+        "coach_final_authority": False,
+        "execution_authorized": True,
     }
     def unexpected_request_ddl():
         raise AssertionError("FEAT-033..040 request handlers must not execute schema DDL")
@@ -200,6 +202,10 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
     assert record["coach_actor_id"] == coach
     assert record["payload"]["problem_id"]
     assert record["payload"]["problem_drill_link_id"]
+    assert record["coach_final_authority"] is True
+    assert record["execution_authorized"] is False
+    assert record["payload"]["coach_final_authority"] is True
+    assert record["payload"]["execution_authorized"] is False
 
     athlete_id = athlete["athlete_id"]
     session_id = seed_owned_session(tenant, coach, athlete_id, decision_id)
@@ -311,6 +317,12 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
             )
             stored = cur.fetchone()
             assert stored == (tenant, coach, coach)
+            cur.execute(
+                """SELECT payload->>'coach_final_authority', payload->>'execution_authorized'
+                   FROM kaizo_training_workflow_records WHERE record_id=%s""",
+                (record["record_id"],),
+            )
+            assert cur.fetchone() == ("true", "false")
             cur.execute(
                 """SELECT who, action, tenant_id FROM kaizo_audit_logs
                    WHERE action='FEAT-033_RECORDED' AND new_value->>'record_id'=%s""",
