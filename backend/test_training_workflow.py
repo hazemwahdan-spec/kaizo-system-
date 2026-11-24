@@ -81,10 +81,10 @@ def cases(athlete_id):
          {"athlete_id":athlete_id,"decision_id":"D1","drill_id":"DR1","rationale":"Targets entry timing",
           "evidence_refs":["REF-015"],"selected_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-034/drill-prescription",
-         {"athlete_id":athlete_id,"decision_id":"D1","session_id":"S1","drill_id":"DR1",
+         {"athlete_id":athlete_id,"decision_id":"D1","decision_drill_record_id":"PENDING-033","session_id":"S1","drill_id":"DR1",
           "objective":"Improve entry timing","dosage":{"sets":3,"reps":5},"prescribed_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-035/execution-cues",
-         {"athlete_id":athlete_id,"session_id":"S1","drill_id":"DR1",
+         {"athlete_id":athlete_id,"session_id":"S1","prescription_record_id":"PENDING-034","drill_id":"DR1",
           "cues":["Elbow close","Enter under balance"],"checklist":["Grip secured","Posture stable"],
           "created_by":"spoofed-coach"}),
         ("/api/v1/training-workflow/feat-036/training-response",
@@ -111,7 +111,11 @@ def test_all_feat_033_to_040_writes_require_owned_coach_and_attribute_verified_a
     for path, original in cases(ATHLETE_ID):
         payload = dict(original)
         feature = path.split("/feat-")[1][:3]
-        if feature == "036":
+        if feature == "034":
+            payload["decision_drill_record_id"] = records["033"]["record_id"]
+        elif feature == "035":
+            payload["prescription_record_id"] = records["034"]["record_id"]
+        elif feature == "036":
             payload["prescription_record_id"] = records["034"]["record_id"]
             payload["execution_cue_record_id"] = records["035"]["record_id"]
         elif feature == "037":
@@ -180,7 +184,7 @@ def test_caller_authority_boolean_is_ignored_but_invalid_dosage_still_fails_clos
     assert saved["payload"]["coach_final_authority"] is True
     assert saved["payload"]["execution_authorized"] is False
     invalid = {
-        "athlete_id":ATHLETE_ID,"decision_id":"D1","session_id":"S1","drill_id":"DR1",
+        "athlete_id":ATHLETE_ID,"decision_id":"D1","decision_drill_record_id":saved["record_id"],"session_id":"S1","drill_id":"DR1",
         "objective":"x","dosage":{"sets":0,"reps":5},
     }
     assert client.post(
@@ -192,6 +196,30 @@ def test_caller_authority_boolean_is_ignored_but_invalid_dosage_still_fails_clos
 def test_workflow_rejects_missing_predecessor():
     path, payload = cases(ATHLETE_ID)[1]
     assert client.post(path, json=payload, headers=COACH_HEADERS).status_code == 409
+
+
+def test_feat034_and_035_require_exact_parent_record_ids():
+    feat033_path, feat033_payload = cases(ATHLETE_ID)[0]
+    parent_response = client.post(feat033_path, json=feat033_payload, headers=COACH_HEADERS)
+    assert parent_response.status_code == 201, parent_response.text
+    parent = parent_response.json()
+
+    feat034_path, feat034_payload = cases(ATHLETE_ID)[1]
+    feat034_payload["decision_drill_record_id"] = "MISSING-FEAT-033"
+    assert client.post(feat034_path, json=feat034_payload, headers=COACH_HEADERS).status_code == 409
+    feat034_payload["decision_drill_record_id"] = parent["record_id"]
+    prescription_response = client.post(feat034_path, json=feat034_payload, headers=COACH_HEADERS)
+    assert prescription_response.status_code == 201, prescription_response.text
+    prescription = prescription_response.json()
+    assert prescription["payload"]["decision_drill_record_id"] == parent["record_id"]
+
+    feat035_path, feat035_payload = cases(ATHLETE_ID)[2]
+    feat035_payload["prescription_record_id"] = "MISSING-FEAT-034"
+    assert client.post(feat035_path, json=feat035_payload, headers=COACH_HEADERS).status_code == 409
+    feat035_payload["prescription_record_id"] = prescription["record_id"]
+    cues_response = client.post(feat035_path, json=feat035_payload, headers=COACH_HEADERS)
+    assert cues_response.status_code == 201, cues_response.text
+    assert cues_response.json()["payload"]["prescription_record_id"] == prescription["record_id"]
 
 
 def test_openapi_publishes_all_feat_033_to_040_routes_and_lineage_fields():
@@ -209,6 +237,8 @@ def test_openapi_publishes_all_feat_033_to_040_routes_and_lineage_fields():
     }
     assert expected.issubset(set(schema["paths"]))
     required = {
+        "DrillPrescriptionRequest": {"decision_drill_record_id"},
+        "ExecutionCueRequest": {"prescription_record_id"},
         "ResponseRequest": {"drill_id", "prescription_record_id", "execution_cue_record_id"},
         "RetestRequest": {"response_record_id"},
         "ComparisonRequest": {"response_record_id", "retest_record_id"},
