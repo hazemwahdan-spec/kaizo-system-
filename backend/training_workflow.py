@@ -430,6 +430,7 @@ class DecisionDrillRequest(BaseModel):
 class DrillPrescriptionRequest(BaseModel):
     athlete_id: str
     decision_id: str
+    decision_drill_record_id: str
     session_id: str
     drill_id: str
     objective: str
@@ -441,6 +442,7 @@ class DrillPrescriptionRequest(BaseModel):
 class ExecutionCueRequest(BaseModel):
     athlete_id: str
     session_id: str
+    prescription_record_id: str
     drill_id: str
     cues: List[str] = Field(min_length=1)
     checklist: List[str] = Field(min_length=1)
@@ -566,7 +568,8 @@ def prescribe_drill(
     _require_authority(principal)
     with _locked_coach_write_scope(principal, req.athlete_id):
         predecessor = _prior_record("FEAT-033", req.athlete_id, principal,
-            lambda r, p: r.get("decision_id") == req.decision_id and p.get("drill_id") == req.drill_id)
+            lambda r, p: r.get("record_id") == req.decision_drill_record_id
+            and r.get("decision_id") == req.decision_id and p.get("drill_id") == req.drill_id)
         d = req.dosage
         if not d or any(k not in d for k in ("sets", "reps")):
             raise HTTPException(400, "dosage requires sets and reps")
@@ -590,7 +593,8 @@ def record_execution_cues(
         if any(not item.strip() for item in req.cues + req.checklist):
             raise HTTPException(400, "cues and checklist items must be non-empty")
         predecessor = _prior_record("FEAT-034", req.athlete_id, principal,
-            lambda r, p: r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
+            lambda r, p: r.get("record_id") == req.prescription_record_id
+            and r.get("session_id") == req.session_id and p.get("drill_id") == req.drill_id)
         return _save_with_owned_session("FEAT-035", req.athlete_id, req.model_dump(), principal,
             decision_id=predecessor.get("decision_id"), session_id=req.session_id)
 
