@@ -223,11 +223,25 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
             headers=headers,
             json={
                 "athlete_id": athlete_id, "decision_id": decision_id,
+                "decision_drill_record_id": record["record_id"],
                 "session_id": invalid_session, "drill_id": drill_id,
                 "objective": "Reject foreign session", "dosage": {"sets": 3, "reps": 5},
             },
         )
         assert invalid_session_response.status_code == 409, invalid_session_response.text
+
+    missing_decision_drill = client.post(
+        "/api/v1/training-workflow/feat-034/drill-prescription",
+        headers=headers,
+        json={
+            "athlete_id": athlete_id, "decision_id": decision_id,
+            "decision_drill_record_id": "MISSING-FEAT-033",
+            "session_id": session_id, "drill_id": drill_id,
+            "objective": "Reject an unlinked decision-drill record",
+            "dosage": {"sets": 3, "reps": 5},
+        },
+    )
+    assert missing_decision_drill.status_code == 409, missing_decision_drill.text
 
     def post(feature, suffix, body):
         result = client.post(f"/api/v1/training-workflow/feat-{feature}/{suffix}",
@@ -241,11 +255,25 @@ def test_workflow_record_and_tenant_audit_commit_atomically(monkeypatch):
         return saved
 
     prescription = post("034","drill-prescription",{
-        "decision_id":decision_id,"session_id":session_id,"drill_id":drill_id,
+        "decision_id":decision_id,"decision_drill_record_id":record["record_id"],
+        "session_id":session_id,"drill_id":drill_id,
         "objective":"Improve entry timing","dosage":{"sets":3,"reps":5}})
+    assert prescription["payload"]["decision_drill_record_id"] == record["record_id"]
+    missing_prescription = client.post(
+        "/api/v1/training-workflow/feat-035/execution-cues",
+        headers=headers,
+        json={
+            "athlete_id": athlete_id, "prescription_record_id": "MISSING-FEAT-034",
+            "session_id": session_id, "drill_id": drill_id,
+            "cues": ["Elbow close"], "checklist": ["Posture stable"],
+        },
+    )
+    assert missing_prescription.status_code == 409, missing_prescription.text
     cues = post("035","execution-cues",{
+        "prescription_record_id":prescription["record_id"],
         "session_id":session_id,"drill_id":drill_id,
         "cues":["Elbow close"],"checklist":["Posture stable"]})
+    assert cues["payload"]["prescription_record_id"] == prescription["record_id"]
     training_response = post("036","training-response",{
         "session_id":session_id,"drill_id":drill_id,
         "prescription_record_id":prescription["record_id"],
