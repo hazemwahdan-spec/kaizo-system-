@@ -46,11 +46,14 @@ def _auth_headers(authorization, actor_id, role, tenant_id, owner, athlete_id):
     return _principal(authorization, actor_id, role, tenant_id, owner, athlete_id)
 
 
-def _scope_check(cur, athlete_id, principal):
+def _scope_check(cur, athlete_id, principal, *, write: bool = False):
+    # FOR KEY SHARE does not block reassignment of non-key tenant/Coach columns.
+    # FOR SHARE protects reads; FOR UPDATE protects state/link writes until commit.
+    lock_clause = "FOR UPDATE" if write else "FOR SHARE"
     cur.execute(
-        """SELECT 1 FROM kaizo_coach_athlete_ownership
+        f"""SELECT 1 FROM kaizo_coach_athlete_ownership
            WHERE athlete_id=%s AND tenant_id=%s AND coach_actor_id=%s
-           FOR KEY SHARE""",
+           {lock_clause}""",
         (athlete_id, principal.tenant_id, principal.actor_id),
     )
     if cur.fetchone() is None:
@@ -117,7 +120,7 @@ def _persist_update(state: Dict[str, Any], history: Dict[str, Any],
         return
     with persistence.connection() as conn:
         with conn.cursor() as cur:
-            _scope_check(cur,state["entity_id"],principal)
+            _scope_check(cur,state["entity_id"],principal,write=True)
             # Evidence, versioned state, history and tenant audit commit together.
             _verified_athlete_evidence(cur, state["entity_id"], principal.actor_id, history["evidence_refs"])
             cur.execute(
@@ -178,7 +181,7 @@ def _save_link(record: Dict[str, Any], principal: Any) -> None:
     # in one transaction; a transfer or audit failure cannot leave a partial link.
     with persistence.atomic_transaction() as conn:
         with conn.cursor() as cur:
-            _scope_check(cur,record["entity_id"],principal)
+            _scope_check(cur,record["entity_id"],principal,write=True)
             decision = coach_decision_workflow._decision_for_scope_sql(
                 cur, tenant_id=principal.tenant_id, coach_actor_id=principal.actor_id,
                 athlete_id=record["entity_id"], decision_id=record["decision_id"], lock=True,
