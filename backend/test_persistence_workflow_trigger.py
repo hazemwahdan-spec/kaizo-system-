@@ -14,7 +14,7 @@ def test_current_stacked_coach_lineage_branch_triggers_postgres_validation():
     source = WORKFLOW.read_text(encoding="utf-8")
     push_block = source.split("  push:\n", 1)[1].split("  pull_request:\n", 1)[0]
     assert f"      - {STACKED_COACH_BRANCH}" in push_block
-    pull_request_block = source.split("  pull_request:\\n", 1)[1].split("\\njobs:", 1)[0]
+    pull_request_block = source.split("  pull_request:\n", 1)[1].split("\njobs:", 1)[0]
     assert f"      - {STACKED_COACH_BASE_BRANCH}" in pull_request_block
     assert f"      - {STACKED_COACH_UI_BASE_BRANCH}" in pull_request_block
     assert "productization/test_training_workflow_postgres.py" in source
