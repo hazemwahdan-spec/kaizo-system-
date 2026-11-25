@@ -34,7 +34,7 @@ def test_cloudflare_runtime_keeps_oidc_identity_enforced():
     config = json.loads((ROOT / "wrangler.jsonc").read_text(encoding="utf-8"))
     assert config["vars"]["KAIZO_IDENTITY_MODE"] == "oidc"
     assert config["vars"]["KAIZO_OIDC_ISSUER"] == "https://kaizo-system.us.auth0.com/"
-    assert config["vars"]["KAIZO_OIDC_AUDIENCE"] == "https://api.kaizo.system"
+    assert config["vars"]["KAIZO_OIDC_AUDIENCE"] == "https://api.staging.kaizo.system"
 
 
 def test_pyodide_uses_non_binary_psycopg_driver():
