@@ -320,6 +320,8 @@ def test_coach_training_evidence_chain_ui_uses_authenticated_owned_workflow_api(
     assert 'baseline:baselineForResponse' in APP
     assert 'payload.coach_final_authority=true' not in APP
     assert 'r33?.decision_id' in APP
+    assert 'decision_drill_record_id:r33?.record_id||""' in APP
+    assert 'prescription_record_id:r34?.record_id||""' in APP
     assert 'r34?.record_id' in APP
     assert 'r35?.record_id' in APP
     assert 'r36?.record_id' in APP
