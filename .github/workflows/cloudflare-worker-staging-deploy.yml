@@ -39,8 +39,17 @@ jobs:
           vars_ = config.get("vars", {})
           assert vars_.get("KAIZO_ENVIRONMENT") == "staging", "Staging environment is required"
           assert vars_.get("KAIZO_PERSISTENCE_MODE") == "memory", "Memory-only persistence is required"
+          assert vars_.get("KAIZO_OIDC_AUDIENCE") == "https://api.staging.kaizo.system", "Staging Auth0 audience is required"
           assert not config.get("hyperdrive"), "Hyperdrive is forbidden in free memory-only Staging"
-          print("PASS: isolated Worker name, staging environment, memory persistence, no Hyperdrive")
+
+          auth_config = Path("frontend/auth-config.js").read_text()
+          worker = Path("cloudflare_worker.py").read_text()
+          staging_host = 'window.location.hostname === "kaizo-coach-core-staging.hazemwahdan.workers.dev"'
+          assert staging_host in auth_config, "Auth0 Staging client must be selected only on the exact Staging hostname"
+          assert 'audience: isKaizoCoachStaging' in auth_config, "Staging and Production audiences must be selected separately"
+          assert "https://api.staging.kaizo.system" in auth_config, "Staging SPA must request the Staging API audience"
+          assert '("KAIZO_OIDC_AUDIENCE", "https://api.staging.kaizo.system")' in worker, "Worker OIDC fallback must use the Staging audience"
+          print("PASS: isolated Worker name, Staging-only Auth0 audience/client, memory persistence, no Hyperdrive")
           PY
       - name: Verify memory-only import guard
         run: python backend/test_cloudflare_worker_import_guard.py
