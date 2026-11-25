@@ -2,6 +2,8 @@
 import os
 import sys
 import json
+import threading
+from types import SimpleNamespace
 from pathlib import Path
 from contextlib import contextmanager
 from uuid import uuid4
@@ -598,3 +600,55 @@ def test_oidc_bearer_authenticates_training_workflow_and_ignores_forged_headers(
         f"/api/v1/training-workflow/athletes/{athlete['athlete_id']}",
         headers={"Authorization": invalid_signature},
     ).status_code == 401
+
+
+def test_parent_validation_scope_holds_ownership_row_lock_until_release():
+    """A concurrent ownership/parent mutation cannot pass while a workflow write is validating lineage."""
+    assert persistence.is_postgres_enabled()
+    persistence.initialize()
+    tenant = "TENANT-" + uuid4().hex
+    coach = "auth0|coach-" + uuid4().hex
+    athlete = coach_roster.create_owned_athlete(
+        tenant_id=tenant, coach_actor_id=coach,
+        display_name="TOCTOU lock acceptance athlete",
+    )["athlete_id"]
+    principal = SimpleNamespace(actor_id=coach, tenant_id=tenant, role="coach")
+    acquired = threading.Event()
+    release = threading.Event()
+    thread_errors = []
+    lock_errors = []
+
+    def hold_write_scope():
+        try:
+            with training_workflow._locked_coach_write_scope(principal, athlete):
+                acquired.set()
+                if not release.wait(10):
+                    raise TimeoutError("test did not release the Coach write scope")
+        except Exception as exc:
+            thread_errors.append(exc)
+
+    worker = threading.Thread(target=hold_write_scope, daemon=True)
+    worker.start()
+    assert acquired.wait(5), "Coach write scope did not acquire the ownership lock"
+    try:
+        with persistence.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1 FROM kaizo_coach_athlete_ownership
+                       WHERE athlete_id=%s AND tenant_id=%s AND coach_actor_id=%s
+                       FOR UPDATE NOWAIT""",
+                    (athlete, tenant, coach),
+                )
+            conn.rollback()
+    except Exception as exc:
+        lock_errors.append(exc)
+    finally:
+        release.set()
+        worker.join(timeout=5)
+
+    assert not worker.is_alive(), "Coach write scope did not release its transaction"
+    assert not thread_errors, f"Coach write scope failed: {thread_errors}"
+    assert lock_errors, "A concurrent transaction unexpectedly acquired the ownership row"
+    assert getattr(lock_errors[0], "sqlstate", None) == "55P03", (
+        "the competing transaction must fail specifically because the ownership row is locked"
+    )
